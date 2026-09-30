@@ -147,6 +147,30 @@ a Dragonfire fix, side/rear view, and a blazing leader.
 - The sky dome now uses proper colour management, so it's a bit brighter
   and more saturated.
 
+## Round 4 changes
+
+- **Death text:** a tail death now reads "Poisoned by X" (was "Eaten by").
+- **Red dragonfire crystals are much louder:** bigger and pulsing, with a
+  wire shell, a red glow, and a constant-size star halo that shows through
+  obstacles. Embers rise off them, and they stay pinned to the radar rim.
+  Shield and magnet crystals get a smaller version.
+- **Dragonfire status lives bottom left** under the length and tier:
+  - "find a red crystal" when you have none
+  - "READY — press E" (pulsing red) when you do
+  - "BREATHING FIRE" with a countdown bar while breathing
+
+  Shield and magnet timers moved there too.
+- **Steering starts at zero.** When you spawn or unpause, wherever the
+  cursor happens to be becomes the neutral point. The steering circle then
+  glides back to the screen centre as you move the mouse.
+- **Nav bug fixed:** holding pitch (e.g. the up arrow) no longer makes the
+  dragon flip 180° at the top of a loop.
+  - Cause: auto-level rolled you upright when you went inverted mid-loop,
+    which flipped the direction "up" pulls.
+  - Fix: levelling now fades out while pitch input is held and comes back
+    when you let go.
+  - Headless check: 80–120° of unwanted roll per second before, 0° after.
+
 ## Findings so far (headless bot runs)
 
 - **Performance:** the sim costs about 0.45 ms per step with 24 dragons and

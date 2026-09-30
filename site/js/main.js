@@ -1,15 +1,15 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, loadTune, saveTune, TIERS } from './tunables.js?v=3';
-import { World, Dragon, hazardDist } from './sim.js?v=3';
-import { managePopulation, targetBots } from './bots.js?v=3';
-import { Renderer } from './render.js?v=3';
-import { ChaseCam } from './camera.js?v=3';
-import { Input } from './input.js?v=3';
-import { Hud } from './hud.js?v=3';
-import { Audio } from './audio.js?v=3';
-import { TunePanel } from './tune-panel.js?v=3';
+import { T, loadTune, saveTune, TIERS } from './tunables.js?v=4';
+import { World, Dragon, hazardDist } from './sim.js?v=4';
+import { managePopulation, targetBots } from './bots.js?v=4';
+import { Renderer } from './render.js?v=4';
+import { ChaseCam } from './camera.js?v=4';
+import { Input } from './input.js?v=4';
+import { Hud } from './hud.js?v=4';
+import { Audio } from './audio.js?v=4';
+import { TunePanel } from './tune-panel.js?v=4';
 
 loadTune();
 
@@ -76,6 +76,7 @@ function startPlay() {
     lastTarget = targetBots(world);
     view.player = player;
     cam.snap(player);
+    input.zero();            // start straight, wherever the cursor happens to be
     input.requestLock();
     setState('play');
     if (settings.runs <= 3) showHints();
@@ -147,7 +148,7 @@ function onPlayerDeath(e) {
         at: performance.now() / 1000,
         pos: player.pos.clone(),
         killer: e.killer,
-        text: e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Eaten by ${e.killer.name}`) : `Crashed into ${e.cause}`,
+        text: e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
         peak: Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass)),
         kills: player.kills,
         time: world.time - player.bornAt,
@@ -167,7 +168,7 @@ $('name').value = settings.name || randomName();
 $('play').onclick = () => startPlay();
 $('again').onclick = () => startPlay();
 $('menu-btn').onclick = () => { setState('menu'); };
-$('resume').onclick = () => { setState('play'); input.requestLock(); };
+$('resume').onclick = () => { setState('play'); input.zero(); input.requestLock(); };
 $('quit').onclick = () => { if (player && player.alive) { world.kill(player, null, 'the menu'); } setState('menu'); };
 for (const r of document.querySelectorAll('input[name=arena]')) {
     r.checked = r.value === settings.arena;
@@ -231,7 +232,7 @@ input.onKey = (code) => {
     }
     else if (code === 'Escape' || code === 'KeyP') {
         if (state === 'play') setState('pause');
-        else if (state === 'pause') { setState('play'); input.requestLock(); }
+        else if (state === 'pause') { setState('play'); input.zero(); input.requestLock(); }
     } else if ((code === 'Space' || code === 'Enter') && state === 'dead' && performance.now() / 1000 - deathInfo.at > 0.9) startPlay();
     else if (code === 'Enter' && state === 'menu') startPlay();
 };

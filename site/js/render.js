@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=3';
+import { T, TIERS } from './tunables.js?v=4';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -64,12 +64,16 @@ export class Renderer {
         this.hornMat = new THREE.MeshLambertMaterial({ color: 0xf2e6c8 });
 
         // Power-up crystals.
+        // Each crystal gets a world-size glow and a constant-size star halo
+        // so it reads from across the arena; dragonfire (red) is the loudest.
         this.puGeo = new THREE.OctahedronGeometry(1.3, 0);
         this.puMats = {
-            shield: new THREE.MeshBasicMaterial({ color: 0xFF9A3C, wireframe: false }),
+            shield: new THREE.MeshBasicMaterial({ color: 0xFF9A3C }),
             magnet: new THREE.MeshBasicMaterial({ color: 0x3DE0FF }),
-            fire: new THREE.MeshBasicMaterial({ color: 0xFF4D4D }),
+            fire: new THREE.MeshBasicMaterial({ color: 0xFF2A1A }),
         };
+        this.puColors = { shield: 0xFFB060, magnet: 0x7FE8FF, fire: 0xFF3A20 };
+        this.puShellMat = new THREE.MeshBasicMaterial({ color: 0xFFD0A0, wireframe: true, transparent: true, opacity: 0.6 });
         this.puMeshes = [];
 
         // The leader's blazing head (replaces the old light pillar): a very
@@ -468,19 +472,44 @@ export class Renderer {
         this.orbs.instanceMatrix.needsUpdate = true;
         this.orbs.instanceColor.needsUpdate = true;
 
-        // Power-ups.
+        // Power-ups: crystal + wire shell + glow + star halo (+ embers for fire).
         while (this.puMeshes.length < world.powerups.length) {
-            const m = new THREE.Mesh(this.puGeo, this.puMats.shield);
-            this.scene.add(m); this.puMeshes.push(m);
+            const g = new THREE.Group();
+            const crystal = new THREE.Mesh(this.puGeo, this.puMats.shield);
+            const shell = new THREE.Mesh(this.puGeo, this.puShellMat);
+            shell.scale.setScalar(1.45);
+            const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, blending: THREE.AdditiveBlending,
+                depthWrite: false, transparent: true, fog: false }));
+            const star = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starTex, blending: THREE.AdditiveBlending,
+                depthWrite: false, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
+            star.renderOrder = 9;
+            g.add(crystal, shell, glow, star);
+            g.userData = { crystal, shell, glow, star };
+            this.scene.add(g); this.puMeshes.push(g);
         }
-        this.puMeshes.forEach((m, i) => {
+        this.puMeshes.forEach((g, i) => {
             const pu = world.powerups[i];
-            m.visible = !!pu;
+            g.visible = !!pu;
             if (!pu) return;
-            m.material = this.puMats[pu.type];
-            m.position.copy(pu.pos);
-            m.rotation.set(pu.spin * 0.7, pu.spin * 1.3, 0);
-            m.scale.setScalar(1 + 0.12 * Math.sin(time * 5));
+            const { crystal, shell, glow, star } = g.userData;
+            const fire = pu.type === 'fire';
+            const pulse = 1 + 0.18 * Math.sin(time * (fire ? 7 : 5));
+            crystal.material = this.puMats[pu.type];
+            g.position.copy(pu.pos);
+            crystal.rotation.set(pu.spin * 0.7, pu.spin * 1.3, 0);
+            shell.rotation.set(-pu.spin * 0.5, pu.spin * 0.9, pu.spin * 0.3);
+            crystal.scale.setScalar((fire ? 1.9 : 1.4) * pulse);
+            shell.scale.setScalar((fire ? 2.8 : 2.0) * pulse);
+            glow.material.color.setHex(this.puColors[pu.type]);
+            glow.scale.setScalar((fire ? 16 : 9) * pulse);
+            star.material.color.setHex(this.puColors[pu.type]);
+            star.scale.setScalar((fire ? 0.09 : 0.045) * pulse);
+            if (fire) {
+                for (let k = 0; k < 2; k++) {
+                    this.emit(pu.pos.x + (Math.random() - 0.5) * 3, pu.pos.y + (Math.random() - 0.5) * 3, pu.pos.z + (Math.random() - 0.5) * 3,
+                        (Math.random() - 0.5) * 2, 3 + Math.random() * 4, (Math.random() - 0.5) * 2, 0.6 + Math.random() * 0.5, 1);
+                }
+            }
         });
 
         // The leader blazes: halo + core + light + flames streaming back.

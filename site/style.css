@@ -52,7 +52,14 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats, body
 #hud-tierbar { height: 100%; width: 0; background: var(--sun); transition: width 0.3s; }
 
 #radar { position: absolute; left: 50%; bottom: 8px; width: 220px; height: 150px; transform: translateX(-50%); }
-#hud-pu { position: absolute; right: 18px; bottom: 20px; font-size: 16px; font-weight: 700; }
+#hud-pu { margin-top: 6px; font-size: 14px; font-weight: 700; }
+#hud-fire { margin-top: 10px; font-size: 13px; font-weight: 800; letter-spacing: 0.03em; }
+#hud-fire[data-state=empty] { color: #c3c9dd; opacity: 0.85; }
+#hud-fire[data-state=ready] { color: #FF5A3A; text-shadow: 0 0 10px rgba(255,80,40,0.9); animation: fireReady 0.9s ease-in-out infinite alternate; }
+#hud-fire[data-state=breathing] { color: #FFD93D; text-shadow: 0 0 12px rgba(255,160,40,0.9); }
+@keyframes fireReady { from { opacity: 0.75; } to { opacity: 1; transform: scale(1.03); transform-origin: left center; } }
+.bar.fire { width: 170px; margin-top: 3px; }
+#hud-fire-bar { height: 100%; width: 0; background: linear-gradient(90deg, #FF3A20, #FFD93D); }
 #hud-fps { position: absolute; right: 18px; bottom: 4px; font-size: 10px; color: var(--dim); }
 
 /* ---------------- Panels ---------------- */

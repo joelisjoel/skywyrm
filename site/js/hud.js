@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=3';
+import { T, TIERS } from './tunables.js?v=4';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -22,6 +22,9 @@ export class Hud {
             toasts: document.getElementById('toasts'),
             feed: document.getElementById('feed'),
             pu: document.getElementById('hud-pu'),
+            fire: document.getElementById('hud-fire'),
+            fireText: document.getElementById('hud-fire-text'),
+            fireBar: document.getElementById('hud-fire-bar'),
             fps: document.getElementById('hud-fps'),
             warn: document.getElementById('hud-warn'),
         };
@@ -91,15 +94,18 @@ export class Hud {
 
         // Steering circle, reticle, nose marker (Freelancer-style, spec §7).
         const R = input.circleRadius();
+        const nc = input.centre(), ncx = cx + nc.x, ncy = cy + nc.y;   // steering centre (drifts home after spawn)
         ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(cx, cy, R * T.steerDeadzone, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ncx, ncy, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ncx, ncy, R * T.steerDeadzone, 0, Math.PI * 2); ctx.stroke();
         const r = input.reticle();
-        const rm = Math.hypot(r.x, r.y), rx = rm > R ? r.x * R / rm : r.x, ry = rm > R ? r.y * R / rm : r.y;
+        let rx = r.x - nc.x, ry = r.y - nc.y;
+        const rm = Math.hypot(rx, ry);
+        if (rm > R) { rx *= R / rm; ry *= R / rm; }
         ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + rx, cy + ry); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ncx, ncy); ctx.lineTo(ncx + rx, ncy + ry); ctx.stroke();
         ctx.strokeStyle = '#FFD93D'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(cx + rx, cy + ry, 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ncx + rx, ncy + ry, 9, 0, Math.PI * 2); ctx.stroke();
         renderer.project(_v.copy(p.pos).addScaledVector(p.vdir, 40), pr);
         if (pr.on) {
             const nx = pr.x, ny = pr.y;
@@ -144,10 +150,10 @@ export class Hud {
         c.beginPath(); c.ellipse(cx, cy, rx / 2, ry / 2, 0, 0, Math.PI * 2); c.stroke();
         c.beginPath(); c.moveTo(cx - rx, cy); c.lineTo(cx + rx, cy); c.moveTo(cx, cy - ry); c.lineTo(cx, cy + ry); c.stroke();
         _q.copy(p.quat).invert();
-        const draw = (pos, color, crown, ring) => {
+        const draw = (pos, color, crown, ring, pin) => {
             const l = _v.copy(pos).sub(p.pos).applyQuaternion(_q);
             let k = 1, dist = l.length();
-            if (dist > range) { if (!crown && !ring) return; k = range / dist * 0.98; }
+            if (dist > range) { if (!crown && !ring && !pin) return; k = range / dist * 0.98; }
             const px = cx + l.x / range * rx * k, pz = cy + l.z / range * ry * k;
             const py = pz - l.y / range * ry * 1.3 * k;
             c.strokeStyle = color; c.fillStyle = color; c.lineWidth = 1.5;
@@ -164,7 +170,10 @@ export class Hud {
             if (!d.alive || d === p) continue;
             draw(d.pos, hex(d.color), false);
         }
-        for (const pu of world.powerups) draw(pu.pos, '#ffffff', false);
+        // Power-ups by colour; red dragonfire crystals stay pinned to the rim.
+        for (const pu of world.powerups) {
+            draw(pu.pos, { fire: '#FF3A20', shield: '#FFB060', magnet: '#7FE8FF' }[pu.type], false, false, pu.type === 'fire');
+        }
         // The rich middle: a ring that sits on the rim when it's out of range.
         draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
         if (view.top && view.top !== p) draw(view.top.pos, '#FFD93D', true);
@@ -182,10 +191,24 @@ export class Hud {
             this.el.tier.textContent = TIERS[t].name.toUpperCase() + (next ? ' → ' + next.name : '');
             const f = next ? (p.mass - TIERS[t].mass) / (next.mass - TIERS[t].mass) : 1;
             this.el.tierBar.style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
+            // Dragonfire slot (always shown): none / ready / breathing.
+            const slot = this.el.fire;
+            if (p.breath > 0) {
+                slot.dataset.state = 'breathing';
+                this.el.fireText.textContent = '🔥 BREATHING FIRE';
+                this.el.fireBar.style.width = Math.round(Math.min(1, p.breath / T.fireTime) * 100) + '%';
+            } else if (p.fire) {
+                slot.dataset.state = 'ready';
+                this.el.fireText.textContent = '🔥 DRAGONFIRE READY — press E';
+                this.el.fireBar.style.width = '100%';
+            } else {
+                slot.dataset.state = 'empty';
+                this.el.fireText.textContent = '🔥 no dragonfire — find a red crystal';
+                this.el.fireBar.style.width = '0%';
+            }
             const pu = [];
-            if (p.shield > 0) pu.push('🛡 ' + Math.ceil(p.shield) + 's');
-            if (p.magnet > 0) pu.push('🧲 ' + Math.ceil(p.magnet) + 's');
-            if (p.fire) pu.push('🔥 ready — E');
+            if (p.shield > 0) pu.push('🛡 shield ' + Math.ceil(p.shield) + 's');
+            if (p.magnet > 0) pu.push('🧲 magnet ' + Math.ceil(p.magnet) + 's');
             this.el.pu.textContent = pu.join('   ');
         }
         this.el.fps.textContent = fps ? fps + ' fps' : '';

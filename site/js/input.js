@@ -2,13 +2,17 @@
 // centre, inside a steering circle, is the stick. Optional pointer-lock
 // "virtual stick" mode for players who don't want the cursor to escape.
 // Touch comes later; everything funnels into the same {sx, sy, …} struct.
-import { T } from './tunables.js?v=3';
+import { T } from './tunables.js?v=4';
 
 export class Input {
     constructor(canvas) {
         this.canvas = canvas;
         this.mouse = { x: innerWidth / 2, y: innerHeight / 2 };
         this.virt = { x: 0, y: 0 };        // pointer-lock virtual offset (px)
+        // Neutral point (px from screen centre). Zeroed to wherever the
+        // cursor is when you spawn, so you don't start mid-turn; it glides
+        // back to the true centre as you move the mouse.
+        this.neutral = { x: 0, y: 0 };
         this.keys = new Set();
         this.lmb = false; this.rmb = false;
         this.settings = { invertY: false, mouseLock: false };
@@ -22,6 +26,16 @@ export class Input {
                 if (m > R) { this.virt.x *= R / m; this.virt.y *= R / m; }
             } else {
                 this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+            }
+            // Movement from successive positions (movementX isn't reliable everywhere).
+            const mx = e.clientX - (this.lastX ?? e.clientX), my = e.clientY - (this.lastY ?? e.clientY);
+            this.lastX = e.clientX; this.lastY = e.clientY;
+            const moved = document.pointerLockElement === canvas ? Math.hypot(e.movementX, e.movementY) : Math.hypot(mx, my);
+            const n = this.neutral, nm = Math.hypot(n.x, n.y);
+            if (nm > 0) {
+                const k = Math.max(0, 1 - 0.8 * moved / nm);
+                n.x *= k; n.y *= k;
+                if (Math.hypot(n.x, n.y) < 2) n.x = n.y = 0;
             }
         });
         canvas.addEventListener('mousedown', (e) => {
@@ -55,6 +69,21 @@ export class Input {
         if (document.pointerLockElement) document.exitPointerLock();
     }
 
+    // Make the current cursor position the neutral (no-steer) point.
+    zero() {
+        this.virt.x = this.virt.y = 0;
+        const r = this.rawReticle();
+        this.neutral.x = r.x; this.neutral.y = r.y;
+    }
+
+    // Steering centre in px from screen centre (for the HUD circle).
+    centre() { return this.neutral; }
+
+    rawReticle() {
+        if (document.pointerLockElement === this.canvas) return { x: this.virt.x, y: this.virt.y };
+        return { x: this.mouse.x - innerWidth / 2, y: this.mouse.y - innerHeight / 2 };
+    }
+
     // Raw reticle offset in px from screen centre (for the HUD).
     reticle() {
         if (document.pointerLockElement === this.canvas) return { x: this.virt.x, y: this.virt.y };
@@ -65,7 +94,7 @@ export class Input {
     read(out) {
         const R = this.circleRadius();
         const r = this.reticle();
-        let x = r.x / R, y = -r.y / R;
+        let x = (r.x - this.neutral.x) / R, y = -(r.y - this.neutral.y) / R;
         let m = Math.hypot(x, y);
         if (m > 1) { x /= m; y /= m; m = 1; }
         if (m < T.steerDeadzone) { x = 0; y = 0; }

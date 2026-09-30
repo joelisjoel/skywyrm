@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=3';
+import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=4';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -438,7 +438,10 @@ export class World {
         d.updateFrame();
 
         // Auto-level (gravity) / orientation assist (zero-G) when not rolling.
-        const rate = a.gravity ? T.levelRate : (d.isBot || this.assist ? T.assistRate : 0);
+        // It fades out while you pitch: otherwise a held pull-up (a loop)
+        // gets rolled upright at the top and swings you round 180°.
+        const pitchHold = Math.max(0, 1 - Math.abs(d.steer.y) / 0.3);
+        const rate = (a.gravity ? T.levelRate : (d.isBot || this.assist ? T.assistRate : 0)) * pitchHold;
         const W = referenceUp(a, d.pos, _v3);
         if (!inp.roll && rate > 0 && W && Math.abs(d.fwd.dot(W)) < 0.95) {
             const R0 = _v1.crossVectors(d.fwd, W).normalize();
