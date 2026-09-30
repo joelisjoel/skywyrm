@@ -4,8 +4,8 @@
 // server. Other dragons are drawn ~120 ms in the past so their motion is
 // smooth between snapshots.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=7';
-import { World, Dragon } from './sim.js?v=7';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=8';
+import { World, Dragon } from './sim.js?v=8';
 
 const INTERP = 0.12;
 const _qa = new Quaternion(), _qb = new Quaternion();
@@ -32,6 +32,7 @@ export class NetGame {
         this.humans = 0; this.rtt = 0;
         this.sendAcc = 0; this.pingAcc = 0;
         this.gone = new Map();          // recently removed dragons (to name them in events)
+        this.parked = false;            // wings folded (Esc): out of the sky, length kept
         this.ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId));
         this.ws.onopen = () => this.send({ t: 'hello', name });
         this.ws.onmessage = (e) => { try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); } };
@@ -76,6 +77,7 @@ export class NetGame {
         const w = this.world;
         if (!w) return;
         let d = w.byId.get(info.id);
+        if (!d && info.id === this.you && this.player) d = w.addDragon(this.player);   // back from folded wings
         if (!d) {
             d = new Dragon(String(info.name || ''), !!info.bot);
             d.id = info.id;
@@ -96,8 +98,10 @@ export class NetGame {
         d.len = s[9];
         d.rebuildBeads();
         if (d.id === this.you && this.player && d.alive) {
-            d.bornAt = w.time; d.peakMass = d.mass; d.kills = 0; d.bestRank = 99;
-            this.hooks.onRespawn(d);
+            const resumed = this.parked;
+            this.parked = false;
+            if (!resumed) { d.bornAt = w.time; d.peakMass = d.mass; d.kills = 0; d.bestRank = 99; }
+            this.hooks.onRespawn(d, resumed);
         }
     }
 
@@ -117,7 +121,7 @@ export class NetGame {
         const f = s[10];
         d.alive = !!(f & 1); d.boosting = !!(f & 2); d.braking = !!(f & 4);
         d.protect = f & 8 ? 1 : 0; d.shield = f & 16 ? Math.max(d.shield, 1) : 0;
-        if (d !== this.player) d.breath = f & 32 ? 0.5 : 0;
+        if (d !== this.player) { d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; }
     }
 
     snapshot(m) {
@@ -168,6 +172,10 @@ export class NetGame {
                 case 'shield': this.events.push({ type: 'shieldPop', d: p }); break;
                 case 'miss': this.events.push({ type: 'fireMiss', d: p }); break;
                 case 'empty': this.events.push({ type: 'thrustEmpty', d: p }); break;
+                case 'parking': this.events.push({ type: 'parking', in: +e.in || 3 }); break;
+                case 'unparked': this.events.push({ type: 'unparked' }); break;
+                case 'parked': this.parked = true; if (p) p.alive = false; this.events.push({ type: 'parked' }); break;
+                case 'land': { const d = this.dragon(e.id); if (d && d !== p) this.events.push({ type: 'land', d }); break; }
             }
         }
     }
@@ -183,7 +191,18 @@ export class NetGame {
 
     clearOrb(i) {
         const w = this.world;
-        if (i >= 0 && i < w.oalive.length && w.oalive[i]) { w.oalive[i] = 0; w.orbCount--; }
+        if (!(i >= 0 && i < w.oalive.length && w.oalive[i])) return;
+        // The server reels orbs in before eating them; we only hear that one
+        // is gone. If a lodestone dragon is near, replay the pull as a beam.
+        let best = null, bestD = Infinity;
+        for (const d of w.dragons) {
+            if (!d.alive || !(d.magnet > 0)) continue;
+            const dx = w.ox[i] - d.pos.x, dy = w.oy[i] - d.pos.y, dz = w.oz[i] - d.pos.z;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist < T.magnetRadius + d.r + d.speed * 0.7 + 3 && dist < bestD) { best = d; bestD = dist; }
+        }
+        if (best && w.phantoms.length < 120) w.phantoms.push({ x: w.ox[i], y: w.oy[i], z: w.oz[i], col: w.ocol[i], val: w.oval[i], d: best, t: 0 });
+        w.oalive[i] = 0; w.orbCount--;
     }
 
     setPowerups(list) {
@@ -223,4 +242,6 @@ export class NetGame {
     }
 
     respawn() { this.send({ t: 'spawn' }); }
+    park() { this.send({ t: 'park' }); }
+    unpark() { this.send({ t: 'unpark' }); }
 }

@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=7';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=8';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -177,7 +177,7 @@ export class Hud {
         }
         // Power-ups by colour; red dragonfire crystals stay pinned to the rim.
         for (const pu of world.powerups) {
-            draw(pu.pos, { fire: '#FF3A20', shield: '#FFB060', magnet: '#7FE8FF' }[pu.type], false, false, pu.type === 'fire');
+            draw(pu.pos, { fire: '#FF3A20', shield: '#FFB060', magnet: '#4D9BFF' }[pu.type], false, false, pu.type === 'fire');
         }
         // The rich middle: a ring that sits on the rim when it's out of range.
         draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
@@ -221,7 +221,7 @@ export class Hud {
             }
             const pu = [];
             if (p.shield > 0) pu.push('🛡 shield ' + Math.ceil(p.shield) + 's');
-            if (p.magnet > 0) pu.push('🧲 magnet ' + Math.ceil(p.magnet) + 's');
+            if (p.magnet > 0) pu.push('🧲 lodestone ' + Math.ceil(p.magnet) + 's');
             this.el.pu.textContent = pu.join('   ');
         }
         this.el.fps.textContent = fps ? fps + ' fps' : '';

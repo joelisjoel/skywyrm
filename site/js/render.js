@@ -2,13 +2,15 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=7';
+import { T, TIERS } from './tunables.js?v=8';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
 const MAX_HEADS = 80;
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
-const _c = new THREE.Color(), _white = new THREE.Color(0xffffff);
+const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THREE.Color(0xB8DCFF);
+const LODE = 0x3D8BFF;           // lodestone blue
+const MAX_BEAMS = 240;
 const Zaxis = new THREE.Vector3(0, 0, 1);
 
 export class Renderer {
@@ -69,10 +71,10 @@ export class Renderer {
         this.puGeo = new THREE.OctahedronGeometry(1.3, 0);
         this.puMats = {
             shield: new THREE.MeshBasicMaterial({ color: 0xFF9A3C }),
-            magnet: new THREE.MeshBasicMaterial({ color: 0x3DE0FF }),
+            magnet: new THREE.MeshBasicMaterial({ color: 0x2F6BFF }),
             fire: new THREE.MeshBasicMaterial({ color: 0xFF2A1A }),
         };
-        this.puColors = { shield: 0xFFB060, magnet: 0x7FE8FF, fire: 0xFF3A20 };
+        this.puColors = { shield: 0xFFB060, magnet: 0x4D9BFF, fire: 0xFF3A20 };
         this.puShellMat = new THREE.MeshBasicMaterial({ color: 0xFFD0A0, wireframe: true, transparent: true, opacity: 0.6 });
         this.puMeshes = [];
         // Like Bit in Tron: snap between shapes, flashing on every change.
@@ -107,7 +109,22 @@ export class Renderer {
             opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
         this.fireCones = [];
 
-        // Shield bubble / magnet ring for the player.
+        // Lodestone: a blue glow on the head, two field rings spinning round
+        // it, and tractor beams to every orb it is reeling in.
+        this.lodeTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(190,225,255,0.95)'], [0.5, 'rgba(70,140,255,0.4)'], [1, 'rgba(30,80,255,0)']]);
+        this.lodeRingGeo = new THREE.TorusGeometry(1, 0.035, 6, 48);
+        this.lodeRigs = [];
+        this.lodeLight = new THREE.PointLight(LODE, 0, 45, 1.5);   // stays in the scene (toggling lights recompiles shaders)
+        this.scene.add(this.lodeLight);
+        this.beamGeo = new THREE.BufferGeometry();
+        this.beamGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAX_BEAMS * 18), 3));
+        this.beamGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(MAX_BEAMS * 18), 3));
+        this.beams = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true,
+            blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+        this.beams.frustumCulled = false;
+        this.scene.add(this.beams);
+
+        // Shield bubble for the player.
         this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14),
             new THREE.MeshBasicMaterial({ color: 0xFF9A3C, transparent: true, opacity: 0.1, depthWrite: false }));
         this.scene.add(this.bubble);
@@ -469,6 +486,7 @@ export class Renderer {
         // Orbs.
         const om = this.orbs.instanceMatrix.array, oc = this.orbs.instanceColor.array;
         let no = 0;
+        this.nBeams = 0;
         for (let i = 0; i < world.oHigh && no < MAX_ORBS; i++) {
             if (!world.oalive[i]) continue;
             const v = world.oval[i];
@@ -481,8 +499,35 @@ export class Renderer {
             om[k + 8] = 0; om[k + 9] = 0; om[k + 10] = s; om[k + 11] = 0;
             om[k + 12] = world.ox[i]; om[k + 13] = world.oy[i]; om[k + 14] = world.oz[i]; om[k + 15] = 1;
             _c.set(world.ocol[i]);
+            const puller = world.opull[i] ? world.byId.get(world.opull[i]) : null;
+            if (puller && puller.magnet > 0) {
+                _c.lerp(_ice, 0.7);
+                om[k] = om[k + 5] = om[k + 10] = s * 1.15;
+                this.beamTo(puller, world.ox[i], world.oy[i], world.oz[i], time);
+            }
             const c = no * 3;
             oc[c] = _c.r; oc[c + 1] = _c.g; oc[c + 2] = _c.b;
+            no++;
+        }
+        // Online, the server reels orbs in; net.js hands us the ones a
+        // lodestone took, and we replay the pull from where we last saw them.
+        const phs = world.phantoms;
+        for (let j = phs.length - 1; j >= 0; j--) {
+            const q = phs[j], d = q.d;
+            q.t += dt;
+            const k = Math.min(1, q.t / 0.4), e = k * k;
+            if (k >= 1 || !d.alive) { phs[j] = phs[phs.length - 1]; phs.pop(); continue; }
+            const mx = d.pos.x + d.fwd.x * d.r, my = d.pos.y + d.fwd.y * d.r, mz = d.pos.z + d.fwd.z * d.r;
+            const x = q.x + (mx - q.x) * e, y = q.y + (my - q.y) * e, z = q.z + (mz - q.z) * e;
+            this.beamTo(d, x, y, z, time);
+            if (no >= MAX_ORBS) continue;
+            const s = (0.28 + 0.13 * Math.sqrt(q.val)) * 1.15 * (1 - 0.5 * e), kk = no * 16;
+            om[kk] = s; om[kk + 1] = 0; om[kk + 2] = 0; om[kk + 3] = 0;
+            om[kk + 4] = 0; om[kk + 5] = s; om[kk + 6] = 0; om[kk + 7] = 0;
+            om[kk + 8] = 0; om[kk + 9] = 0; om[kk + 10] = s; om[kk + 11] = 0;
+            om[kk + 12] = x; om[kk + 13] = y; om[kk + 14] = z; om[kk + 15] = 1;
+            _c.set(q.col).lerp(_ice, 0.7);
+            oc[no * 3] = _c.r; oc[no * 3 + 1] = _c.g; oc[no * 3 + 2] = _c.b;
             no++;
         }
         this.orbs.count = no;
@@ -596,6 +641,38 @@ export class Renderer {
         }
         for (let i = fc; i < this.fireCones.length; i++) this.fireCones[i].visible = false;
 
+        // Lodestone: blue head glow + field rings on every dragon holding one.
+        let lr = 0, lightOn = false;
+        for (const d of world.dragons) {
+            if (!d.alive || !(d.magnet > 0)) continue;
+            if (!this.lodeRigs[lr]) this.lodeRigs[lr] = this.makeLodeRig();
+            const rig = this.lodeRigs[lr++], mine = d === player;
+            rig.g.visible = true;
+            rig.g.position.copy(d.pos);
+            const pulse = 1 + 0.18 * Math.sin(time * 9) + 0.08 * Math.sin(time * 23);
+            const fade = d.magnet < 1.5 ? 0.5 + 0.5 * Math.sin(time * 18) : 1;   // flickers as it runs out
+            rig.glow.scale.setScalar(d.r * (mine ? 5 : 7) * pulse);
+            rig.glow.material.opacity = (mine ? 0.8 : 1) * fade;
+            rig.core.scale.setScalar(d.r * (mine ? 1.6 : 2.6) * pulse);
+            rig.core.material.opacity = (mine ? 0.7 : 1) * fade;
+            const rr = d.r * 2.6;
+            rig.ring1.scale.setScalar(rr); rig.ring2.scale.setScalar(rr * 1.15);
+            rig.ring1.quaternion.copy(d.quat); rig.ring1.rotateX(Math.PI / 2 + Math.sin(time * 2) * 0.4); rig.ring1.rotateZ(time * 3);
+            rig.ring2.quaternion.copy(d.quat); rig.ring2.rotateY(time * 2.3); rig.ring2.rotateX(time * 1.7);
+            rig.ring1.material.opacity = rig.ring2.material.opacity = 0.75 * fade;
+            if (mine) { lightOn = true; this.lodeLight.position.copy(d.pos); this.lodeLight.intensity = 900 * pulse * fade; }
+            // Blue sparks drifting off the head.
+            if (Math.random() < (mine ? 0.5 : 1)) {
+                _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(d.r * 1.4);
+                this.emit(d.pos.x + _s.x, d.pos.y + _s.y, d.pos.z + _s.z, _s.x * 2 + d.vdir.x * d.speed, _s.y * 2 + d.vdir.y * d.speed, _s.z * 2 + d.vdir.z * d.speed, 0.4, 1, 1);
+            }
+        }
+        for (let i = lr; i < this.lodeRigs.length; i++) this.lodeRigs[i].g.visible = false;
+        if (!lightOn) this.lodeLight.intensity = 0;
+        this.beamGeo.setDrawRange(0, this.nBeams * 6);
+        this.beamGeo.attributes.position.needsUpdate = true;
+        this.beamGeo.attributes.color.needsUpdate = true;
+
         // Player shield bubble.
         this.bubble.visible = !!(player && player.alive && (player.shield > 0 || player.protect > 0));
         if (this.bubble.visible) {
@@ -612,11 +689,12 @@ export class Renderer {
             q.t += dt;
             if (q.t > q.life) { this.particles[i] = this.particles[this.particles.length - 1]; this.particles.pop(); continue; }
             q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
-            q.vx *= 0.97; q.vy = q.vy * 0.97 + 2.5 * dt; q.vz *= 0.97;     // drag + a little rise
+            q.vx *= 0.97; q.vy = q.vy * 0.97 + (q.hue ? 0 : 2.5 * dt); q.vz *= 0.97;     // drag + a little rise (flames)
             if (np >= this.PN) continue;
             const k = q.t / q.life, fade = (1 - k) * q.heat;
             pp[np * 3] = q.x; pp[np * 3 + 1] = q.y; pp[np * 3 + 2] = q.z;
-            pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k);
+            if (q.hue) { pc[np * 3] = fade * (0.55 - 0.35 * k); pc[np * 3 + 1] = fade * (0.8 - 0.3 * k); pc[np * 3 + 2] = fade; }
+            else { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k); }
             np++;
         }
         this.partGeo.setDrawRange(0, np);
@@ -661,9 +739,55 @@ export class Renderer {
         }
     }
 
-    emit(x, y, z, vx, vy, vz, life, heat) {
+    emit(x, y, z, vx, vy, vz, life, heat, hue = 0) {
         if (this.particles.length >= this.PN * 1.5) return;
-        this.particles.push({ x, y, z, vx, vy, vz, t: 0, life, heat });
+        this.particles.push({ x, y, z, vx, vy, vz, t: 0, life, heat, hue });
+    }
+
+    makeLodeRig() {
+        const g = new THREE.Group();
+        const sprite = (tex, op) => new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffffff, blending: THREE.AdditiveBlending,
+            depthWrite: false, transparent: true, fog: false, opacity: op }));
+        const glow = sprite(this.lodeTex, 0.9), core = sprite(this.lodeTex, 1);
+        glow.material.color.setHex(LODE);
+        core.material.color.setHex(0x8FC0FF);
+        const ringMat = () => new THREE.MeshBasicMaterial({ color: 0x4F95FF, transparent: true, opacity: 0.75,
+            blending: THREE.AdditiveBlending, depthWrite: false });
+        const ring1 = new THREE.Mesh(this.lodeRingGeo, ringMat()), ring2 = new THREE.Mesh(this.lodeRingGeo, ringMat());
+        g.add(glow, core, ring1, ring2);
+        this.scene.add(g);
+        return { g, glow, core, ring1, ring2 };
+    }
+
+    // One tractor beam: mouth → orb, bright blue at the dragon, icy at the
+    // orb, with sparks streaming back along it.
+    beamTo(d, x, y, z, time) {
+        if (this.nBeams >= MAX_BEAMS) return;
+        const mx = d.pos.x + d.fwd.x * d.r, my = d.pos.y + d.fwd.y * d.r, mz = d.pos.z + d.fwd.z * d.r;
+        // A ribbon facing the camera: narrow at the mouth, wide at the orb.
+        const cp = this.camera.position;
+        const ax = x - mx, ay = y - my, az = z - mz;
+        const vx = cp.x - mx, vy = cp.y - my, vz = cp.z - mz;
+        let sx = ay * vz - az * vy, sy = az * vx - ax * vz, sz = ax * vy - ay * vx;
+        const sl = Math.hypot(sx, sy, sz) || 1;
+        const wa = 0.12 + d.r * 0.08, wb = 0.55;
+        sx /= sl; sy /= sl; sz /= sl;
+        const pa = this.beamGeo.attributes.position.array, ca = this.beamGeo.attributes.color.array, k = this.nBeams++ * 18;
+        const A1 = [mx - sx * wa, my - sy * wa, mz - sz * wa], A2 = [mx + sx * wa, my + sy * wa, mz + sz * wa];
+        const B1 = [x - sx * wb, y - sy * wb, z - sz * wb], B2 = [x + sx * wb, y + sy * wb, z + sz * wb];
+        const f = 0.7 + 0.3 * Math.sin(time * 40 + k);
+        const cA = [0.25 * f, 0.5 * f, 1.0 * f], cB = [0.1 * f, 0.22 * f, 0.55 * f];
+        [A1, B1, B2, A1, B2, A2].forEach((v, i) => {
+            pa[k + i * 3] = v[0]; pa[k + i * 3 + 1] = v[1]; pa[k + i * 3 + 2] = v[2];
+            const c = v === A1 || v === A2 ? cA : cB;
+            ca[k + i * 3] = c[0]; ca[k + i * 3 + 1] = c[1]; ca[k + i * 3 + 2] = c[2];
+        });
+        if (Math.random() < 0.6) {
+            const u = Math.random();
+            const px = x + (mx - x) * u, py = y + (my - y) * u, pz = z + (mz - z) * u;
+            const dx = mx - x, dy = my - y, dz = mz - z, L = Math.hypot(dx, dy, dz) || 1, v = 25;
+            this.emit(px, py, pz, dx / L * v + d.vdir.x * d.speed, dy / L * v + d.vdir.y * d.speed, dz / L * v + d.vdir.z * d.speed, 0.25, 1.2, 1);
+        }
     }
 
     // A severed tail bursts into flame along its length.

@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=9">
     <script type="importmap">
         {
             "imports": {
@@ -28,7 +28,7 @@
         <div id="board"></div>
         <div id="toasts"></div>
         <div id="hud-warn">⚠ WALL</div>
-        <div id="hud-assist">beginner mode steering</div>
+        <div id="hud-assist"><span class="badge">BEGINNER</span> steering you clear</div>
         <div id="hud-stats">
             <div id="hud-len">0 m</div>
             <div id="hud-kills">⚔ 0</div>
@@ -63,7 +63,7 @@
                     <label><input type="radio" name="create-arena" value="sky" checked> <b>Skyhold</b></label>
                     <label><input type="radio" name="create-arena" value="orb"> <b>The Orb</b></label>
                 </div>
-                <label class="opt"><input type="checkbox" id="create-beginner" checked> <span>Beginner mode<small>Steer everyone away from walls</small></span></label>
+                <label class="opt"><input type="checkbox" id="create-beginner" checked> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
                 <div id="create-error" class="err"></div>
                 <div class="menu-row">
                     <button type="submit" class="cta small">Create &amp; join</button>
@@ -78,6 +78,7 @@
                 <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · open sky · storm wall</span></label>
                 <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
             </div>
+            <label class="opt"><input type="checkbox" id="solo-beginner"> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
             <button id="play" class="cta">PLAY SOLO</button>
         </section>
         <div class="menu-row">
@@ -88,7 +89,8 @@
     </div>
 
     <div id="pause" class="panel">
-        <h2>Paused</h2>
+        <h2 id="pause-title">Paused</h2>
+        <p id="pause-note" class="note"></p>
         <button id="resume" class="cta">Resume</button>
         <div class="menu-row">
             <button class="open-settings">⚙ Settings</button>
@@ -104,7 +106,7 @@
         </div>
         <div class="tab-body" data-body="server">
             <p class="note">Room rules. In multiplayer the room sets these for everyone in it.</p>
-            <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><b>Beginner mode</b><small>Dragons are steered away from walls and the cloud sea</small></span></label>
+            <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
             <label class="opt-range"><span>Starting dragons</span><input type="range" id="srv-start" min="0" max="30" step="1"><b id="srv-start-v"></b></label>
             <label class="opt-range"><span>Max dragons</span><input type="range" id="srv-max" min="1" max="40" step="1"><b id="srv-max-v"></b></label>
             <label class="opt-range"><span>New dragon every</span><input type="range" id="srv-every" min="5" max="120" step="5"><b id="srv-every-v"></b></label>
@@ -117,7 +119,8 @@
             <label class="opt"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
             <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
             <label class="opt"><input type="checkbox" id="opt-motion"> <span>Reduce motion<small>Less camera roll, no FOV kick</small></span></label>
-            <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute sound <small>(M)</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-music"> <span>Music <small>(N) The soundtrack builds as the action heats up</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute all sound <small>(M)</small></span></label>
         </div>
         <button class="cta close-overlay">Done</button>
     </div>
@@ -134,8 +137,9 @@
             <div><b>Body temp</b></div><div>the sun at the centre and crowds warm you up — hotter = faster, with a bigger thrust tank</div>
             <div><b>Thrust</b></div><div>boost runs on a ~10 s tank that refills when you're not boosting</div>
             <div><b>E / F</b></div><div>breathe dragonfire — grab a red crystal first; cuts the first tail in the cone</div>
-            <div><b>Esc / P</b></div><div>pause</div>
-            <div><b>M</b></div><div>mute</div>
+            <div><b>Esc / P</b></div><div>pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
+            <div><b>N</b></div><div>music on / off</div>
+            <div><b>M</b></div><div>mute all sound</div>
             <div><b>`</b></div><div>tuning panel</div>
         </div>
         <button class="cta close-overlay">Done</button>
@@ -156,7 +160,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=8"></script>
+    <script type="module" src="js/main.js?v=9"></script>
 </body>
 
 </html>

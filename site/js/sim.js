@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=7';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=8';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -199,6 +199,7 @@ export class World {
         this.oalive = new Uint8Array(MAX_ORBS);
         this.opull = new Int32Array(MAX_ORBS);    // dragon id pulling it, 0 = free
         this.opullT = new Float32Array(MAX_ORBS);
+        this.phantoms = [];                       // online: orbs a lodestone reeled in (drawn as beams)
         this.oFree = []; for (let i = MAX_ORBS - 1; i >= 0; i--) this.oFree.push(i);
         this.orbCount = 0; this.ambientCount = 0; this.oHigh = 0;
         this.powerups = [];
@@ -764,10 +765,15 @@ export class World {
             const d = this.byId.get(this.opull[i]);
             if (!d || !d.alive) { this.opull[i] = 0; continue; }
             this.opullT[i] += dt;
+            // Reel the orb toward the mouth, accelerating. A lodestone's
+            // tractor beam starts gentler so the pull reads from 18 m away.
             const mx = d.pos.x + d.fwd.x * d.r, my = d.pos.y + d.fwd.y * d.r, mz = d.pos.z + d.fwd.z * d.r;
-            const k = Math.min(1, dt * 14);
-            this.ox[i] += (mx - this.ox[i]) * k; this.oy[i] += (my - this.oy[i]) * k; this.oz[i] += (mz - this.oz[i]) * k;
-            if (this.opullT[i] > 0.15) {
+            const ex = mx - this.ox[i], ey = my - this.oy[i], ez = mz - this.oz[i];
+            const dist = Math.sqrt(ex * ex + ey * ey + ez * ez);
+            const t = this.opullT[i], beam = d.magnet > 0;
+            const step = ((beam ? 16 : 30) + (beam ? 90 : 220) * t + d.speed) * dt;
+            if (dist > step) { const k = step / dist; this.ox[i] += ex * k; this.oy[i] += ey * k; this.oz[i] += ez * k; }
+            if (dist <= step + 0.3 || t > 0.9) {
                 let v = this.oval[i];
                 if (d.isBot && d.mass > T.botGrowthCapMass) v *= 0.5;
                 d.mass += v;

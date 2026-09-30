@@ -97,7 +97,7 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .opt input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--sun); }
 .opt small { display: block; color: var(--dim); font-size: 12px; }
 .opt.big { font-size: 16px; }
-#hud-assist { position: absolute; top: calc(42% + 30px); left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 700; color: #3DE0FF; opacity: 0; transition: opacity 0.2s; }
+#hud-assist { position: absolute; top: calc(42% + 30px); left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 700; color: #8CF09A; opacity: 0; transition: opacity 0.2s; }
 .home { display: inline-block; margin-top: 10px; color: var(--dim); font-size: 12px; text-decoration: none; }
 
 #card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
@@ -156,10 +156,13 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .room .rc { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .room button { margin: 0; padding: 6px 12px; font-weight: 800; background: var(--sun); color: #1a1400; border: none; }
 .room button:disabled { background: #333; color: #888; }
-.badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 6px; margin-left: 6px; background: rgba(61,224,255,0.15); color: #7FE8FF; vertical-align: 1px; }
+.badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 6px; background: rgba(124,227,139,0.16); color: #8CF09A; vertical-align: 1px; }
+.room .badge { margin-left: 6px; }
+.opt .badge { font-size: 11px; }
 button.ghost { width: 100%; margin: 8px 0 0; background: transparent; border: 1px dashed var(--slate); color: var(--dim); }
 #create-form { margin-top: 8px; padding: 10px; border: 1px solid var(--slate); border-radius: 10px; }
 #create-form input[type=text], #create-name { width: 100%; font: inherit; font-weight: 700; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--slate); background: #0f1526; color: var(--text); }
 button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
 .err { color: #FF7A6A; font-size: 12px; min-height: 0; margin-top: 4px; text-align: left; }
 .err:empty { display: none; }
+#pause .note { text-align: center; font-size: 13px; max-width: 300px; margin: 0 auto 10px; }

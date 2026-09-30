@@ -25,6 +25,8 @@ try {
     // Lobby: three permanent rooms.
     let r = await (await api('/api/rooms')).json();
     check(r.rooms.length === 3 && r.rooms.every((x) => x.permanent), 'three permanent rooms listed');
+    check(r.rooms[0].beginner && r.rooms[1].beginner && !r.rooms[2].beginner && !r.rooms.some((x) => /beginner/i.test(x.name)),
+        'beginner servers first; "beginner" is a badge, not part of a name');
 
     // Create: name checks.
     const bad = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Skyhold', arena: 'sky' }) });
@@ -42,17 +44,21 @@ try {
     await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fourth One' }) });
     const limited = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fifth One' }) });
     check(limited.status === 429, 'per-IP creation limit (3/hour) enforced');
+    r = await (await api('/api/rooms')).json();
+    check(r.rooms.find((x) => x.name === 'Third One')?.beginner === true, 'beginner is on unless the creator turns it off');
 
     // Two players join the created room.
     const join = (name) => new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room.id}`, { headers: { origin: ORIGIN } });
-        const c = { ws, msgs: [], welcome: null, snaps: 0, last: null, events: [] };
+        const c = { ws, msgs: [], welcome: null, snaps: 0, last: null, events: [], dn: [], dx: [] };
         ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name }));
         ws.onmessage = (e) => {
             const m = JSON.parse(e.data);
             if (m.t === 'welcome') { c.welcome = m; resolve(c); }
             if (m.t === 's') { c.snaps++; c.last = m; }
             if (m.t === 'e') c.events.push(...m.ev);
+            if (m.t === 'dn') c.dn.push(m.d);
+            if (m.t === 'dx') c.dx.push(m.id);
             c.msgs.push(m.t);
         };
         ws.onerror = reject;
@@ -93,6 +99,25 @@ try {
         ws.onopen = () => res('open'); ws.onerror = () => res('refused'); ws.onclose = () => res('refused');
     });
     check(foreign === 'refused', 'socket from a foreign origin refused');
+
+    // Fold wings (Esc online): a countdown, then the dragon leaves the sky
+    // with its length kept, and unpark flies it back in.
+    const you = a.welcome.you;
+    const massBefore = a.last.d.find((s) => s[0] === you)[8];
+    a.ws.send(JSON.stringify({ t: 'park' }));
+    await sleep(300);
+    check(a.events.some((e) => e.k === 'parking') && a.last.d.some((s) => s[0] === you), 'park starts a 3 s countdown (still in the sky)');
+    for (let i = 0; i < 40 && !a.events.some((e) => e.k === 'parked'); i++) await sleep(100);
+    await sleep(200);
+    check(b.dx.includes(you) && b.events.some((e) => e.k === 'land' && e.id === you) && !b.last.d.some((s) => s[0] === you),
+        'after the countdown the dragon leaves the sky; others see it land');
+    a.ws.send(JSON.stringify({ t: 'spawn' }));
+    await sleep(300);
+    check(!a.dn.some((d) => d.id === you), 'a parked dragon can\'t respawn fresh (no length reset)');
+    a.ws.send(JSON.stringify({ t: 'unpark' }));
+    let back = null;
+    for (let i = 0; i < 40 && !back; i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
+    check(back && Math.abs(back.s[8] - massBefore) < 2 && b.dn.some((d) => d.id === you), `unpark flies back in with its length (${massBefore} → ${back?.s[8]})`);
 
     // Lifecycle: when both leave, the room gets a 12 h expiry.
     a.ws.close(); b.ws.close();

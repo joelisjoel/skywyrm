@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=7';
-import { World, Dragon, hazardDist } from './sim.js?v=7';
-import { managePopulation, targetBots } from './bots.js?v=7';
-import { Renderer } from './render.js?v=7';
-import { ChaseCam } from './camera.js?v=7';
-import { Input } from './input.js?v=7';
-import { Hud } from './hud.js?v=7';
-import { Audio } from './audio.js?v=7';
-import { TunePanel } from './tune-panel.js?v=7';
-import { checkName } from './names.js?v=7';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=7';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=8';
+import { World, Dragon, hazardDist } from './sim.js?v=8';
+import { managePopulation, targetBots } from './bots.js?v=8';
+import { Renderer } from './render.js?v=8';
+import { ChaseCam } from './camera.js?v=8';
+import { Input } from './input.js?v=8';
+import { Hud } from './hud.js?v=8';
+import { Audio } from './audio.js?v=8';
+import { TunePanel } from './tune-panel.js?v=8';
+import { checkName } from './names.js?v=8';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=8';
 import { serverUrl } from './net-config.js?v=8';
 
 loadTune();
@@ -25,8 +25,12 @@ const hud = new Hud();
 const audio = new Audio();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, arena: 'sky', name: '', runs: 0 };
-try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* defaults */ }
+const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, arena: 'sky', name: '', runs: 0, v: 2 };
+try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    Object.assign(settings, saved);
+    if (!(saved.v >= 2)) { settings.beginner = true; settings.v = 2; }    // Beginner is the default: switch it back on once
+} catch { /* defaults */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
 
 const ADJ = ['Crimson', 'Azure', 'Gilded', 'Ashen', 'Verdant', 'Storm', 'Ember', 'Frost', 'Umbral', 'Solar'];
@@ -46,6 +50,8 @@ function takeName() {
 }
 
 let world, player = null, state = 'menu';
+let actionUntil = 0;
+const hype = (secs = 8) => { actionUntil = Math.max(actionUntil, performance.now() / 1000 + secs); };
 const view = { state: 'menu', player: null, top: null, board: [], wallWarn: 0 };
 let deathInfo = null;
 const run = { startMass: T.spawnMass };
@@ -116,13 +122,18 @@ function handleEvents() {
         const mine = e.d === player;
         switch (e.type) {
             case 'eat': if (mine) audio.eat(world.time); break;
-            case 'tier': if (mine) { hud.toast(TIERS[e.tier].name.toUpperCase() + '!', 'big'); audio.tier(); } break;
-            case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); break;
+            case 'tier': if (mine) { hud.toast(TIERS[e.tier].name.toUpperCase() + '!', 'big'); audio.tier(); hype(); } break;
+            case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); hype(); break;
             case 'powerup':
                 if (mine) {
-                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE', fire: 'DRAGONFIRE — press E' }[e.kind]); audio.powerup();
+                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: 'DRAGONFIRE — press E' }[e.kind]); audio.powerup(e.kind); hype();
                 }
                 break;
+            case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
+            case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
+            case 'unparked': parkEndsAt = 0; break;
+            case 'parked': parkEndsAt = 0; setPauseNote('Wings folded — you\'re out of the sky and safe. Your length is kept.'); break;
+            case 'land': hud.feed(`🪽 ${e.d.name} folded their wings`); break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
             case 'fireStart':
                 if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.fire();
@@ -141,7 +152,7 @@ function handleEvents() {
                 if (k && k === player) {
                     const big = e.d.mass >= player.mass * 2, king = view.top === e.d;
                     hud.toast(king ? 'KINGSLAYER!' : big ? `BIG KILL — ${e.d.name}` : `+ ${e.d.name}`, 'big');
-                    audio.kill();
+                    audio.kill(); hype(10);
                 }
                 hud.feed(k ? `${k.name} ⟶ ${e.d.name}` : `${e.d.name} hit ${e.cause}`);
                 if (e.d === player) onPlayerDeath(e);
@@ -197,12 +208,12 @@ function joinRoom(id) {
             setState('play');
             hud.toast(`Joined ${room.name}`, 'hint');
         },
-        onRespawn(p) {
-            p.bornWall = performance.now() / 1000;
-            view.player = p;
+        onRespawn(p, resumed) {
+            if (!resumed) p.bornWall = performance.now() / 1000;
+            player = p; view.player = p;
             cam.snap(p);
             input.zero();
-            if (state === 'dead') setState('play');
+            if (state === 'dead' || state === 'pause') { setState('play'); input.requestLock(); }
         },
         onClose(reason) {
             const wasIn = !!online;
@@ -227,6 +238,7 @@ function setLobbyStatus(text) { $('lobby-status').textContent = text || ''; }
 function renderRooms(rooms) {
     const list = $('room-list');
     list.textContent = '';
+    rooms = rooms.slice().sort((a, b) => (b.beginner - a.beginner) || (b.permanent - a.permanent) || (b.humans - a.humans) || a.name.localeCompare(b.name));
     for (const r of rooms) {
         const row = document.createElement('div');
         row.className = 'room';
@@ -266,7 +278,7 @@ $('create-open').onclick = () => { $('create-form').hidden = false; $('create-op
 $('create-cancel').onclick = () => { $('create-form').hidden = true; $('create-open').hidden = false; $('create-error').textContent = ''; };
 $('create-form').onsubmit = async (ev) => {
     ev.preventDefault();
-    const check = checkName($('create-name').value, 'room', ['Skyhold', 'Skyhold (Beginners)', 'The Orb']);
+    const check = checkName($('create-name').value, 'room', ['Skyhold', 'Skyhold Nest', 'Skyhold (Beginners)', 'The Orb']);
     if (!check.ok) { $('create-error').textContent = check.reason; return; }
     if (!takeName()) return;
     $('create-error').textContent = '';
@@ -285,13 +297,43 @@ $('name').value = settings.name || randomName();
 $('play').onclick = () => startPlay();
 $('again').onclick = () => playAgain();
 $('menu-btn').onclick = () => { if (online) leaveOnline(); setState('menu'); refreshLobby(); };
-$('resume').onclick = () => { setState('play'); input.zero(); input.requestLock(); };
+$('resume').onclick = () => resume();
 $('quit').onclick = () => {
     if (online) leaveOnline();
     else if (player && player.alive) world.kill(player, null, 'the menu');
     setState('menu');
     refreshLobby();
 };
+
+// Pause. Solo freezes the world. A room can't stop, so online Esc folds
+// your wings: after a 3 s countdown (still flying) your dragon leaves the
+// sky with its length kept, and Resume brings it back at a safe spot.
+let pausedAt = 0, parkEndsAt = 0;
+function setPauseNote(t) { $('pause-note').textContent = t; }
+function pause() {
+    if (state !== 'play') return;
+    setState('pause');
+    pausedAt = performance.now();
+    if (online) {
+        online.park();
+        parkEndsAt = performance.now() / 1000 + 3;
+        $('pause-title').textContent = 'Folding wings';
+    } else {
+        $('pause-title').textContent = 'Paused';
+        setPauseNote('');
+    }
+}
+function resume() {
+    if (state !== 'pause') return;
+    if (online) {
+        online.unpark();
+        parkEndsAt = 0;
+        if (!(player && player.alive)) { setPauseNote('Flying back in…'); return; }   // onRespawn resumes play
+    }
+    setState('play');
+    input.zero();
+    input.requestLock();
+}
 
 function playAgain() {
     if (online) { online.respawn(); return; }       // the server respawns you
@@ -305,8 +347,11 @@ const bindCheck = (id, key, after) => {
     const el = $(id); el.checked = !!settings[key];
     el.onchange = () => { settings[key] = el.checked; saveSettings(); after && after(); };
 };
-bindCheck('opt-beginner', 'beginner', () => { if (player) player.wallAssist = settings.beginner; });
+const syncBeginner = () => { $('opt-beginner').checked = $('solo-beginner').checked = settings.beginner; if (player && !online) player.wallAssist = settings.beginner; };
+bindCheck('opt-beginner', 'beginner', syncBeginner);
+bindCheck('solo-beginner', 'beginner', syncBeginner);
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
+bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
 bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.invertY));
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
 bindCheck('opt-assist', 'assist', () => world && (world.assist = settings.assist));
@@ -315,6 +360,12 @@ input.settings.invertY = settings.invertY;
 input.settings.mouseLock = settings.mouseLock;
 cam.reduceMotion = settings.reduceMotion;
 audio.muted = settings.muted;
+audio.musicOn = settings.music;
+// Browsers only allow sound after a gesture: the first click or key starts
+// the menu music.
+const firstGesture = () => { audio.unlock(); removeEventListener('pointerdown', firstGesture); removeEventListener('keydown', firstGesture); };
+addEventListener('pointerdown', firstGesture);
+addEventListener('keydown', firstGesture);
 
 // Settings / Controls overlays, reachable from the main menu and pause.
 let overlay = '';
@@ -352,21 +403,24 @@ syncServer();
 input.onKey = (code) => {
     if (code === 'Backquote') tune.toggle();
     else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
+    else if (code === 'KeyN') { settings.music = !settings.music; audio.setMusic(settings.music); $('opt-music').checked = settings.music; saveSettings(); hud.toast(settings.music ? '♪ Music on' : 'Music off', 'hint'); }
     else if (overlay && (code === 'Escape' || code === 'Enter')) closeOverlay();
     else if (overlay) return;
     else if ((code === 'KeyE' || code === 'KeyF') && state === 'play' && player && player.alive && !player.fire && !(player.breath > 0)) {
         hud.toast('No dragonfire — grab a red crystal first', 'hint');
     }
     else if (code === 'Escape' || code === 'KeyP') {
-        if (state === 'play') setState('pause');
-        else if (state === 'pause') { setState('play'); input.zero(); input.requestLock(); }
+        if (state === 'play') pause();
+        // Leaving pointer lock with Esc can deliver both the lock change and
+        // the key; ignore a second Esc that arrives right after pausing.
+        else if (state === 'pause' && performance.now() - pausedAt > 400) resume();
     } else if ((code === 'Space' || code === 'Enter') && state === 'dead' && performance.now() / 1000 - deathInfo.at > 0.9) playAgain();
     else if (code === 'Enter' && state === 'menu') startPlay();
 };
 // Clicking back into the game re-grabs the pointer in lock mode.
 canvas.addEventListener('click', () => { if (state === 'play') input.requestLock(); });
 document.addEventListener('pointerlockchange', () => {
-    if (!document.pointerLockElement && state === 'play' && settings.mouseLock) setState('pause');
+    if (!document.pointerLockElement && state === 'play' && settings.mouseLock) pause();
 });
 addEventListener('resize', () => { renderer.resize(); hud.resize(); });
 
@@ -390,6 +444,7 @@ function frame(nowMs) {
         const t0 = performance.now();
         if (player && player.alive && state === 'play') input.read(player.input);
         else if (player) { const i = player.input; i.sx = i.sy = i.roll = 0; i.boost = i.brake = i.fire = false; }
+        if (player && online.room) player.wallAssist = !!online.room.beginner || state !== 'play';   // autopilot while folding wings
         online.update(dt);
         const steps = Math.max(1, Math.ceil(dt / (1 / 60)));
         for (let i = 0; i < steps; i++) world.step(dt / steps);
@@ -428,7 +483,7 @@ function frame(nowMs) {
         if (player && player.alive) {
             const r = view.board.indexOf(player) + 1;
             if (r > 0 && r < player.bestRank) {
-                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) hud.toast('YOU ARE #1 — your head is ablaze for all to see', 'big');
+                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) { hud.toast('YOU ARE #1 — your head is ablaze for all to see', 'big'); audio.leader(); hype(12); }
                 player.bestRank = r;
             }
         }
@@ -455,6 +510,20 @@ function frame(nowMs) {
     }
     if (state !== 'dead') document.body.dataset.card = '';
 
+    // Soundtrack: calm in menus, driving while you fly, full band in the action.
+    let level = 0;
+    if (state === 'play' && player && player.alive) {
+        const rank = view.board.indexOf(player) + 1;
+        if (player.boosting || player.breath > 0 || player.fire || (rank > 0 && rank <= 3)) hype(4);
+        level = now < actionUntil ? 2 : 1;
+    }
+    audio.mood(level, state === 'pause');
+    audio.hum(state === 'play' && !!player && player.alive && player.magnet > 0);
+    if (state === 'pause' && online && parkEndsAt) {
+        const left = Math.max(0, Math.ceil(parkEndsAt - now));
+        setPauseNote(left > 0 ? `Leaving the sky in ${left}… you keep flying (and can still be hit) until then.` : 'Folding…');
+    }
+
     renderer.update(world, view, dt, now);
     hud.draw(world, view, renderer, input, now);
     hud.updateStats(world, view, now, fps);
@@ -463,4 +532,4 @@ function frame(nowMs) {
 requestAnimationFrame(frame);
 
 // Test hook for the headless smoke test.
-window.__wyrm = { get world() { return world; }, get state() { return state; }, startPlay, joinRoom, get player() { return player; }, get online() { return online; } };
+window.__wyrm = { get world() { return world; }, get state() { return state; }, startPlay, joinRoom, get player() { return player; }, get online() { return online; }, audio, renderer };

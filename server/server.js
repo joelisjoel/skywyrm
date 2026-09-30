@@ -116,7 +116,7 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 class Client {
-    constructor(ws) { this.ws = ws; this.dragon = null; this.room = null; }
+    constructor(ws) { this.ws = ws; this.dragon = null; this.room = null; this.parkAt = 0; this.parked = null; }
     send(msg) { this.sendRaw(JSON.stringify(msg)); }
     sendRaw(s) {
         // Drop frames for clients that can't keep up rather than buffering forever.
@@ -147,6 +147,8 @@ function onConnect(ws, room, ip) {
         }
         if (m.t === 'p') room.pose(client, m);
         else if (m.t === 'spawn') room.respawn(client);
+        else if (m.t === 'park') room.park(client);
+        else if (m.t === 'unpark') room.unpark(client);
         else if (m.t === 'ping' && typeof m.c === 'number') client.send({ t: 'pong', c: m.c });
     });
     ws.on('close', () => {

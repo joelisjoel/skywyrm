@@ -5,12 +5,13 @@
 import { randomBytes } from 'node:crypto';
 import { World, Dragon, T, managePopulation, checkName, safePlayerName } from '../docs/wyrm/js/shared.js';
 
+// Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [
-    { id: 'skyhold-beginners', name: 'Skyhold (Beginners)', arena: 'sky', beginner: true },
-    { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: false },
+    { id: 'skyhold-beginners', name: 'Skyhold Nest', arena: 'sky', beginner: true },
     { id: 'the-orb', name: 'The Orb', arena: 'orb', beginner: true },
+    { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: false },
 ];
-export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold Beginners', 'Orb']);
+export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold (Beginners)', 'Skyhold Beginners', 'Nest', 'Orb']);
 
 export const LIMITS = {
     humansPerRoom: 30,
@@ -22,6 +23,8 @@ export const LIMITS = {
 
 const TICK = 1 / 30;
 const SNAP_EVERY = 2;            // 15 snapshots/s
+const PARK_DELAY = 3;            // s of flight (still vulnerable) before folded wings take effect
+const PARK_MIN = 2;              // s parked before you can fly back in
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
@@ -32,7 +35,8 @@ function newId() {
 // Flags packed into one number per dragon in snapshots.
 function flags(d) {
     return (d.alive ? 1 : 0) | (d.boosting ? 2 : 0) | (d.braking ? 4 : 0) | (d.protect > 0 ? 8 : 0)
-        | (d.shield > 0 ? 16 : 0) | (d.breath > 0 ? 32 : 0) | (d.human ? 64 : 0) | (d.isBot ? 128 : 0);
+        | (d.shield > 0 ? 16 : 0) | (d.breath > 0 ? 32 : 0) | (d.human ? 64 : 0) | (d.isBot ? 128 : 0)
+        | (d.magnet > 0 ? 256 : 0);
 }
 
 function pathOf(d) {
@@ -155,11 +159,51 @@ export class Room {
 
     respawn(client) {
         const d = client.dragon;
-        if (!d || d.alive || !this.world) return;
+        if (!d || d.alive || !this.world || client.parked) return;
         if (this.world.time - d.diedAt < 1) return;       // no instant respawn spam
         this.world.spawn(d, T.spawnMass);
         d.net = null; d.moveBudget = 0;
         this.broadcast({ t: 'dn', d: dragonMeta(d) });
+    }
+
+    // Esc online folds your wings: a room can't pause, so after a short
+    // countdown (still flying, still vulnerable — no dodging a kill) your
+    // dragon leaves the sky with its length, and unpark brings it back at a
+    // safe spot with spawn protection.
+    park(client) {
+        const d = client.dragon;
+        if (!d || !d.alive || !this.world || client.parked || client.parkAt) return;
+        client.parkAt = this.world.time + PARK_DELAY;
+        client.send({ t: 'e', ev: [{ k: 'parking', in: PARK_DELAY }] });
+    }
+
+    unpark(client) {
+        if (client.parkAt) { client.parkAt = 0; client.send({ t: 'e', ev: [{ k: 'unparked' }] }); return; }
+        if (client.parked) client.parked.resume = true;          // honoured in tick once PARK_MIN has passed
+    }
+
+    // Countdowns finishing and parked dragons returning (called from tick).
+    parking(w, pub, landed) {
+        for (const c of this.clients) {
+            const d = c.dragon;
+            if (c.parkAt) {
+                if (!d.alive) c.parkAt = 0;                      // died during the countdown
+                else if (w.time >= c.parkAt) {
+                    c.parkAt = 0;
+                    c.parked = { mass: d.mass, kills: d.kills, since: w.time, resume: false };
+                    d.alive = false;
+                    w.removeDragon(d);
+                    pub.push({ k: 'land', id: d.id });
+                    landed.push(c);
+                }
+            } else if (c.parked && c.parked.resume && w.time - c.parked.since >= PARK_MIN) {
+                const p = c.parked;
+                c.parked = null;
+                w.spawn(d, p.mass);
+                d.kills = p.kills;
+                d.net = null; d.moveBudget = 0;
+            }
+        }
     }
 
     powerups() {
@@ -176,6 +220,8 @@ export class Room {
 
         // Events: public ones to everyone, personal ones to their owner.
         const pub = [];
+        const landed = [];
+        this.parking(w, pub, landed);
         const mine = new Map();
         const to = (d, e) => { if (!d || !d.human) return; if (!mine.has(d)) mine.set(d, []); mine.get(d).push(e); };
         for (const e of w.events) {
@@ -196,6 +242,7 @@ export class Room {
         }
         if (pub.length) this.broadcast({ t: 'e', ev: pub });
         for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev }); }
+        for (const c of landed) { c.send({ t: 'e', ev: [{ k: 'parked' }] }); this.broadcast({ t: 'dx', id: c.dragon.id }); }
 
         // Then new and removed dragons (bots spawning / dying) — after the
         // events, so a death can still name its victim.
@@ -250,7 +297,7 @@ export class Registry {
         const now = Date.now();
         return [...this.rooms.values()].filter((r) => !r.meta.expireAt || r.meta.expireAt > now || r.humans > 0)
             .map((r) => r.summary())
-            .sort((a, b) => (b.permanent - a.permanent) || (b.humans - a.humans) || a.name.localeCompare(b.name));
+            .sort((a, b) => (b.beginner - a.beginner) || (b.permanent - a.permanent) || (b.humans - a.humans) || a.name.localeCompare(b.name));
     }
 
     get(id) { return typeof id === 'string' ? this.rooms.get(id) : undefined; }
@@ -265,7 +312,7 @@ export class Registry {
         if (!name.ok) return { error: name.reason, status: 400 };
         const lower = name.value.toLowerCase();
         if ([...this.rooms.values()].some((r) => r.meta.name.toLowerCase() === lower)) return { error: 'A server with that name already exists', status: 409 };
-        const meta = { id: newId(), name: name.value, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: body.beginner === true,
+        const meta = { id: newId(), name: name.value, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: body.beginner !== false,   // on unless turned off
             permanent: false, createdAt: now, expireAt: now + LIMITS.emptyTtlMs };
         const room = new Room(meta, this);
         this.rooms.set(meta.id, room);
