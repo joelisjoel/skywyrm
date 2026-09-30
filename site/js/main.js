@@ -12,7 +12,7 @@ import { Audio } from './audio.js?v=7';
 import { TunePanel } from './tune-panel.js?v=7';
 import { checkName } from './names.js?v=7';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=7';
-import { serverUrl } from './net-config.js?v=7';
+import { serverUrl } from './net-config.js?v=8';
 
 loadTune();
 

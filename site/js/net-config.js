@@ -1,7 +1,7 @@
-// Where the multiplayer server lives. Empty until the Cloud Run service is
-// deployed (see 3d-snake/MULTIPLAYER.md, step 7); the lobby then shows
-// "play solo" only.
-export const SERVER_URL = '';
+// Where the multiplayer server lives: Cloud Run service "wyrm-server" in
+// project dendros-wyrm (see 3d-snake/MULTIPLAYER.md). Set to '' to hide the
+// server list and offer solo play only.
+export const SERVER_URL = 'https://wyrm-server-420365023329.us-west1.run.app';
 
 // Local testing: pages served from localhost may point at a local server
 // or a Cloud Run URL with ?server=… (never allowed on the public site).

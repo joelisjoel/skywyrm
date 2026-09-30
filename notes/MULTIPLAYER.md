@@ -164,14 +164,13 @@ Search each of these in the top search bar and click **Enable**:
 4. **Do not create or download a key.** Cloud Run runs as this account
    automatically.
 
-### Step 6: Deploy the server straight from GitHub (10 min)
+### Step 6: Deploy the server straight from GitHub (10 min) ✅ done
 
-Before this step, I merge the server code (`wyrm-server/` plus a
-`Dockerfile`) into `main`. It doesn't change the website. **Wait for my
-"server code merged" message.**
+Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 
-1. Search **Cloud Run** → **Create service**.
-2. Choose **Continuously deploy from a repository** → **Set up with Cloud
+1. Search **Cloud Run** → **Connect repository**. The form opens with
+   **Continuously deploy from a repository** selected.
+2. Select **Cloud Build** (not Developer Connect) → **Set up with Cloud
    Build**.
    - Provider: **GitHub** → authenticate → install the Google Cloud Build
      GitHub app **on `dendroslabs/dendroslabs.github.io` only**.
@@ -179,11 +178,11 @@ Before this step, I merge the server code (`wyrm-server/` plus a
    - Build type: **Dockerfile**, source location: `/Dockerfile`
    - **Save.**
 3. Service name: `wyrm-server` · Region: **us-west1**.
-4. **Authentication:** Allow unauthenticated invocations. It's a public
-   game server; the server code does its own checks.
+4. **Authentication:** Allow public access. It's a public game server;
+   the server code does its own checks.
 5. **Billing:** Request-based. CPU is only allocated during requests; open
    game connections count as requests, so it's awake while anyone plays.
-6. **Service scaling:** Minimum instances **0**, Maximum instances **1**.
+6. **Service scaling:** Auto scaling, minimum **0**, maximum **1**.
    *(Important: all rooms live in one process.)*
 7. Expand **Container(s), Volumes, Networking, Security**:
    - **Container:** port `8080`, memory **512 MiB**, CPU **1**, request
