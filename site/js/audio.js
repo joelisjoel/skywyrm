@@ -2,6 +2,7 @@
 // with speed, an orb chime ladder, whooshes for near misses, and the
 // adaptive soundtrack (music.js) with power-up stingers in its key.
 import { Music } from './music.js?v=8';
+import { Voice } from './voice.js?v=1';
 
 // D minor pentatonic, so orb chimes sit inside the soundtrack.
 const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24, 27, 29];
@@ -10,6 +11,7 @@ export class Audio {
     constructor() {
         this.ctx = null; this.muted = false; this.volume = 0.6;
         this.musicOn = true; this.music = null;
+        this.voiceOn = true; this.voice = null;
         this.ladder = 0; this.lastEat = 0;
     }
 
@@ -37,9 +39,14 @@ export class Audio {
         src.start();
         this.music = new Music(this.ctx, this.master, this.noise);
         this.music.setOn(this.musicOn);
+        this.voice = new Voice(this.ctx, this.master, this.music);
+        this.voice.on = this.voiceOn;
     }
 
     setMusic(on) { this.musicOn = on; if (this.music) this.music.setOn(on); }
+    setVoice(on) { this.voiceOn = on; if (this.voice) this.voice.on = on; }
+    // The dragon speaks (Mandarin): returns the phrase for a caption, or null.
+    say(ev) { return this.voice && !this.muted ? this.voice.say(ev) : null; }
     mood(level, paused) { if (this.music) this.music.mood(level, paused); }
     sting(kind) { if (this.music) this.music.sting(kind); }
 

@@ -1,0 +1,10 @@
+{
+ "shield":  [["金钟罩！", "jīn zhōng zhào", "Golden Bell Shield!"], ["刀枪不入！", "dāo qiāng bú rù", "No blade can pierce me!"], ["铜墙铁壁！", "tóng qiáng tiě bì", "Walls of bronze and iron!"]],
+ "magnet":  [["吸星大法！", "xī xīng dà fǎ", "The star-drinking art!"], ["万物归我！", "wàn wù guī wǒ", "All things come to me!"], ["八方来聚！", "bā fāng lái jù", "Gather from every direction!"]],
+ "fire":    [["火龙出世！", "huǒ lóng chū shì", "The fire dragon awakens!"], ["烈火焚天！", "liè huǒ fén tiān", "Fire that burns the sky!"], ["看我龙焰！", "kàn wǒ lóng yàn", "Behold my dragon flame!"]],
+ "sever":   [["一刀两断！", "yì dāo liǎng duàn", "Cut in two with one stroke!"], ["横扫千军！", "héng sǎo qiān jūn", "I sweep away a thousand soldiers!"], ["势如破竹！", "shì rú pò zhú", "Like splitting bamboo!"]],
+ "kill":    [["手下败将！", "shǒu xià bài jiàng", "Another fallen foe!"], ["不堪一击！", "bù kān yì jī", "Not even one blow!"], ["胜者为王！", "shèng zhě wéi wáng", "The victor is king!"]],
+ "death":   [["胜败乃兵家常事。", "shèng bài nǎi bīng jiā cháng shì", "Win or lose, such is war."], ["卷土重来！", "juǎn tǔ chóng lái", "I will return like a storm!"], ["我会回来的！", "wǒ huì huí lái de", "I will be back!"]],
+ "tier":    [["更上一层楼！", "gèng shàng yì céng lóu", "Higher still!"], ["龙腾四海！", "lóng téng sì hǎi", "The dragon soars over the four seas!"], ["势不可挡！", "shì bù kě dǎng", "Unstoppable!"]],
+ "leader":  [["天下无敌！", "tiān xià wú dí", "Invincible under heaven!"], ["唯我独尊！", "wéi wǒ dú zūn", "I alone am supreme!"], ["龙王在此！", "lóng wáng zài cǐ", "The Dragon King is here!"]]
+}

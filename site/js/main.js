@@ -8,7 +8,7 @@ import { Renderer } from './render.js?v=11';
 import { ChaseCam } from './camera.js?v=11';
 import { Input } from './input.js?v=12';
 import { Hud } from './hud.js?v=12';
-import { Audio } from './audio.js?v=9';
+import { Audio } from './audio.js?v=10';
 import { TunePanel } from './tune-panel.js?v=11';
 import { checkName } from './names.js?v=8';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=11';
@@ -25,7 +25,7 @@ const hud = new Hud();
 const audio = new Audio();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, arena: 'sky', name: '', runs: 0, v: 2 };
+const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, arena: 'sky', name: '', runs: 0, v: 2 };
 try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     Object.assign(settings, saved);
@@ -136,11 +136,11 @@ function handleEvents() {
         const mine = e.d === player;
         switch (e.type) {
             case 'eat': if (mine) audio.eat(world.time); break;
-            case 'tier': if (mine) { hud.toast(TIERS[e.tier].name.toUpperCase() + '!', 'big'); audio.tier(); hype(); } break;
+            case 'tier': if (mine) { hud.toast(TIERS[e.tier].name.toUpperCase() + '!', 'big'); audio.tier(); hype(); speak('tier'); } break;
             case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); hype(); break;
             case 'powerup':
                 if (mine) {
-                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: 'DRAGONFIRE — press E' }[e.kind]); audio.powerup(e.kind); hype();
+                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: 'DRAGONFIRE — press E' }[e.kind]); audio.powerup(e.kind); hype(); speak(e.kind);
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
@@ -162,7 +162,7 @@ function handleEvents() {
                 break;
             case 'sever':
                 renderer.burnSegment(e.burn);
-                if (mine) hud.toast(`SEVERED ${e.o.name}!`, 'big');
+                if (mine) { hud.toast(`SEVERED ${e.o.name}!`, 'big'); speak('sever'); }
                 if (e.o === player) hud.toast(`${e.d.name} burned your tail!`, 'bad');
                 hud.feed(`🔥 ${e.d.name} severed ${e.o.name}`);
                 break;
@@ -171,7 +171,7 @@ function handleEvents() {
                 if (k && k === player) {
                     const big = e.d.mass >= player.mass * 2, king = view.top === e.d;
                     hud.toast(king ? 'KINGSLAYER!' : big ? `BIG KILL — ${e.d.name}` : `+ ${e.d.name}`, 'big');
-                    audio.kill(); hype(10);
+                    audio.kill(); hype(10); speak('kill');
                 }
                 hud.feed(k ? `${k.name} ⟶ ${e.d.name}` : `${e.d.name} hit ${e.cause}`);
                 if (e.d === player) onPlayerDeath(e);
@@ -183,6 +183,7 @@ function handleEvents() {
 
 function onPlayerDeath(e) {
     audio.death();
+    speak('death');
     if (!game) newGame();
     const at = performance.now() / 1000;
     deathInfo = {
@@ -400,6 +401,7 @@ bindCheck('opt-beginner', 'beginner', syncBeginner);
 bindCheck('solo-beginner', 'beginner', syncBeginner);
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
 bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
+bindCheck('opt-voice', 'voice', () => audio.setVoice(settings.voice));
 bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.invertY));
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
 bindCheck('opt-assist', 'assist', () => world && (world.assist = settings.assist));
@@ -409,6 +411,21 @@ input.settings.mouseLock = settings.mouseLock;
 cam.reduceMotion = settings.reduceMotion;
 audio.muted = settings.muted;
 audio.musicOn = settings.music;
+audio.voiceOn = settings.voice;
+
+// The dragon speaks: a Mandarin shout, captioned with pinyin and English.
+let captionTimer = 0;
+function speak(ev) {
+    const ph = audio.say(ev);
+    if (!ph) return;
+    const box = $('voice-caption');
+    box.querySelector('.zh').textContent = ph.zh;
+    box.querySelector('.py').textContent = ph.py;
+    box.querySelector('.en').textContent = ph.en;
+    box.classList.remove('show'); void box.offsetWidth; box.classList.add('show');
+    clearTimeout(captionTimer);
+    captionTimer = setTimeout(() => box.classList.remove('show'), 2800);
+}
 // Browsers only allow sound after a gesture: the first click or key starts
 // the menu music.
 const firstGesture = () => { audio.unlock(); removeEventListener('pointerdown', firstGesture); removeEventListener('keydown', firstGesture); };
@@ -531,7 +548,7 @@ function frame(nowMs) {
         if (player && player.alive) {
             const r = view.board.indexOf(player) + 1;
             if (r > 0 && r < player.bestRank) {
-                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) { hud.toast('YOU ARE #1 — your head is ablaze for all to see', 'big'); audio.leader(); hype(12); }
+                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) { hud.toast('YOU ARE #1 — your head is ablaze for all to see', 'big'); audio.leader(); hype(12); speak('leader'); }
                 player.bestRank = r;
             }
         }

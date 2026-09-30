@@ -268,3 +268,10 @@ body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
 #respawn-count { font-family: 'Cinzel', Georgia, serif; font-size: 72px; font-weight: 700; line-height: 1; color: #F3DDA4; text-shadow: 0 0 30px rgba(217, 181, 108, 0.45); }
 #respawn .pearls span { width: 12px; height: 12px; }
 #card-sub { color: var(--dim); font-size: 13px; margin: -6px 0 14px; }
+
+/* ---------------- Dragon voice caption (Mandarin + pinyin + English) ---------------- */
+#voice-caption { position: absolute; left: 0; right: 0; bottom: 172px; text-align: center; pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 0.35s, transform 0.35s; }
+#voice-caption.show { opacity: 1; transform: none; }
+#voice-caption .zh { font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-size: 40px; line-height: 1.1; color: #F3DDA4; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75), 0 0 24px rgba(217, 181, 108, 0.35); letter-spacing: 0.08em; }
+#voice-caption .py { font-size: 13px; letter-spacing: 0.08em; color: rgba(245, 238, 225, 0.8); margin-top: 2px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+#voice-caption .en { font-size: 12px; font-style: italic; color: rgba(245, 238, 225, 0.6); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
