@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=8';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=9';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -200,6 +200,7 @@ export class World {
         this.opull = new Int32Array(MAX_ORBS);    // dragon id pulling it, 0 = free
         this.opullT = new Float32Array(MAX_ORBS);
         this.phantoms = [];                       // online: orbs a lodestone reeled in (drawn as beams)
+        this.rules = {};                          // per-room overrides of T's rule keys
         this.oFree = []; for (let i = MAX_ORBS - 1; i >= 0; i--) this.oFree.push(i);
         this.orbCount = 0; this.ambientCount = 0; this.oHigh = 0;
         this.powerups = [];
@@ -320,6 +321,9 @@ export class World {
     }
 
     // ------------------------------------------------ dragons
+    // A rule's value for this world: the room's override, else the tunable.
+    rule(k) { const v = this.rules[k]; return v === undefined ? T[k] : v; }
+
     addDragon(d) { this.dragons.push(d); this.byId.set(d.id, d); return d; }
 
     removeDragon(d) {
@@ -648,8 +652,9 @@ export class World {
             const [hd, surface] = hazardDist(this.arena, d.pos);
             if (hd < rh) { deaths.push({ d, killer: null, cause: surface }); continue; }
             if (d.protect > 0) continue;
-            // Head → other tails.
-            let killer = null;
+            // Head → other tails. The closest bead touched decides: a tail tip
+            // (last biteBeads) is a bite when tailBite is on; anything else kills.
+            let killer = null, hitD = Infinity, hitIdx = -1;
             const encR = T.encounterDist;
             this.queryBeads(d.pos, (i) => {
                 const owner = this.bOwner[i];
@@ -669,7 +674,7 @@ export class World {
                 }
                 if (o.protect > 0) return false;
                 const lethal = rh + o.r * T.tailColScale;
-                if (dd < lethal * lethal) { killer = o; return true; }
+                if (dd < lethal * lethal) { if (dd < hitD) { hitD = dd; killer = o; hitIdx = this.bIdx[i]; } return false; }
                 // Near miss tracking for the player.
                 if (d === P || d.human) {
                     const nm = lethal + T.nearMissPad;
@@ -680,6 +685,10 @@ export class World {
                 }
                 return false;
             });
+            if (killer && this.rule('tailBite') && hitIdx >= Math.max(4, killer.nBeads - this.rule('biteBeads'))) {
+                this.bite(d, killer, hitIdx);
+                killer = null;
+            }
             if (killer) {
                 if (d.shield > 0) {
                     d.shield = 0; d.protect = 1.5;
@@ -722,6 +731,23 @@ export class World {
                 }
             }
         }
+    }
+
+    // d's head nibbles o's tail tip: o loses those beads' length, d gains
+    // biteMult orbs per bead. One bite per 0.5 s; a tip too short to lose
+    // anything is just harmless.
+    bite(d, o, bead) {
+        if (this.time - (d.lastBite || -9) < 0.5) return;
+        const n = this.rule('biteBeads');
+        const lost = Math.min(Math.max(0, o.mass - T.spawnMass), n * o.beadSpacing / T.lenPerMass);
+        if (lost < 0.5) return;
+        d.lastBite = this.time;
+        o.mass -= lost;
+        o.len = lengthFor(o.mass);
+        const gain = n * this.rule('biteMult');
+        d.mass += gain;
+        const i = bead * 3;
+        this.emit({ type: 'bite', d, o, gain: Math.round(gain), lost: Math.round(lost), x: o.beads[i], y: o.beads[i + 1], z: o.beads[i + 2], color: o.color });
     }
 
     kill(d, killer, cause) {

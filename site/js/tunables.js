@@ -89,6 +89,12 @@ export const DEFAULTS = {
     skyRadius: 350,         // open top: no ceiling
     orbRadius: 325,
 
+    // --- Rules: newer mechanics, each switchable (0 = off) and overridable
+    // per room via world.rules (see World.rule) ---
+    tailBite: 1,            // a head can nibble the tip of a tail instead of dying on it
+    biteBeads: 5,           // how many tail-tip beads are edible
+    biteMult: 5,            // each bitten bead is worth this many orbs
+
     // --- Camera (spec §8) ---
     camDist: 7,
     camDistPerLen: 0.02,
@@ -163,6 +169,9 @@ export const PANEL = [
     ['fireRange', 5, 60, 1, 'Growth & combat'],
     ['fireAngle', 5, 60, 1, 'Growth & combat'],
     ['fireTime', 0.2, 4, 0.1, 'Growth & combat'],
+    ['tailBite', 0, 1, 1, 'Rules'],
+    ['biteBeads', 1, 15, 1, 'Rules'],
+    ['biteMult', 1, 15, 1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

@@ -4,8 +4,8 @@
 // server. Other dragons are drawn ~120 ms in the past so their motion is
 // smooth between snapshots.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=8';
-import { World, Dragon } from './sim.js?v=8';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=9';
+import { World, Dragon } from './sim.js?v=9';
 
 const INTERP = 0.12;
 const _qa = new Quaternion(), _qb = new Quaternion();
@@ -61,6 +61,7 @@ export class NetGame {
         Object.assign(T, DEFAULTS);
         for (const k of Object.keys(DEFAULTS)) if (typeof m.tune[k] === 'number' && Number.isFinite(m.tune[k])) T[k] = m.tune[k];
         const w = new World(m.room.arena, 'client');
+        if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
         this.world = w; this.room = m.room; this.you = m.you;
         for (const d of m.dragons) this.dragonNew(d);
         const o = m.orbs;
@@ -165,6 +166,11 @@ export class NetGame {
                 }
                 case 'sever': { const d = this.dragon(e.id), o = this.dragon(e.o); if (d && o) this.events.push({ type: 'sever', d, o, burn: e.burn || [] }); break; }
                 case 'fire': { const d = this.dragon(e.id); if (d) this.events.push({ type: 'fireStart', d }); break; }
+                case 'bite': {
+                    const d = this.dragon(e.id), o = this.dragon(e.o);
+                    if (d && o) this.events.push({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
+                    break;
+                }
                 case 'eat': this.events.push({ type: 'eat', d: p }); break;
                 case 'tier': this.events.push({ type: 'tier', d: p, tier: e.tier | 0 }); break;
                 case 'nm': this.events.push({ type: 'nearMiss', d: p }); break;

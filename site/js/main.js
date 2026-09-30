@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=8';
-import { World, Dragon, hazardDist } from './sim.js?v=8';
-import { managePopulation, targetBots } from './bots.js?v=8';
-import { Renderer } from './render.js?v=8';
-import { ChaseCam } from './camera.js?v=8';
-import { Input } from './input.js?v=8';
-import { Hud } from './hud.js?v=9';
-import { Audio } from './audio.js?v=8';
-import { TunePanel } from './tune-panel.js?v=8';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=9';
+import { World, Dragon, hazardDist } from './sim.js?v=9';
+import { managePopulation, targetBots } from './bots.js?v=9';
+import { Renderer } from './render.js?v=9';
+import { ChaseCam } from './camera.js?v=9';
+import { Input } from './input.js?v=9';
+import { Hud } from './hud.js?v=10';
+import { Audio } from './audio.js?v=9';
+import { TunePanel } from './tune-panel.js?v=9';
 import { checkName } from './names.js?v=8';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=8';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=9';
 import { serverUrl } from './net-config.js?v=8';
 
 loadTune();
@@ -130,6 +130,11 @@ function handleEvents() {
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
+            case 'bite':
+                renderer.biteBurst(e.x, e.y, e.z, e.color);
+                if (mine) { hud.toast(`CHOMP  +${e.gain}`, 'nm'); audio.bite(); hype(6); }
+                else if (e.o === player) { hud.toast(`${e.d.name} bit your tail`, 'bad'); audio.bitten(); }
+                break;
             case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
             case 'unparked': parkEndsAt = 0; break;
             case 'parked': parkEndsAt = 0; setPauseNote('Wings folded — you\'re out of the sky and safe. Your length is kept.'); break;

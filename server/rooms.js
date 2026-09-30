@@ -85,6 +85,7 @@ export class Room {
         if (this.world) return;
         const w = new World(this.meta.arena, 'server');
         w.gentleTime = 0;
+        w.rules = { ...(this.meta.rules || {}) };             // per-room overrides of rule tunables
         w.botTarget = () => this.botTarget();
         w.spawnAmbient(T.orbTarget);
         this.world = w;
@@ -125,7 +126,7 @@ export class Room {
         client.send({
             t: 'welcome', you: d.id,
             room: { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner },
-            tune: { ...T }, time: r2(w.time),
+            tune: { ...T }, rules: w.rules, time: r2(w.time),
             dragons: w.dragons.filter((x) => x.alive || x.human).map(dragonMeta),
             orbs, pu: this.powerups(),
         });
@@ -231,6 +232,7 @@ export class Room {
                     break;
                 case 'sever': pub.push({ k: 'sever', id: e.d.id, o: e.o.id, burn: e.burn.map(r2).slice(0, 600) }); break;
                 case 'fireStart': pub.push({ k: 'fire', id: e.d.id }); break;
+                case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'eat': to(e.d, { k: 'eat' }); break;
                 case 'tier': to(e.d, { k: 'tier', tier: e.tier }); break;
                 case 'nearMiss': to(e.d, { k: 'nm' }); break;

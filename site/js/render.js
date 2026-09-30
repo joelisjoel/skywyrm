@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=8';
+import { T, TIERS } from './tunables.js?v=9';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -385,9 +385,11 @@ export class Renderer {
         let nAll = 0, nOwn = 0, n = 0, bm, bc, cap;
         const seen = new Set();
         const cp = this.camera.position;
+        const biteFrom = world.rule('tailBite') ? world.rule('biteBeads') : 0;
         for (const d of world.dragons) {
             if (!d.alive) continue;
             seen.add(d.id);
+            const tip = biteFrom ? Math.max(4, d.nBeads - biteFrom) : Infinity;   // edible tail tip starts here
             const r = d.r;
             const c1 = _c.set(d.color), r1 = c1.r, g1 = c1.g, b1 = c1.b;
             const c2 = _c.set(d.color2), r2 = c2.r, g2 = c2.g, b2 = c2.b;
@@ -414,6 +416,11 @@ export class Renderer {
                 bm[k + 12] = x; bm[k + 13] = y; bm[k + 14] = z; bm[k + 15] = 1;
                 const stripe = (b >> 1) % 3 === 0;
                 let cr = stripe ? r2 : r1, cg = stripe ? g2 : g1, cb = stripe ? b2 : b1;
+                // Edible tail tip: a warm gold shimmer running down it.
+                if (b >= tip && isOther) {
+                    const g = 0.45 + 0.3 * Math.sin(time * 9 - b * 0.9);
+                    cr += (1 - cr) * g; cg += (0.85 - cg) * g; cb += (0.35 - cb) * g;
+                }
                 // Proximity glow: enemy tail near your head brightens + pulses.
                 if (ph && isOther) {
                     const dx = x - ph.x, dy = y - ph.y, dz = z - ph.z;
@@ -787,6 +794,14 @@ export class Renderer {
             const px = x + (mx - x) * u, py = y + (my - y) * u, pz = z + (mz - z) * u;
             const dx = mx - x, dy = my - y, dz = mz - z, L = Math.hypot(dx, dy, dz) || 1, v = 25;
             this.emit(px, py, pz, dx / L * v + d.vdir.x * d.speed, dy / L * v + d.vdir.y * d.speed, dz / L * v + d.vdir.z * d.speed, 0.25, 1.2, 1);
+        }
+    }
+
+    // A tail tip bitten off: a puff of the victim's colour (plus gold).
+    biteBurst(x, y, z, color) {
+        for (let k = 0; k < 40; k++) {
+            _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(4 + Math.random() * 8);
+            this.emit(x, y, z, _s.x, _s.y, _s.z, 0.4 + Math.random() * 0.4, 1.4, k % 3 ? 0 : 1);
         }
     }
 

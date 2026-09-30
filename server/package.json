@@ -6,7 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/rooms.test.mjs"
+    "test": "node test/sim.test.mjs && node test/rooms.test.mjs"
   },
   "dependencies": {
     "@google-cloud/firestore": "7.11.6",
