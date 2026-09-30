@@ -17,23 +17,30 @@ export class Renderer {
     constructor(canvas) {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        // Film-like response: the scene renders in HDR and is tone-mapped
+        // (ACES) in the final pass, with bloom on anything brighter than white.
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.1;
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(T.fov, 1, 0.1, 3000);
-        this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x302040, 1.6));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+        this.hemi = new THREE.HemisphereLight(0xdde6ff, 0x302040, 0.9);
+        this.scene.add(this.hemi);
+        const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
         sun.position.set(40, 80, 30);
         this.scene.add(sun);
+        this.keyLight = sun;
+        this.pmrem = new THREE.PMREMGenerator(this.renderer);
 
         // Bodies: every bead of every dragon in one instanced mesh.
-        this.beads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
-            new THREE.MeshLambertMaterial(), MAX_BEADS);
+        this.beads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2),
+            new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.3 }), MAX_BEADS);
         this.beads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.beads.setColorAt(0, _white);
         this.beads.frustumCulled = false;
         this.scene.add(this.beads);
         // Your own body: its own translucent mesh so you can see through it.
         this.ownBeads = new THREE.InstancedMesh(this.beads.geometry,
-            new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.45, depthWrite: false }), 1000);
+            new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.3, transparent: true, opacity: 0.45, depthWrite: false }), 1000);
         this.ownBeads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.ownBeads.setColorAt(0, _white);
         this.ownBeads.frustumCulled = false;
@@ -63,7 +70,7 @@ export class Renderer {
         this.wingGeo.computeVertexNormals();
         this.eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
         this.pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-        this.hornMat = new THREE.MeshLambertMaterial({ color: 0xf2e6c8 });
+        this.hornMat = new THREE.MeshStandardMaterial({ color: 0xf2e6c8, roughness: 0.5 });
 
         // Power-up crystals.
         // Each crystal gets a world-size glow and a constant-size star halo
@@ -159,13 +166,26 @@ export class Renderer {
         this.mirrorRect = { x: 0.36, y: 0.80, w: 0.28, h: 0.15 };    // uv, origin bottom-left
         this.cubeRT = new THREE.WebGLCubeRenderTarget(768, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
         this.cubeCam = new THREE.CubeCamera(0.1, 3000, this.cubeRT);
-        this.mainRT = new THREE.WebGLRenderTarget(4, 4, { samples: 4 });
+        this.mainRT = new THREE.WebGLRenderTarget(4, 4, { samples: 4, type: THREE.HalfFloatType });
+        // Bloom: bright-pass at ¼ resolution, two separable blur rounds.
+        this.bloomA = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+        this.bloomB = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+        const quadVS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+        this.brightMat = new THREE.ShaderMaterial({ uniforms: { src: { value: null }, thr: { value: 0.85 } }, vertexShader: quadVS,
+            fragmentShader: BRIGHT_FRAG, depthTest: false, depthWrite: false });
+        this.blurMat = new THREE.ShaderMaterial({ uniforms: { src: { value: null }, dir: { value: new THREE.Vector2() } }, vertexShader: quadVS,
+            fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false });
+        this.postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.brightMat);
+        this.postScene = new THREE.Scene();
+        this.postScene.add(this.postQuad);
+        this.bloomStrength = 0.9;
         this.warpMat = new THREE.ShaderMaterial({
             uniforms: {
                 cube: { value: this.cubeRT.texture }, mainTex: { value: this.mainRT.texture },
                 camRot: { value: new THREE.Matrix3() }, aspect: { value: 1 }, tanHalf: { value: 1 },
                 extra: { value: 0 }, rMax: { value: 1 }, expo: { value: 3 }, wide: { value: 1 },
                 mirror: { value: 1 }, mRect: { value: new THREE.Vector4() }, mTan: { value: Math.tan(28 * Math.PI / 180) },
+                bloomTex: { value: this.bloomA.texture }, bloom: { value: 0.9 },
             },
             vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
             fragmentShader: WARP_FRAG, depthTest: false, depthWrite: false,
@@ -230,6 +250,8 @@ export class Renderer {
         this.camera.updateProjectionMatrix();
         const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
         this.mainRT.setSize(size.x, size.y);
+        const bw = Math.max(1, Math.round(size.x / 4)), bh = Math.max(1, Math.round(size.y / 4));
+        this.bloomA.setSize(bw, bh); this.bloomB.setSize(bw, bh);
     }
 
     // ------------------------------------------------ arena visuals
@@ -334,6 +356,22 @@ export class Renderer {
         g.add(sun);
         this.sun = { core, halo, corona };
         this.scene.add(g);
+        // Image-based light from this sky, so glossy scales pick up its colours.
+        const env = arena.kind === 'cylinder' ? [0x0d0b2e, 0x3a2470, 0xff7a4a] : [0x07060f, 0x1a1040, 0x6a4a20];
+        this.setEnvironment(...env);
+    }
+
+    setEnvironment(top, mid, hor) {
+        const envScene = new THREE.Scene();
+        const dome = skyDome(top, mid, hor, 50);
+        dome.onBeforeRender = () => {};
+        envScene.add(dome);
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+        glow.position.set(0, -12, -40);            // a warm light low in the sky
+        envScene.add(glow);
+        if (this.scene.environment) this.scene.environment.dispose();
+        this.scene.environment = this.pmrem.fromScene(envScene, 0.04).texture;
+        disposeTree(envScene);
     }
 
     wallLines(pts, color) {
@@ -349,7 +387,7 @@ export class Renderer {
         let h = this.heads.get(d.id);
         if (h) return h;
         const g = new THREE.Group();
-        const mat = new THREE.MeshLambertMaterial({ color: d.color });
+        const mat = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.35, metalness: 0.3 });
         const skull = new THREE.Mesh(this.headGeo, mat);
         skull.scale.set(1.1, 0.85, 1.55);
         g.add(skull);
@@ -364,7 +402,7 @@ export class Renderer {
             horn.userData.horn = true;
             g.add(horn);
         }
-        const wingMat = new THREE.MeshLambertMaterial({ color: d.color2, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+        const wingMat = new THREE.MeshStandardMaterial({ color: d.color2, roughness: 0.55, metalness: 0.1, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
         const wl = new THREE.Mesh(this.wingGeo, wingMat), wr = new THREE.Mesh(this.wingGeo, wingMat);
         wr.scale.x = 1; wl.scale.x = -1;
         wl.position.set(-0.6, 0.1, 0.9); wr.position.set(0.6, 0.1, 0.9);
@@ -513,7 +551,7 @@ export class Renderer {
                 this.beamTo(puller, world.ox[i], world.oy[i], world.oz[i], time);
             }
             const c = no * 3;
-            oc[c] = _c.r; oc[c + 1] = _c.g; oc[c + 2] = _c.b;
+            oc[c] = _c.r * 1.35; oc[c + 1] = _c.g * 1.35; oc[c + 2] = _c.b * 1.35;
             no++;
         }
         // Online, the server reels orbs in; net.js hands us the ones a
@@ -726,12 +764,16 @@ export class Renderer {
 
         this.camera.updateMatrixWorld();
         this.mirrorOn = this.view.mirror && view.state === 'play';
-        if (this.view.wide || this.mirrorOn) {
-            this.renderer.setRenderTarget(this.mainRT);
-            this.renderer.render(this.scene, this.camera);
-            this.renderer.setRenderTarget(null);
-            this.cubeCam.position.copy(this.camera.position);
-            this.cubeCam.update(this.renderer, this.scene);
+        {
+            const r = this.renderer;
+            r.setRenderTarget(this.mainRT);
+            r.render(this.scene, this.camera);
+            if (this.view.wide || this.mirrorOn) {
+                this.cubeCam.position.copy(this.camera.position);
+                this.cubeCam.update(r, this.scene);
+            }
+            this.renderBloom();
+            r.setRenderTarget(null);
             const u = this.warpMat.uniforms, aspect = innerWidth / innerHeight;
             const tanHalf = Math.tan(this.camera.fov * Math.PI / 360), rMax = Math.hypot(aspect, 1);
             u.camRot.value.setFromMatrix4(this.camera.matrixWorld);
@@ -740,9 +782,24 @@ export class Renderer {
             u.wide.value = this.view.wide ? 1 : 0; u.mirror.value = this.mirrorOn ? 1 : 0;
             const m = this.mirrorRect;
             u.mRect.value.set(m.x, m.y, m.w, m.h);
-            this.renderer.render(this.warpScene, this.warpCam);
-        } else {
-            this.renderer.render(this.scene, this.camera);
+            u.bloom.value = this.bloomStrength;
+            r.render(this.warpScene, this.warpCam);
+        }
+    }
+
+    // Bright parts of the HDR frame → ¼-res bloom texture (bloomA).
+    renderBloom() {
+        const r = this.renderer, q = this.postQuad, A = this.bloomA, B = this.bloomB;
+        q.material = this.brightMat;
+        this.brightMat.uniforms.src.value = this.mainRT.texture;
+        r.setRenderTarget(A); r.render(this.postScene, this.warpCam);
+        q.material = this.blurMat;
+        const u = this.blurMat.uniforms;
+        for (const spread of [1, 2.5]) {
+            u.src.value = A.texture; u.dir.value.set(spread / A.width, 0);
+            r.setRenderTarget(B); r.render(this.postScene, this.warpCam);
+            u.src.value = B.texture; u.dir.value.set(0, spread / A.height);
+            r.setRenderTarget(A); r.render(this.postScene, this.warpCam);
         }
     }
 
@@ -854,7 +911,7 @@ function radialTexture(stops = [[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(255,240,
 // the edges, reaching wideCorner° from forward at the corners. The sharp
 // centre comes from the normal render; everything else from the cube map.
 const WARP_FRAG = `
-uniform samplerCube cube; uniform sampler2D mainTex; uniform mat3 camRot;
+uniform samplerCube cube; uniform sampler2D mainTex; uniform sampler2D bloomTex; uniform float bloom; uniform mat3 camRot;
 uniform float aspect, tanHalf, extra, rMax, expo, wide, mirror, mTan;
 uniform vec4 mRect;
 varying vec2 vUv;
@@ -880,11 +937,30 @@ void main() {
     if (!inMirror && dir.z < -1e-4) {
         vec2 uvN = (dir.xy / -dir.z) / (tanHalf * vec2(aspect, 1.0)) * 0.5 + 0.5;
         vec2 edge = min(uvN, 1.0 - uvN);
-        float k = smoothstep(0.0, 0.04, min(edge.x, edge.y));
+        float k = wide > 0.5 ? smoothstep(0.0, 0.04, min(edge.x, edge.y)) : 1.0;
         if (k > 0.0) col = mix(col, texture2D(mainTex, uvN), k);
+        col.rgb += texture2D(bloomTex, uvN).rgb * bloom * k;
     }
     gl_FragColor = col;
+    #include <tonemapping_fragment>
     #include <colorspace_fragment>
+}`;
+
+const BRIGHT_FRAG = `
+uniform sampler2D src; uniform float thr; varying vec2 vUv;
+void main() {
+    vec3 c = texture2D(src, vUv).rgb;
+    float l = max(max(c.r, c.g), c.b);
+    gl_FragColor = vec4(c * (max(0.0, l - thr) / max(l, 1e-4)), 1.0);
+}`;
+
+const BLUR_FRAG = `
+uniform sampler2D src; uniform vec2 dir; varying vec2 vUv;
+void main() {
+    vec3 s = texture2D(src, vUv).rgb * 0.2270270;
+    s += (texture2D(src, vUv + dir * 1.3846154).rgb + texture2D(src, vUv - dir * 1.3846154).rgb) * 0.3162162;
+    s += (texture2D(src, vUv + dir * 3.2307692).rgb + texture2D(src, vUv - dir * 3.2307692).rgb) * 0.0702703;
+    gl_FragColor = vec4(s, 1.0);
 }`;
 
 function wrap(v, size) {
@@ -892,8 +968,8 @@ function wrap(v, size) {
     return ((v + h) % size + size) % size - h;
 }
 
-function skyDome(top, mid, horizon) {
-    const geo = new THREE.SphereGeometry(1500, 32, 16);
+function skyDome(top, mid, horizon, radius = 1500) {
+    const geo = new THREE.SphereGeometry(radius, 32, 16);
     const mat = new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
         uniforms: { top: { value: new THREE.Color(top) }, mid: { value: new THREE.Color(mid) }, hor: { value: new THREE.Color(horizon) } },
