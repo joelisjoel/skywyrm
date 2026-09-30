@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=4';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=6';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -119,6 +119,9 @@ export class Dragon {
         this.near = new Map();                    // enemy id → near-miss state
         this.lastEncounter = new Map();
         this.brain = null;
+        this.temp = T.ambientTemp; // body temp 0–100: hotter = faster, bigger thrust tank
+        this.heatTarget = this.temp; this.crowd = 0;
+        this.thrust = thrustCap(this.temp); this.thrustLocked = false;
         this.wallAssist = false;   // beginner mode (player only)
         this.assisting = 0;        // 0..1, how hard beginner mode is steering
         this.diedAt = 0;
@@ -352,6 +355,8 @@ export class World {
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
         d.assisting = 0;
+        d.temp = d.heatTarget = T.ambientTemp; d.crowd = 0;
+        d.thrust = thrustCap(d.temp); d.thrustLocked = false;
         if (d === this.player) this.rampStart = this.time;   // population ramp restarts each life
         this.findSpawn(d.pos);
         // Face roughly toward the centre, offset so we don't all converge.
@@ -412,7 +417,7 @@ export class World {
     fly(d, dt) {
         const inp = d.input, a = this.arena;
         if (d.wallAssist) this.wallAssist(d);
-        d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass;
+        d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
         d.braking = inp.brake;
         const mode = d.braking ? 'Brake' : d.boosting ? 'Boost' : 'Cruise';
         // Smooth the stick a touch so turns have weight.
@@ -454,7 +459,7 @@ export class World {
         }
 
         // Speed.
-        let target = T['speed' + mode];
+        let target = T['speed' + mode] * (mode === 'Brake' ? 1 : 1 + speedBonus(d.temp));
         if (a.gravity) target = Math.max(T.speedBrake, target + T.diveBoost * -d.fwd.y);
         d.speed += (target - d.speed) * (T.speedTau > 0 ? 1 - Math.exp(-dt / T.speedTau) : 1);
 
@@ -476,6 +481,16 @@ export class World {
         d.bank += (bt - d.bank) * (1 - Math.exp(-dt / 0.15));
 
         // Boost burns mass; half drops behind as orbs (spec §6.5).
+        // Thrust tank: boosting drains it; it refills off-boost. Run it dry
+        // and it locks until 1.5 s has refilled (no stutter-boosting).
+        const cap = thrustCap(d.temp);
+        if (d.boosting) {
+            d.thrust = Math.max(0, d.thrust - dt);
+            if (d.thrust <= 0) { d.thrustLocked = true; if (d === this.player) this.emit({ type: 'thrustEmpty', d }); }
+        } else {
+            d.thrust = Math.min(cap, d.thrust + T.thrustRegen * dt);
+            if (d.thrustLocked && d.thrust >= Math.min(1.5, cap)) d.thrustLocked = false;
+        }
         if (d.boosting) {
             const c = T.boostCost * dt;
             d.mass = Math.max(T.boostMinMass - 1, d.mass - c);
@@ -792,6 +807,22 @@ export class World {
         this.emit({ type: 'sever', d, o, lost, burn, color: o.color });
     }
 
+    // Body temp: the sun at the arena centre and crowds of dragons heat
+    // you up; the cold outskirts cool you down (spec: reward the centre).
+    updateHeat(d, dt) {
+        const a = this.arena;
+        const sunR = T.sunRadius * a.radius;
+        const dist = d.pos.distanceTo(a.center);
+        let target = T.ambientTemp + (T.sunHeat - T.ambientTemp) * Math.exp(-((dist / sunR) ** 2));
+        let n = 0;
+        const cr2 = T.crowdRadius * T.crowdRadius;
+        for (const o of this.dragons) if (o !== d && o.alive && o.pos.distanceToSquared(d.pos) < cr2) n++;
+        target = Math.min(100, target + T.crowdHeat * Math.min(1, n / T.crowdFull));
+        const tau = target > d.temp ? T.tempRiseTau : T.tempFallTau;
+        d.temp += (target - d.temp) * (1 - Math.exp(-dt / Math.max(0.05, tau)));
+        d.heatTarget = target; d.crowd = n;
+    }
+
     // ------------------------------------------------ main step
     step(dt) {
         this.time += dt;
@@ -799,6 +830,7 @@ export class World {
         for (const d of this.dragons) {
             if (!d.alive) continue;
             if (d.brain) d.brain.think(this, d, dt);
+            this.updateHeat(d, dt);
             this.fly(d, dt);
             this.updateBreath(d, dt);
         }

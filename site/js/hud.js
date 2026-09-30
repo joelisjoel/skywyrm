@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=4';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=6';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -23,6 +23,11 @@ export class Hud {
             feed: document.getElementById('feed'),
             pu: document.getElementById('hud-pu'),
             fire: document.getElementById('hud-fire'),
+            tempText: document.getElementById('hud-temp-text'),
+            tempBar: document.getElementById('hud-tempbar'),
+            thrust: document.getElementById('hud-thrust'),
+            thrustText: document.getElementById('hud-thrust-text'),
+            thrustBar: document.getElementById('hud-thrustbar'),
             fireText: document.getElementById('hud-fire-text'),
             fireBar: document.getElementById('hud-fire-bar'),
             fps: document.getElementById('hud-fps'),
@@ -191,6 +196,14 @@ export class Hud {
             this.el.tier.textContent = TIERS[t].name.toUpperCase() + (next ? ' → ' + next.name : '');
             const f = next ? (p.mass - TIERS[t].mass) / (next.mass - TIERS[t].mass) : 1;
             this.el.tierBar.style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
+            // Body temp (sun + crowd) → speed; thrust tank sized by temp.
+            const temp = Math.round(p.temp);
+            this.el.tempText.textContent = `🌡 BODY TEMP ${temp}° · +${Math.round(speedBonus(p.temp) * 100)}% speed`;
+            this.el.tempBar.style.width = Math.max(0, Math.min(100, p.temp)) + '%';
+            const cap = thrustCap(p.temp);
+            this.el.thrust.dataset.state = p.thrustLocked ? 'empty' : 'ok';
+            this.el.thrustText.textContent = p.thrustLocked ? '⚡ THRUST EMPTY — recharging' : `⚡ THRUST ${p.thrust.toFixed(1)} s`;
+            this.el.thrustBar.style.width = Math.round(Math.min(1, p.thrust / cap) * 100) + '%';
             // Dragonfire slot (always shown): none / ready / breathing.
             const slot = this.el.fire;
             if (p.breath > 0) {

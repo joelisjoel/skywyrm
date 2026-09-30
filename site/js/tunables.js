@@ -47,6 +47,20 @@ export const DEFAULTS = {
     lootTtl: 45,            // s
     botGrowthCapMass: 400,  // bots grow at half rate above this
 
+    // --- Body temp & thrust (reward for holding the hot, crowded centre) ---
+    ambientTemp: 10,        // body temp far out in the cold
+    sunHeat: 70,            // target temp right at the sun (arena centre)
+    sunRadius: 0.35,        // sun's reach (Gaussian falloff), × arena radius
+    crowdHeat: 35,          // extra target temp in a full crowd
+    crowdRadius: 35,        // m: dragons within this count as your crowd
+    crowdFull: 5,           // dragons for the full crowd bonus
+    tempRiseTau: 3,         // s to warm up
+    tempFallTau: 7,         // s to cool down
+    tempSpeed: 0.4,         // top speed × (1 + tempSpeed·temp/100)
+    thrustBase: 10,         // s of boost in a full tank when cold
+    tempThrust: 0.6,        // tank × (1 + tempThrust·temp/100)
+    thrustRegen: 0.4,       // s of boost regained per second off-boost
+
     // --- Collision (spec §6.3) ---
     tailColScale: 0.8,      // tail collider = k × visual bead radius
     headColScale: 1.0,      // head collider = k × r
@@ -104,6 +118,16 @@ export const PANEL = [
     ['diveBoost', 0, 20, 0.5, 'Flight'],
     ['rollRate', 30, 360, 5, 'Flight'],
     ['assistLook', 0.5, 4, 0.1, 'Flight'],
+    ['sunHeat', 0, 100, 1, 'Heat & thrust'],
+    ['sunRadius', 0.05, 1, 0.01, 'Heat & thrust'],
+    ['crowdHeat', 0, 100, 1, 'Heat & thrust'],
+    ['crowdRadius', 5, 120, 1, 'Heat & thrust'],
+    ['tempRiseTau', 0.2, 20, 0.1, 'Heat & thrust'],
+    ['tempFallTau', 0.2, 30, 0.1, 'Heat & thrust'],
+    ['tempSpeed', 0, 1.5, 0.05, 'Heat & thrust'],
+    ['thrustBase', 1, 40, 0.5, 'Heat & thrust'],
+    ['tempThrust', 0, 2, 0.05, 'Heat & thrust'],
+    ['thrustRegen', 0, 3, 0.05, 'Heat & thrust'],
     ['levelRate', 0, 360, 5, 'Flight'],
     ['assistRate', 0, 240, 5, 'Flight'],
     ['steerCircle', 0.1, 0.5, 0.01, 'Controls'],
@@ -169,6 +193,10 @@ export function resetTune() {
 // Derived helpers shared by sim, bots and render.
 export const lengthFor = (m) => Math.min(T.lenCap, T.lenBase + T.lenPerMass * m);
 export const radiusFor = (m) => T.radiusBase + T.radiusGrow * Math.min(1, m / 2000);
+
+// Heat helpers shared by sim and HUD.
+export const thrustCap = (temp) => T.thrustBase * (1 + T.tempThrust * temp / 100);
+export const speedBonus = (temp) => T.tempSpeed * temp / 100;
 
 export const TIERS = [
     { name: 'Hatchling', mass: 0 },

@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=4';
+import { T, TIERS } from './tunables.js?v=6';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -75,6 +75,11 @@ export class Renderer {
         this.puColors = { shield: 0xFFB060, magnet: 0x7FE8FF, fire: 0xFF3A20 };
         this.puShellMat = new THREE.MeshBasicMaterial({ color: 0xFFD0A0, wireframe: true, transparent: true, opacity: 0.6 });
         this.puMeshes = [];
+        // Like Bit in Tron: snap between shapes, flashing on every change.
+        const ico = new THREE.IcosahedronGeometry(1, 0), octa = new THREE.OctahedronGeometry(1.25, 0);
+        const spiky = stellate(new THREE.IcosahedronGeometry(0.8, 0), 1.9);
+        this.puShapes = { fire: [spiky, octa, spiky, ico], shield: [octa, ico], magnet: [ico, octa] };
+        this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2 };
 
         // The leader's blazing head (replaces the old light pillar): a very
         // bright additive halo + a warm point light + flame particles.
@@ -285,11 +290,6 @@ export class Renderer {
                 new THREE.MeshBasicMaterial({ color: 0x3de0ff, transparent: true, opacity: 0.04, side: THREE.BackSide, depthWrite: false }));
             g.add(shell);
             this.wallMats.push(shell.material);
-            // Soft glow at the centre (not solid) marks the rich middle.
-            const glow = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 16),
-                new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false }));
-            g.add(glow);
-            g.add(new THREE.PointLight(0xffd9a0, 2500, 0, 1.4));
             // Distant stars.
             const sp = [];
             for (let i = 0; i < 1500; i++) {
@@ -301,6 +301,21 @@ export class Renderer {
             const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: false, fog: false }));
             g.add(stars);
         }
+        // The sun: a warm, fly-through heat source at the centre. Near it
+        // (and in crowds) your body temp rises: faster, bigger thrust tank.
+        const sun = new THREE.Group();
+        sun.position.copy(arena.center);
+        const core = new THREE.Mesh(new THREE.SphereGeometry(6, 32, 20),
+            new THREE.MeshBasicMaterial({ color: 0xfff1c4, fog: false, transparent: true, opacity: 0.95 }));
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffb040,
+            blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+        halo.scale.setScalar(110);
+        const corona = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starTex, color: 0xfff0c0,
+            blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+        corona.scale.setScalar(34);
+        sun.add(core, halo, corona, new THREE.PointLight(0xffd9a0, 4000, 0, 1.35));
+        g.add(sun);
+        this.sun = { core, halo, corona };
         this.scene.add(g);
     }
 
@@ -423,7 +438,9 @@ export class Renderer {
             const a = Math.sin(h.flap) * 0.5 * (1 - fold);
             h.wl.rotation.set(0, -fold, a); h.wr.rotation.set(0, fold, -a);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
-            h.mat.emissive.setHex(d === view.top ? 0xffc85a : 0x000000);
+            // Hot dragons glow; the leader blazes gold.
+            if (d === view.top) h.mat.emissive.setHex(0xffc85a);
+            else h.mat.emissive.setRGB(1, 0.35, 0.05).multiplyScalar(Math.max(0, (d.temp - 25) / 75) * 0.7);
             for (const c of h.g.children) if (c.userData.horn) c.visible = d.tier >= 1;
             // Shadow.
             if (sh < MAX_HEADS) {
@@ -493,17 +510,24 @@ export class Renderer {
             if (!pu) return;
             const { crystal, shell, glow, star } = g.userData;
             const fire = pu.type === 'fire';
-            const pulse = 1 + 0.18 * Math.sin(time * (fire ? 7 : 5));
-            crystal.material = this.puMats[pu.type];
+            // Bit: hop to the next shape every beat; flash white + pop on the hop.
+            const shapes = this.puShapes[pu.type];
+            const beat = time * this.puRate[pu.type] + pu.spin * 0.37;
+            const frac = beat - Math.floor(beat);
+            crystal.geometry = shell.geometry = shapes[Math.floor(beat) % shapes.length];
+            const flash = frac < 0.14 ? 1 : 0;
+            const pop = 1 + 0.45 * Math.max(0, 1 - frac * 5);
+            if (!crystal.material.userData.own) { crystal.material = crystal.material.clone(); crystal.material.userData.own = true; }
+            crystal.material.color.setHex(flash ? 0xffffff : this.puMats[pu.type].color.getHex());
             g.position.copy(pu.pos);
             crystal.rotation.set(pu.spin * 0.7, pu.spin * 1.3, 0);
             shell.rotation.set(-pu.spin * 0.5, pu.spin * 0.9, pu.spin * 0.3);
-            crystal.scale.setScalar((fire ? 1.9 : 1.4) * pulse);
-            shell.scale.setScalar((fire ? 2.8 : 2.0) * pulse);
-            glow.material.color.setHex(this.puColors[pu.type]);
-            glow.scale.setScalar((fire ? 16 : 9) * pulse);
-            star.material.color.setHex(this.puColors[pu.type]);
-            star.scale.setScalar((fire ? 0.09 : 0.045) * pulse);
+            crystal.scale.setScalar((fire ? 1.9 : 1.4) * pop);
+            shell.scale.setScalar((fire ? 2.8 : 2.0) * (2 - pop * 0.7));
+            glow.material.color.setHex(flash ? 0xffffff : this.puColors[pu.type]);
+            glow.scale.setScalar((fire ? 16 : 9) * pop);
+            star.material.color.setHex(flash ? 0xffffff : this.puColors[pu.type]);
+            star.scale.setScalar((fire ? 0.09 : 0.045) * pop);
             if (fire) {
                 for (let k = 0; k < 2; k++) {
                     this.emit(pu.pos.x + (Math.random() - 0.5) * 3, pu.pos.y + (Math.random() - 0.5) * 3, pu.pos.z + (Math.random() - 0.5) * 3,
@@ -511,6 +535,13 @@ export class Renderer {
                 }
             }
         });
+
+        // The sun breathes.
+        if (this.sun) {
+            const b = 1 + 0.06 * Math.sin(time * 1.3) + 0.03 * Math.sin(time * 3.7);
+            this.sun.halo.scale.setScalar(110 * b);
+            this.sun.corona.scale.setScalar(34 * (2 - b));
+        }
 
         // The leader blazes: halo + core + light + flames streaming back.
         const top = view.top;
@@ -649,6 +680,21 @@ export class Renderer {
         for (const h of this.heads.values()) { this.scene.remove(h.g); h.mat.dispose(); }
         this.heads.clear();
     }
+}
+
+// Spiky 'Bit' shape: raise a pyramid on every face of a polyhedron.
+function stellate(geo, h) {
+    const src = geo.toNonIndexed().attributes.position.array, out = [];
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), apex = new THREE.Vector3();
+    for (let i = 0; i < src.length; i += 9) {
+        a.fromArray(src, i); b.fromArray(src, i + 3); c.fromArray(src, i + 6);
+        apex.copy(a).add(b).add(c).divideScalar(3).normalize().multiplyScalar(h);
+        for (const [p, q] of [[a, b], [b, c], [c, a]]) out.push(p.x, p.y, p.z, q.x, q.y, q.z, apex.x, apex.y, apex.z);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+    g.computeVertexNormals();
+    return g;
 }
 
 function radialTexture(stops = [[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(255,240,200,0.9)'], [0.5, 'rgba(255,170,60,0.35)'], [1, 'rgba(255,120,20,0)']]) {

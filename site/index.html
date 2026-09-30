@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
     <script type="importmap">
         {
             "imports": {
@@ -34,6 +34,8 @@
             <div id="hud-kills">⚔ 0</div>
             <div id="hud-tier"></div>
             <div class="bar"><div id="hud-tierbar"></div></div>
+            <div id="hud-temp" class="meter"><span id="hud-temp-text"></span><div class="bar temp"><div id="hud-tempbar"></div></div></div>
+            <div id="hud-thrust" class="meter" data-state="ok"><span id="hud-thrust-text"></span><div class="bar thrust"><div id="hud-thrustbar"></div></div></div>
             <div id="hud-fire" data-state="empty">
                 <div id="hud-fire-text"></div>
                 <div class="bar fire"><div id="hud-fire-bar"></div></div>
@@ -105,6 +107,8 @@
             <div><b>A / D</b></div><div>roll</div>
             <div><b>Arrow keys</b></div><div>steer without the mouse</div>
             <div><b>C</b></div><div>look back (also: wide view &amp; mirror in Settings → Player)</div>
+            <div><b>Body temp</b></div><div>the sun at the centre and crowds warm you up — hotter = faster, with a bigger thrust tank</div>
+            <div><b>Thrust</b></div><div>boost runs on a ~10 s tank that refills when you're not boosting</div>
             <div><b>E / F</b></div><div>breathe dragonfire — grab a red crystal first; cuts the first tail in the cone</div>
             <div><b>Esc / P</b></div><div>pause</div>
             <div><b>M</b></div><div>mute</div>
@@ -128,7 +132,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=5"></script>
+    <script type="module" src="js/main.js?v=6"></script>
 </body>
 
 </html>

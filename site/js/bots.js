@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=4';
-import { Dragon, hazardDist } from './sim.js?v=4';
+import { T } from './tunables.js?v=6';
+import { Dragon, hazardDist } from './sim.js?v=6';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;

@@ -131,3 +131,13 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .opt-range input { width: 100%; accent-color: var(--sun); }
 .opt-range b { text-align: right; font-variant-numeric: tabular-nums; }
 #settings { max-height: calc(100vh - 32px); overflow-y: auto; }
+
+/* Body temp + thrust meters (bottom left) */
+.meter { margin-top: 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.bar.temp, .bar.thrust { margin-top: 3px; }
+#hud-tempbar { height: 100%; width: 0; background: linear-gradient(90deg, #3DE0FF, #FFD93D 55%, #FF4D4D); background-size: 170px 100%; transition: width 0.2s; }
+#hud-temp { color: #FFB060; }
+#hud-thrustbar { height: 100%; width: 100%; background: #7FE8FF; }
+#hud-thrust { color: #7FE8FF; }
+#hud-thrust[data-state=empty] { color: #FF4D4D; animation: fireReady 0.4s ease-in-out infinite alternate; }
+#hud-thrust[data-state=empty] #hud-thrustbar { background: #FF4D4D; }

@@ -1,15 +1,15 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, loadTune, saveTune, TIERS } from './tunables.js?v=4';
-import { World, Dragon, hazardDist } from './sim.js?v=4';
-import { managePopulation, targetBots } from './bots.js?v=4';
-import { Renderer } from './render.js?v=4';
-import { ChaseCam } from './camera.js?v=4';
-import { Input } from './input.js?v=4';
-import { Hud } from './hud.js?v=5';
-import { Audio } from './audio.js?v=4';
-import { TunePanel } from './tune-panel.js?v=4';
+import { T, loadTune, saveTune, TIERS } from './tunables.js?v=6';
+import { World, Dragon, hazardDist } from './sim.js?v=6';
+import { managePopulation, targetBots } from './bots.js?v=6';
+import { Renderer } from './render.js?v=6';
+import { ChaseCam } from './camera.js?v=6';
+import { Input } from './input.js?v=6';
+import { Hud } from './hud.js?v=6';
+import { Audio } from './audio.js?v=6';
+import { TunePanel } from './tune-panel.js?v=6';
 
 loadTune();
 
@@ -93,7 +93,8 @@ let hintTimer = 0;
 function showHints() {
     const hints = ['Move the mouse to steer — the further from centre, the harder you turn',
         'Hold click / W to boost (burns length) · right-click / S to brake for tight turns',
-        'Your head on their tail = you\'re out. Their head on your tail = dinner'];
+        'Your head on their tail = you\'re out. Their head on your tail = dinner',
+        'Stay warm: the sun at the centre and crowds heat you up. Hotter dragons fly faster'];
     let i = 0;
     clearInterval(hintTimer);
     const next = () => { if (i < hints.length && state === 'play') hud.toast(hints[i++], 'hint'); else clearInterval(hintTimer); };

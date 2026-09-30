@@ -171,6 +171,37 @@ a Dragonfire fix, side/rear view, and a blazing leader.
     when you let go.
   - Headless check: 80–120° of unwanted roll per second before, 0° after.
 
+## Round 6 changes: reward the centre
+
+- **Body temperature** (bottom left, 0–100°) shapes the risk/reward
+  around the middle.
+  - Heat comes from **the sun**: a warm, fly-through glowing core at the
+    arena centre. Its heat falls off as a Gaussian, reaching
+    `sunRadius` = 0.35 × arena radius.
+  - **Crowds** add heat too: up to +35° with 5 or more dragons within
+    35 m.
+  - Temperature eases toward that target: it warms in about 3 s and cools
+    in about 7 s.
+  - The cold outskirts sit near 10°.
+  - **Hotter means faster:** top speed × (1 + 0.4·temp/100), so up to
+    +40%.
+  - Hot dragons' heads glow orange, so you can see who's running hot.
+  - Headless check: 10° in the outskirts (×1.04 speed), 33° at mid range
+    (×1.13), 69° at the sun (×1.28).
+- **Thrust is limited.** Boost runs from a tank of about 10 s ×
+  (1 + 0.6·temp/100), so about 16 s when fully hot. It refills at 0.4 s
+  per second when you're not boosting.
+  - Run it dry and it locks until 1.5 s has refilled, so you can't
+    stutter-boost.
+  - The HUD shows a THRUST bar that flashes red when empty.
+  - Boost still burns length, as before.
+- **Power-ups behave like Bit from Tron.**
+  - Each beat they snap to a new shape (spiky star / diamond / faceted
+    gem), with a white flash and a scale pop.
+  - Red dragonfire crystals favour the spiky "no" shape and change fastest
+    (3.2 Hz).
+- All the new numbers have sliders in the tuning panel under "Heat & thrust".
+
 ## Findings so far (headless bot runs)
 
 - **Performance:** the sim costs about 0.45 ms per step with 24 dragons and
