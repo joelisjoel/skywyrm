@@ -4,9 +4,9 @@
 import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=12';
 import { World, Dragon, hazardDist } from './sim.js?v=12';
 import { managePopulation, targetBots } from './bots.js?v=12';
-import { Renderer } from './render.js?v=16';
+import { Renderer } from './render.js?v=17';
 import { ChaseCam } from './camera.js?v=12';
-import { Input } from './input.js?v=13';
+import { Input } from './input.js?v=14';
 import { Hud } from './hud.js?v=13';
 import { Audio } from './audio.js?v=10';
 import { TunePanel } from './tune-panel.js?v=12';
@@ -140,10 +140,12 @@ function setState(s) {
 
 let hintTimer = 0;
 function showHints() {
-    const hints = ['Move the mouse to steer — the further from centre, the harder you turn',
-        'Hold click / W to boost (burns length) · right-click / S to brake for tight turns',
+    const hints = input.isTouch ? ['Touch the sky to steer — your dragon turns toward your finger. Lift it to fly straight',
+        'Hold ⚡ to boost (burns length) · ⏪ to brake for tight turns'] : ['Move the mouse to steer — the further from centre, the harder you turn',
+        'Hold click / W to boost (burns length) · right-click / S to brake for tight turns'];
+    hints.push(
         'Your head on their tail = you\'re out. Their head on your tail = dinner',
-        'Stay warm: the sun at the centre and crowds heat you up. Hotter dragons fly faster'];
+        'Stay warm: the sun at the centre and crowds heat you up. Hotter dragons fly faster');
     let i = 0;
     clearInterval(hintTimer);
     const next = () => { if (i < hints.length && state === 'play') hud.toast(hints[i++], 'hint'); else clearInterval(hintTimer); };
@@ -370,6 +372,15 @@ $('play').onclick = () => startPlay();
 $('again').onclick = () => playAgain();
 $('menu-btn').onclick = () => { if (online) leaveOnline(); setState('menu'); refreshLobby(); };
 $('resume').onclick = () => resume();
+
+// Touch devices: on-screen buttons, and a flag the CSS keys off.
+const touchMode = () => { document.body.dataset.touch = '1'; };
+if (input.isTouch) touchMode();
+input.onTouchMode = touchMode;
+input.holdButton($('t-boost'), 'boost');
+input.holdButton($('t-brake'), 'brake');
+input.holdButton($('t-fire'), 'fire');
+$('t-pause').addEventListener('pointerdown', (e) => { e.preventDefault(); pause(); });
 $('quit').onclick = () => {
     if (online) leaveOnline();
     else if (player && player.alive) world.kill(player, null, 'the menu');
@@ -663,6 +674,8 @@ function frame(nowMs) {
     }
     if (state !== 'dead') { document.body.dataset.card = ''; document.body.dataset.respawn = ''; }
     view.lives = game && livesTotal() > 0 ? { total: livesTotal(), left: livesLeft() } : null;
+    const fireUp = player && player.alive && (player.fire || player.breath > 0) ? '1' : '';
+    if (document.body.dataset.fire !== fireUp) document.body.dataset.fire = fireUp;
 
     // Soundtrack: calm in menus, driving while you fly, full band in the action.
     let level = 0;

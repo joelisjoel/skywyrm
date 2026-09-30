@@ -1,7 +1,10 @@
-// PC controls (spec §7). Mouse-flight: the cursor's offset from screen
+// Controls (spec §7). Mouse-flight: the cursor's offset from screen
 // centre, inside a steering circle, is the stick. Optional pointer-lock
 // "virtual stick" mode for players who don't want the cursor to escape.
-// Touch comes later; everything funnels into the same {sx, sy, …} struct.
+// Touch: the first finger on the sky is the cursor (the dragon turns
+// toward it; lift it to fly straight), a second finger boosts, and the
+// on-screen buttons hold boost / brake / fire. Everything funnels into the
+// same {sx, sy, …} struct.
 import { T } from './tunables.js?v=12';
 
 export class Input {
@@ -17,8 +20,44 @@ export class Input {
         this.lmb = false; this.rmb = false;
         this.settings = { invertY: false, mouseLock: false };
         this.onKey = null;                 // (code, event) for one-shot keys
+        this.touch = { id: null, extra: new Set(), last: -1e9, hold: { boost: false, brake: false, fire: false } };
+        this.isTouch = matchMedia('(pointer: coarse)').matches;
+
+        // ---- touch
+        const touchSeen = () => {
+            this.touch.last = performance.now();
+            if (!this.isTouch) { this.isTouch = true; if (this.onTouchMode) this.onTouchMode(); }
+        };
+        addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touchSeen(); }, true);
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'touch') return;
+            e.preventDefault();                           // no emulated mouse events, no scrolling
+            if (this.touch.id === null) {
+                this.touch.id = e.pointerId;
+                this.neutral.x = this.neutral.y = 0;
+                this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+            } else this.touch.extra.add(e.pointerId);    // a second finger boosts
+        }, { passive: false });
+        addEventListener('pointermove', (e) => {
+            if (e.pointerType !== 'touch') return;
+            touchSeen();
+            if (e.pointerId === this.touch.id) { this.mouse.x = e.clientX; this.mouse.y = e.clientY; }
+        });
+        const lift = (e) => {
+            if (e.pointerType !== 'touch') return;
+            touchSeen();
+            if (e.pointerId === this.touch.id) {            // steering finger up: fly straight
+                this.touch.id = null;
+                this.mouse.x = innerWidth / 2; this.mouse.y = innerHeight / 2;
+            }
+            this.touch.extra.delete(e.pointerId);
+        };
+        addEventListener('pointerup', lift);
+        addEventListener('pointercancel', lift);
 
         addEventListener('mousemove', (e) => {
+            // Taps also send emulated mouse events; they mustn't steer.
+            if (performance.now() - this.touch.last < 1000) return;
             if (document.pointerLockElement === canvas) {
                 const s = T.lockSensitivity;
                 this.virt.x += e.movementX * s; this.virt.y += e.movementY * s;
@@ -58,6 +97,15 @@ export class Input {
     }
 
     circleRadius() { return T.steerCircle * Math.min(innerWidth, innerHeight); }
+
+    // An on-screen button that counts as held while a finger is on it.
+    holdButton(el, key) {
+        const on = (e) => { e.preventDefault(); this.touch.hold[key] = true; el.classList.add('down'); };
+        const off = () => { this.touch.hold[key] = false; el.classList.remove('down'); };
+        el.addEventListener('pointerdown', on, { passive: false });
+        for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, off);
+        el.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
 
     requestLock() {
         if (this.settings.mouseLock && this.canvas.requestPointerLock && document.pointerLockElement !== this.canvas) {
@@ -111,9 +159,10 @@ export class Input {
         if (kx || ky) { x = kx * T.keySteer; y = (this.settings.invertY ? -ky : ky) * T.keySteer; }
         out.sx = x; out.sy = y;
         out.roll = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-        out.boost = this.lmb || k.has('KeyW') || k.has('Space');
-        out.brake = this.rmb || k.has('KeyS');
-        out.fire = k.has('KeyE') || k.has('KeyF');
+        const h = this.touch.hold;
+        out.boost = this.lmb || k.has('KeyW') || k.has('Space') || h.boost || this.touch.extra.size > 0;
+        out.brake = this.rmb || k.has('KeyS') || h.brake;
+        out.fire = k.has('KeyE') || k.has('KeyF') || h.fire;
         return out;
     }
 

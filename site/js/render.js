@@ -810,7 +810,7 @@ export class Renderer {
         this.dustGeo.attributes.position.needsUpdate = true;
 
         this.camera.updateMatrixWorld();
-        this.mirrorOn = this.view.mirror && view.state === 'play';
+        this.mirrorOn = this.view.mirror && view.state === 'play' && innerWidth >= 640;   // no room for it on a phone
         // Side vision is for flying: menus and the death camera use the
         // plain view, which spares the six extra cube-map renders.
         this.wideNow = this.view.wide && (view.state === 'play' || view.state === 'pause');

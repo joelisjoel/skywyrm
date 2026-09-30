@@ -305,3 +305,35 @@ body[data-overlay=dojo] #dojo { display: block; }
 #card-jade, #respawn-jade { color: var(--jade); font-weight: 700; font-size: 14px; margin: -4px 0 12px; }
 #respawn-jade { margin: 0; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
 #card-jade:empty, #respawn-jade:empty { display: none; }
+
+/* ---------------- Touch controls + small screens ---------------- */
+#game { touch-action: none; }
+html, body { overscroll-behavior: none; -webkit-touch-callout: none; }
+#touch-ui { display: none; }
+body[data-touch="1"][data-state=play] #touch-ui { display: block; }
+#touch-ui button { position: fixed; margin: 0; padding: 0; border-radius: 50%; display: grid; place-items: center; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    background: rgba(18, 16, 14, 0.42); border: 1px solid rgba(243, 221, 164, 0.35); color: #F3DDA4;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 4; }
+#touch-ui button.down { background: rgba(243, 221, 164, 0.35); transform: scale(0.94); }
+#touch-ui svg { width: 46%; height: 46%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#t-boost { right: max(18px, env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 76px; height: 76px; color: #64D2FF; }
+#t-fire { right: calc(max(18px, env(safe-area-inset-right)) + 10px); bottom: calc(112px + env(safe-area-inset-bottom)); width: 56px; height: 56px; color: #FF6B35; }
+#t-brake { right: calc(max(18px, env(safe-area-inset-right)) + 78px); bottom: calc(112px + env(safe-area-inset-bottom)); width: 56px; height: 56px; }
+body:not([data-fire="1"]) #t-fire { opacity: 0.3; }
+#t-pause { left: 14px; top: calc(12px + env(safe-area-inset-top)); width: 40px; height: 40px; }
+body[data-touch="1"] #tune-btn, body[data-touch="1"] #hud-fps { display: none; }
+body[data-touch="1"][data-state=play] #feed { top: 60px; }
+body[data-touch="1"] #hud-stats { bottom: calc(18px + env(safe-area-inset-bottom)); }
+@media (max-width: 640px) {
+    #board { width: 168px; right: 10px; top: 10px; font-size: 11.5px; padding: 6px 10px; }
+    #board .row:nth-child(n+6):not(.me) { display: none; }
+    #radar { width: 150px; height: 102px; bottom: calc(6px + env(safe-area-inset-bottom)); }
+    #hud-len { font-size: 34px; }
+    #hud-gauges { gap: 7px; }
+    .g { width: 34px; height: 34px; }
+    .g .icon { inset: 9px; width: 16px; height: 16px; }
+    #voice-caption { bottom: 150px; }
+    #voice-caption .zh { font-size: 32px; }
+    .toast.hint { max-width: 86vw; }
+}
