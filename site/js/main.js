@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=10';
-import { World, Dragon, hazardDist } from './sim.js?v=10';
-import { managePopulation, targetBots } from './bots.js?v=10';
-import { Renderer } from './render.js?v=10';
-import { ChaseCam } from './camera.js?v=10';
-import { Input } from './input.js?v=10';
-import { Hud } from './hud.js?v=11';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=11';
+import { World, Dragon, hazardDist } from './sim.js?v=11';
+import { managePopulation, targetBots } from './bots.js?v=11';
+import { Renderer } from './render.js?v=11';
+import { ChaseCam } from './camera.js?v=11';
+import { Input } from './input.js?v=11';
+import { Hud } from './hud.js?v=12';
 import { Audio } from './audio.js?v=9';
-import { TunePanel } from './tune-panel.js?v=10';
+import { TunePanel } from './tune-panel.js?v=11';
 import { checkName } from './names.js?v=8';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=10';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=11';
 import { serverUrl } from './net-config.js?v=8';
 
 loadTune();
@@ -98,6 +98,7 @@ function startPlay() {
     // First few runs: nearby bots leave you alone for 45 s (spec §6.8).
     world.gentleTime = settings.runs <= 3 ? 45 : 0;
     player.wallAssist = settings.beginner;
+    beginnerRules();
     world.spawn(player, T.spawnMass);
     managePopulation(world);
     lastTarget = targetBots(world);
@@ -392,7 +393,9 @@ const bindCheck = (id, key, after) => {
     const el = $(id); el.checked = !!settings[key];
     el.onchange = () => { settings[key] = el.checked; saveSettings(); after && after(); };
 };
-const syncBeginner = () => { $('opt-beginner').checked = $('solo-beginner').checked = settings.beginner; if (player && !online) player.wallAssist = settings.beginner; };
+// Solo beginner: walls steer you clear and bots stay gentler (like beginner rooms).
+function beginnerRules() { if (online) return; if (settings.beginner) world.rules.botAggrMax = 0.5; else delete world.rules.botAggrMax; }
+const syncBeginner = () => { $('opt-beginner').checked = $('solo-beginner').checked = settings.beginner; if (player && !online) player.wallAssist = settings.beginner; beginnerRules(); };
 bindCheck('opt-beginner', 'beginner', syncBeginner);
 bindCheck('solo-beginner', 'beginner', syncBeginner);
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));

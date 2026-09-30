@@ -21,6 +21,9 @@ export const LIMITS = {
     worldIdleMs: 10 * 60 * 1000, // free a room's world after 10 min empty
 };
 
+// Rule overrides for beginner rooms (see World.rule): gentler bots.
+const BEGINNER_RULES = { botAggrMax: 0.5 };
+
 const TICK = 1 / 30;
 const SNAP_EVERY = 2;            // 15 snapshots/s
 const PARK_DELAY = 3;            // s of flight (still vulnerable) before folded wings take effect
@@ -52,7 +55,7 @@ function pathOf(d) {
 
 function dragonMeta(d) {
     return {
-        id: d.id, name: d.name, c1: d.color, c2: d.color2, bot: d.isBot, human: d.human,
+        id: d.id, name: d.name, c1: d.color, c2: d.color2, bot: d.isBot, human: d.human, mood: d.mood || '',
         s: stateOf(d), path: pathOf(d),
     };
 }
@@ -85,7 +88,7 @@ export class Room {
         if (this.world) return;
         const w = new World(this.meta.arena, 'server');
         w.gentleTime = 0;
-        w.rules = { ...(this.meta.rules || {}) };             // per-room overrides of rule tunables
+        w.rules = { ...(this.meta.beginner ? BEGINNER_RULES : {}), ...(this.meta.rules || {}) };   // per-room overrides of rule tunables
         w.botTarget = () => this.botTarget();
         w.spawnAmbient(T.orbTarget);
         this.world = w;
@@ -93,7 +96,7 @@ export class Room {
         managePopulation(w, true);
         for (let i = 0; i < 10 * 30; i++) { w.step(TICK); managePopulation(w); }   // warm up
         w.orbLog.length = 0;
-        this.activeSince = w.time;
+        this.activeSince = w.ageStart = w.time;             // bots grow bolder as the room ages
     }
 
     // Bots fill the room like solo play: popStart bots when it wakes, +1
@@ -109,7 +112,7 @@ export class Room {
         const wasEmpty = this.humans === 0;
         this.ensureWorld();
         if (wasEmpty) {
-            this.activeSince = this.world.time;
+            this.activeSince = this.world.ageStart = this.world.time;
             this.registry.occupied(this);
         }
         const d = new Dragon(safePlayerName(rawName), false);

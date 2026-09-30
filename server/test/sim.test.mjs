@@ -1,6 +1,6 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
-import { World, Dragon, T } from '../../docs/wyrm/js/shared.js';
+import { World, Dragon, T, managePopulation, aggression } from '../../docs/wyrm/js/shared.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
@@ -40,5 +40,34 @@ function setup(beadFromEnd) {
     w.rules.tailBite = 0;
     w.collide();
     check(!a.alive, 'with tailBite off (room rule) the tip is lethal again');
+}
+// Bots: aggression ramps with the world's age; beginner rooms cap it.
+{
+    const w = new World('sky', 'server');
+    w.ageStart = 0;
+    w.time = 0;
+    check(Math.abs(aggression(w) - T.aggrStart) < 1e-9, `aggression starts at ${T.aggrStart}`);
+    w.time = T.aggrRampMin * 60;
+    check(aggression(w) === 1, `full aggression after ${T.aggrRampMin} min`);
+    w.rules.botAggrMax = 0.5;
+    check(aggression(w) === 0.5, 'beginner rooms cap aggression at 0.5');
+}
+// Every personality flies a busy sky for 60 s without errors, and the mix
+// shifts toward hunters as the world ages.
+{
+    const w = new World('sky', 'server');
+    w.botTarget = () => 25;
+    w.spawnAmbient(T.orbTarget);
+    w.ageStart = 0;
+    managePopulation(w, true);
+    const early = w.dragons.filter((d) => d.mood === 'hunter' || d.mood === 'kingslayer').length;
+    for (let i = 0; i < 60 * 30; i++) { w.step(1 / 30); managePopulation(w); }
+    const moods = new Set(w.dragons.map((d) => d.mood));
+    check(w.dragons.length >= 20 && moods.size >= 3, `60 s of bots with moods: ${[...moods].join(', ')}`);
+    w.time = w.ageStart + T.aggrRampMin * 60;
+    for (const d of [...w.dragons]) w.removeDragon(d);
+    managePopulation(w, true);
+    const late = w.dragons.filter((d) => d.mood === 'hunter' || d.mood === 'kingslayer').length;
+    check(late > early, `more hunters when the room is old (${early} → ${late} of 25)`);
 }
 console.log(`\n${ok} sim checks passed`);

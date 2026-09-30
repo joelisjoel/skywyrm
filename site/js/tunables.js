@@ -96,6 +96,10 @@ export const DEFAULTS = {
     biteMult: 5,            // each bitten bead is worth this many orbs
     lives: 3,               // lives per game (0 = endless: every death ends the run)
     respawnDelay: 3,        // s between lives
+    botMoods: 1,            // bots get personalities (0 = all classic)
+    aggrStart: 0.25,        // bot aggression when a world wakes…
+    aggrRampMin: 15,        // …rising to full over this many minutes
+    botAggrMax: 1,          // cap (beginner rooms use 0.5)
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -176,6 +180,10 @@ export const PANEL = [
     ['biteMult', 1, 15, 1, 'Rules'],
     ['lives', 0, 9, 1, 'Rules'],
     ['respawnDelay', 1, 10, 0.5, 'Rules'],
+    ['botMoods', 0, 1, 1, 'Rules'],
+    ['aggrStart', 0, 1, 0.05, 'Rules'],
+    ['aggrRampMin', 1, 60, 1, 'Rules'],
+    ['botAggrMax', 0, 1, 0.05, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

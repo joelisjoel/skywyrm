@@ -4,8 +4,9 @@
 // server. Other dragons are drawn ~120 ms in the past so their motion is
 // smooth between snapshots.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=10';
-import { World, Dragon } from './sim.js?v=10';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=11';
+import { World, Dragon } from './sim.js?v=11';
+import { MOODS } from './bots.js?v=11';
 
 const INTERP = 0.12;
 const _qa = new Quaternion(), _qb = new Quaternion();
@@ -86,6 +87,7 @@ export class NetGame {
         }
         d.name = String(info.name || '').slice(0, 24);    // already sanitised by the server; drawn as text only
         d.color = info.c1 | 0; d.color2 = info.c2 | 0; d.isBot = !!info.bot; d.human = !!info.human;
+        d.mood = MOODS.includes(info.mood) ? info.mood : '';
         const s = info.s;
         d.pos.set(s[1], s[2], s[3]);
         d.quat.set(s[4], s[5], s[6], s[7]).normalize();

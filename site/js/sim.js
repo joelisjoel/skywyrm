@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=10';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=11';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -626,11 +626,14 @@ export class World {
 
     // Is there a lethal tail (not owned by `selfId`) within `pad` of p?
     // Used by bot feelers.
-    tailDanger(p, selfId, pad) {
+    // safeTip: { id, from } — that dragon's beads from `from` on are a tail
+    // tip the caller means to bite, so they don't count as danger.
+    tailDanger(p, selfId, pad, safeTip = null) {
         let hit = 0;
         this.queryBeads(p, (i) => {
             const owner = this.bOwner[i];
             if (owner === selfId) return false;
+            if (safeTip && owner === safeTip.id && this.bIdx[i] >= safeTip.from) return false;
             const d = this.byId.get(owner);
             if (!d || d.protect > 0) return false;
             const dx = this.bx[i] - p.x, dy = this.by[i] - p.y, dz = this.bz[i] - p.z;

@@ -2,7 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=10';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=11';
+import { MOOD_ICON } from './bots.js?v=11';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -110,7 +111,7 @@ export class Hud {
             const sx = pr.x, sy = pr.y;
             ctx.globalAlpha = Math.min(1, (50 - dist) / 15);
             ctx.fillStyle = '#fff';
-            ctx.fillText(d.name, sx, sy - 14 - 60 / Math.max(4, dist));
+            ctx.fillText(d.mood && MOOD_ICON[d.mood] ? MOOD_ICON[d.mood] + ' ' + d.name : d.name, sx, sy - 14 - 60 / Math.max(4, dist));
         }
         ctx.globalAlpha = 1;
         // Rear-view mirror frame.
