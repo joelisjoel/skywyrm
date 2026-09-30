@@ -4,7 +4,7 @@
 import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=11';
 import { World, Dragon, hazardDist } from './sim.js?v=11';
 import { managePopulation, targetBots } from './bots.js?v=11';
-import { Renderer } from './render.js?v=13';
+import { Renderer } from './render.js?v=14';
 import { ChaseCam } from './camera.js?v=11';
 import { Input } from './input.js?v=12';
 import { Hud } from './hud.js?v=12';
@@ -25,7 +25,7 @@ const hud = new Hud();
 const audio = new Audio();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, arena: 'sky', name: '', runs: 0, v: 2 };
+const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, gfx: 'auto', arena: 'sky', name: '', runs: 0, v: 2 };
 try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     Object.assign(settings, saved);
@@ -402,6 +402,21 @@ bindCheck('solo-beginner', 'beginner', syncBeginner);
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
 bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
 bindCheck('opt-voice', 'voice', () => audio.setVoice(settings.voice));
+// Graphics: Auto starts high and steps down once if play runs slow.
+$('opt-gfx').value = settings.gfx;
+$('opt-gfx').onchange = () => { settings.gfx = $('opt-gfx').value; saveSettings(); gfxAuto.t = 0; gfxAuto.n = 0; renderer.setQuality(settings.gfx === 'low' ? 'low' : 'high'); };
+renderer.setQuality(settings.gfx === 'low' ? 'low' : 'high');
+const gfxAuto = { t: 0, n: 0 };
+function autoGraphics() {
+    if (settings.gfx !== 'auto' || renderer.quality === 'low' || state !== 'play') { gfxAuto.t = 0; return; }
+    const now = performance.now() / 1000;             // wall clock: frame dt is capped
+    if (!gfxAuto.t) { gfxAuto.t = now; gfxAuto.n = 0; return; }
+    gfxAuto.n++;
+    if (now - gfxAuto.t < 5) return;
+    const fps = gfxAuto.n / (now - gfxAuto.t);
+    gfxAuto.t = 0;
+    if (fps < 40) { renderer.setQuality('low'); hud.toast('Graphics set to Low for smoother flying', 'hint'); }
+}
 bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.invertY));
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
 bindCheck('opt-assist', 'assist', () => world && (world.assist = settings.assist));
@@ -596,6 +611,7 @@ function frame(nowMs) {
         setPauseNote(left > 0 ? `Leaving the sky in ${left}… you keep flying (and can still be hit) until then.` : 'Folding…');
     }
 
+    autoGraphics();
     renderer.update(world, view, dt, now);
     hud.draw(world, view, renderer, input, now);
     hud.updateStats(world, view, now, fps);

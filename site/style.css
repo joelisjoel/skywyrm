@@ -275,3 +275,5 @@ body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
 #voice-caption .zh { font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-size: 40px; line-height: 1.1; color: #F3DDA4; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75), 0 0 24px rgba(217, 181, 108, 0.35); letter-spacing: 0.08em; }
 #voice-caption .py { font-size: 13px; letter-spacing: 0.08em; color: rgba(245, 238, 225, 0.8); margin-top: 2px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
 #voice-caption .en { font-size: 12px; font-style: italic; color: rgba(245, 238, 225, 0.6); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+
+#opt-gfx { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--gold-line); background: rgba(0, 0, 0, 0.35); color: #EDE3D1; }

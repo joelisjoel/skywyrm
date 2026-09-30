@@ -60,14 +60,19 @@ function setup(beadFromEnd) {
     w.spawnAmbient(T.orbTarget);
     w.ageStart = 0;
     managePopulation(w, true);
-    const early = w.dragons.filter((d) => d.mood === 'hunter' || d.mood === 'kingslayer').length;
     for (let i = 0; i < 60 * 30; i++) { w.step(1 / 30); managePopulation(w); }
     const moods = new Set(w.dragons.map((d) => d.mood));
     check(w.dragons.length >= 20 && moods.size >= 3, `60 s of bots with moods: ${[...moods].join(', ')}`);
-    w.time = w.ageStart + T.aggrRampMin * 60;
-    for (const d of [...w.dragons]) w.removeDragon(d);
-    managePopulation(w, true);
-    const late = w.dragons.filter((d) => d.mood === 'hunter' || d.mood === 'kingslayer').length;
-    check(late > early, `more hunters when the room is old (${early} → ${late} of 25)`);
+    // The mix shift, measured on 300 fresh bots at each age (25 is too few:
+    // the random draw can land the wrong way round).
+    const share = (t) => {
+        for (const d of [...w.dragons]) w.removeDragon(d);
+        w.time = w.ageStart + t;
+        w.botTarget = () => 300;
+        managePopulation(w, true);
+        return w.dragons.filter((d) => d.mood === 'hunter' || d.mood === 'kingslayer').length / w.dragons.length;
+    };
+    const young = share(0), old = share(T.aggrRampMin * 60);
+    check(old - young > 0.12, `more hunters when the room is old (${Math.round(young * 100)}% → ${Math.round(old * 100)}% of 300)`);
 }
 console.log(`\n${ok} sim checks passed`);

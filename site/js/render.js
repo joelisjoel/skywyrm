@@ -780,11 +780,12 @@ export class Renderer {
             const r = this.renderer;
             r.setRenderTarget(this.mainRT);
             r.render(this.scene, this.camera);
-            if (this.view.wide || this.mirrorOn) {
+            // Low quality refreshes the side/rear cube every other frame.
+            if ((this.view.wide || this.mirrorOn) && (this.quality !== 'low' || (this.frameNo = (this.frameNo || 0) + 1) % 2 === 0)) {
                 this.cubeCam.position.copy(this.camera.position);
                 this.cubeCam.update(r, this.scene);
             }
-            this.renderBloom();
+            if (this.quality !== 'low') this.renderBloom();
             r.setRenderTarget(null);
             const u = this.warpMat.uniforms, aspect = innerWidth / innerHeight;
             const tanHalf = Math.tan(this.camera.fov * Math.PI / 360), rMax = Math.hypot(aspect, 1);
@@ -794,9 +795,23 @@ export class Renderer {
             u.wide.value = this.view.wide ? 1 : 0; u.mirror.value = this.mirrorOn ? 1 : 0;
             const m = this.mirrorRect;
             u.mRect.value.set(m.x, m.y, m.w, m.h);
-            u.bloom.value = this.bloomStrength;
+            u.bloom.value = this.quality === 'low' ? 0 : this.bloomStrength;
             r.render(this.warpScene, this.warpCam);
         }
+    }
+
+    // Graphics quality: 'high' (default) or 'low' — native pixel ratio, a
+    // 768 cube and bloom, vs pixel ratio 1, a 384 cube every other frame,
+    // no bloom and no MSAA.
+    setQuality(q) {
+        if (q === this.quality) return;
+        this.quality = q;
+        const low = q === 'low';
+        this.renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+        this.cubeRT.setSize(low ? 384 : 768, low ? 384 : 768);
+        this.mainRT.samples = low ? 0 : 4;
+        this.mainRT.dispose();
+        this.resize();
     }
 
     // Bright parts of the HDR frame → ¼-res bloom texture (bloomA).
