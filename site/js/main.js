@@ -4,7 +4,7 @@
 import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=11';
 import { World, Dragon, hazardDist } from './sim.js?v=11';
 import { managePopulation, targetBots } from './bots.js?v=11';
-import { Renderer } from './render.js?v=12';
+import { Renderer } from './render.js?v=13';
 import { ChaseCam } from './camera.js?v=11';
 import { Input } from './input.js?v=12';
 import { Hud } from './hud.js?v=12';

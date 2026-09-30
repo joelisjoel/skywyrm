@@ -259,64 +259,66 @@ export class Renderer {
         if (this.arenaGroup) { this.scene.remove(this.arenaGroup); disposeTree(this.arenaGroup); }
         const g = this.arenaGroup = new THREE.Group();
         this.wallMats = [];
+        this.animated = [];                 // shader materials with a `time` uniform
         if (arena.kind === 'cylinder') {
-            this.scene.background = new THREE.Color(0x1b1740);
-            this.scene.fog = new THREE.Fog(0x2a1f55, 90, 560);
-            g.add(skyDome(0x0d0b2e, 0x3a2470, 0xff7a4a));
-            // Cloud sea: flat plane + grid for motion reference.
-            const floor = new THREE.Mesh(new THREE.CircleGeometry(arena.radius * 4, 64),
-                new THREE.MeshLambertMaterial({ color: 0x6f5aa8 }));
-            floor.rotation.x = -Math.PI / 2; floor.position.y = arena.floor - 0.05;
-            g.add(floor);
-            const grid = new THREE.GridHelper(arena.radius * 8, Math.round(arena.radius * 8 / 10), 0xb9a8ff, 0x9c86e8);
-            grid.position.y = arena.floor + 0.02;
-            grid.material.transparent = true; grid.material.opacity = 0.35;
-            g.add(grid);
+            // Skyhold at golden hour: a warm low sun, haze, a sea of clouds,
+            // karst pillars and ink-wash ridges fading into the distance.
+            const HAZE = 0xC99A6E;
+            this.scene.background = new THREE.Color(HAZE);
+            this.scene.fog = new THREE.FogExp2(HAZE, 0.0015);
+            g.add(skyDome(0x2A3A5C, 0xB07A52, 0xFFC98A));
+            this.setLight(0xFFD7A6, 2.6, new THREE.Vector3(-1, 0.32, -0.55), 0xBFD2FF, 0x6E5238, 0.75);
+            g.add(lowSun(this.glowTex, new THREE.Vector3(-1, 0.32, -0.55)));
+            const sea = cloudSea(arena, HAZE);
+            this.animated.push(sea.material);
+            g.add(sea);
+            g.add(karstPillars(arena));
+            for (const [r, h, amp, col, seed] of [[1180, 60, 150, 0x6E7A8E, 1], [1300, 40, 190, 0x8C93A0, 2], [1420, 30, 230, 0xAFA79F, 3]]) {
+                g.add(ridgeRing(r, arena.floor + h, amp, col, seed));
+            }
             // Rings on the cloud sea mark the rich middle.
             const rings = [];
             for (let rr = 25; rr < arena.radius; rr += rr < 100 ? 25 : 50) {
                 for (let k = 0; k < 96; k++) {
                     const a0 = k / 96 * Math.PI * 2, a1 = (k + 1) / 96 * Math.PI * 2;
-                    rings.push(Math.cos(a0) * rr, 0.08, Math.sin(a0) * rr, Math.cos(a1) * rr, 0.08, Math.sin(a1) * rr);
+                    rings.push(Math.cos(a0) * rr, 0.3, Math.sin(a0) * rr, Math.cos(a1) * rr, 0.3, Math.sin(a1) * rr);
                 }
             }
             const rg = new THREE.BufferGeometry();
             rg.setAttribute('position', new THREE.Float32BufferAttribute(rings, 3));
-            g.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.35 })));
-            // Storm wall: vertical lines + rings, brightens as you approach.
+            g.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xFFE3A8, transparent: true, opacity: 0.22 })));
+            // Storm wall: a faint golden qi barrier with sparse ribs, brightening as you approach.
+            const R = arena.radius, H = arena.band;
             const pts = [];
-            const R = arena.radius, H = arena.band;   // no roof: wall drawn to the food band
-            for (let k = 0; k < 144; k++) {
-                const a = k / 144 * Math.PI * 2;
+            for (let k = 0; k < 72; k++) {
+                const a = k / 72 * Math.PI * 2;
                 pts.push(Math.cos(a) * R, arena.floor, Math.sin(a) * R, Math.cos(a) * R, H, Math.sin(a) * R);
             }
-            for (let y = 0; y <= H; y += 20) {
-                for (let k = 0; k < 72; k++) {
-                    const a0 = k / 72 * Math.PI * 2, a1 = (k + 1) / 72 * Math.PI * 2;
-                    pts.push(Math.cos(a0) * R, y, Math.sin(a0) * R, Math.cos(a1) * R, y, Math.sin(a1) * R);
-                }
-            }
-            g.add(this.wallLines(pts, 0x9fe8ff));
-            const wallSurf = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 72, 1, true),
-                new THREE.MeshBasicMaterial({ color: 0x6fd6ff, transparent: true, opacity: 0.05, side: THREE.BackSide, depthWrite: false }));
-            wallSurf.position.y = H / 2;
-            g.add(wallSurf);
-            this.wallMats.push(wallSurf.material);
+            g.add(this.wallLines(pts, 0xF0CC86));
+            const wall = qiWall(R, H);
+            wall.position.y = H / 2;
+            this.animated.push(wall.material);
+            this.wallMats.push(wall.material);
+            g.add(wall);
         } else {
             this.scene.background = new THREE.Color(0x07060f);
-            this.scene.fog = new THREE.Fog(0x07060f, 90, 560);
+            this.scene.fog = new THREE.FogExp2(0x0B0A1C, 0.0012);
+            this.setLight(0xE8DCFF, 1.6, new THREE.Vector3(0.4, 1, 0.3), 0x9DB0FF, 0x3A2A20, 0.6);
+            const neb = nebulaDome();
+            this.animated.push(neb.material);
+            g.add(neb);
             const R = arena.radius;
             // Shell: latitude/longitude lines.
             const pts = [];
             const seg = 64;
-            for (let lat = -80; lat <= 80; lat += 10) {
+            for (let lat = -80; lat <= 80; lat += 20) {
                 const phi = lat * Math.PI / 180, rr = Math.cos(phi) * R, y = Math.sin(phi) * R;
                 for (let k = 0; k < seg; k++) {
                     const a0 = k / seg * Math.PI * 2, a1 = (k + 1) / seg * Math.PI * 2;
                     pts.push(Math.cos(a0) * rr, y, Math.sin(a0) * rr, Math.cos(a1) * rr, y, Math.sin(a1) * rr);
                 }
             }
-            for (let lon = 0; lon < 360; lon += 10) {
+            for (let lon = 0; lon < 360; lon += 20) {
                 const th = lon * Math.PI / 180;
                 for (let k = 0; k < seg / 2; k++) {
                     const p0 = -Math.PI / 2 + k / (seg / 2) * Math.PI, p1 = -Math.PI / 2 + (k + 1) / (seg / 2) * Math.PI;
@@ -324,9 +326,9 @@ export class Renderer {
                         Math.cos(p1) * Math.cos(th) * R, Math.sin(p1) * R, Math.cos(p1) * Math.sin(th) * R);
                 }
             }
-            g.add(this.wallLines(pts, 0x3de0ff));
+            g.add(this.wallLines(pts, 0xE8C27A));
             const shell = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 32),
-                new THREE.MeshBasicMaterial({ color: 0x3de0ff, transparent: true, opacity: 0.04, side: THREE.BackSide, depthWrite: false }));
+                new THREE.MeshBasicMaterial({ color: 0xE8C27A, transparent: true, opacity: 0.03, side: THREE.BackSide, depthWrite: false }));
             g.add(shell);
             this.wallMats.push(shell.material);
             // Distant stars.
@@ -357,8 +359,16 @@ export class Renderer {
         this.sun = { core, halo, corona };
         this.scene.add(g);
         // Image-based light from this sky, so glossy scales pick up its colours.
-        const env = arena.kind === 'cylinder' ? [0x0d0b2e, 0x3a2470, 0xff7a4a] : [0x07060f, 0x1a1040, 0x6a4a20];
+        const env = arena.kind === 'cylinder' ? [0x2A3A5C, 0xB07A52, 0xFFC98A] : [0x0B0A1C, 0x2A1E4A, 0x7A5A30];
         this.setEnvironment(...env);
+    }
+
+    // Key light (the low sun) + sky/ground fill for this arena.
+    setLight(color, intensity, dir, sky, ground, hemi) {
+        this.keyLight.color.set(color);
+        this.keyLight.intensity = intensity;
+        this.keyLight.position.copy(dir).normalize().multiplyScalar(100);
+        this.hemi.color.set(sky); this.hemi.groundColor.set(ground); this.hemi.intensity = hemi;
     }
 
     setEnvironment(top, mid, hor) {
@@ -749,9 +759,11 @@ export class Renderer {
         // Walls brighten as the player approaches (spec §9).
         const warn = view.wallWarn || 0;
         for (const m of this.wallMats) {
+            if (m.uniforms) { m.uniforms.warn.value = warn; continue; }
             const base = m.isLineBasicMaterial ? 0.12 : 0.04;
             m.opacity = base + warn * (m.isLineBasicMaterial ? 0.7 : 0.25);
         }
+        for (const m of this.animated || []) m.uniforms.time.value = time;
 
         // Dust follows the camera (wrapped), so motion always reads.
         const dp = this.dustGeo.attributes.position.array, base = this.dustBase, cam = this.camera.position;
@@ -981,6 +993,154 @@ function skyDome(top, mid, horizon, radius = 1500) {
             }`,
     });
     const m = new THREE.Mesh(geo, mat);
+    m.renderOrder = -1;
+    m.onBeforeRender = (r, s, cam) => m.position.setFromMatrixPosition(cam.matrixWorld);
+    return m;
+}
+
+
+// ------------------------------------------------ landscape (Skyhold / The Orb)
+const NOISE_GLSL = `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float fbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 5; i++) { v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5; }
+    return v;
+}`;
+
+// A sea of clouds below Skyhold: drifting fbm billows, warm-lit tops and
+// cool shadows, melting into the haze with distance.
+function cloudSea(arena, haze) {
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 }, top: { value: new THREE.Color(0xEFD9BE) }, shade: { value: new THREE.Color(0x6F6479) },
+            haze: { value: new THREE.Color(haze) } },
+        vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+        fragmentShader: NOISE_GLSL + `
+            uniform float time; uniform vec3 top, shade, haze; varying vec3 vW;
+            void main() {
+                vec2 p = vW.xz * 0.011 + vec2(time * 0.012, time * 0.005);
+                float n = fbm(p) * 0.65 + fbm(p * 2.6 - vec2(time * 0.02, 0.0)) * 0.45;
+                float c = smoothstep(0.38, 0.82, n);
+                vec3 col = mix(shade, top, c);
+                float d = length(vW.xz - cameraPosition.xz);
+                col = mix(col, haze, clamp(1.0 - exp(-pow(d / 900.0, 1.6) * 2.2), 0.0, 1.0));
+                gl_FragColor = vec4(col, 1.0);
+                #include <colorspace_fragment>
+            }`,
+    });
+    const m = new THREE.Mesh(new THREE.CircleGeometry(arena.radius * 6, 96), mat);
+    m.rotation.x = -Math.PI / 2; m.position.y = arena.floor - 0.05;
+    return m;
+}
+
+// Tall karst pillars (Zhangjiajie-style) rising from the clouds outside
+// the storm wall, pines on top. Purely scenery.
+function karstPillars(arena) {
+    const g = new THREE.Group();
+    const stone = new THREE.MeshStandardMaterial({ color: 0x4E4A45, roughness: 0.95, flatShading: true });
+    const pine = new THREE.MeshStandardMaterial({ color: 0x1F3528, roughness: 0.9, flatShading: true });
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 26; i++) {
+        const a = rnd() * Math.PI * 2, dist = arena.radius * (1.7 + rnd() * 1.8);
+        const h = 90 + rnd() * 300, r = 10 + rnd() * 22;
+        const geo = new THREE.CylinderGeometry(r * (0.7 + rnd() * 0.3), r * 1.25, h, 9, 10);
+        const pos = geo.attributes.position;
+        for (let v = 0; v < pos.count; v++) {
+            const y = pos.getY(v), k = 1 + (Math.sin(y * 0.09 + i) * 0.12 + (rnd() - 0.5) * 0.18);
+            pos.setX(v, pos.getX(v) * k); pos.setZ(v, pos.getZ(v) * k);
+        }
+        geo.computeVertexNormals();
+        const col = new THREE.Mesh(geo, stone);
+        col.position.set(Math.cos(a) * dist, arena.floor + h / 2 - 20, Math.sin(a) * dist);
+        g.add(col);
+        for (let t = 0; t < 5; t++) {
+            const tr = new THREE.Mesh(new THREE.ConeGeometry(2 + rnd() * 3, 7 + rnd() * 8, 6), pine);
+            const ta = rnd() * Math.PI * 2, td = rnd() * r * 0.7;
+            tr.position.set(col.position.x + Math.cos(ta) * td, arena.floor + h - 20 + 4, col.position.z + Math.sin(ta) * td);
+            g.add(tr);
+        }
+    }
+    return g;
+}
+
+// One ring of distant mountains, flat-coloured like an ink-wash layer
+// (no fog: each ring is pre-tinted lighter with distance).
+function ridgeRing(radius, base, amp, color, seed) {
+    const N = 360, pos = [];
+    const ht = (a) => {
+        let v = 0, f = 1, w = 1;
+        for (let o = 0; o < 4; o++) { v += w * (0.5 + 0.5 * Math.sin(a * f * 3 + seed * 1.7 + o * 2.1) * Math.cos(a * f * 5.3 + seed)); f *= 2.1; w *= 0.5; }
+        return base + amp * Math.pow(v / 1.9, 1.6);
+    };
+    for (let k = 0; k < N; k++) {
+        const a0 = k / N * Math.PI * 2, a1 = (k + 1) / N * Math.PI * 2;
+        const x0 = Math.cos(a0) * radius, z0 = Math.sin(a0) * radius, x1 = Math.cos(a1) * radius, z1 = Math.sin(a1) * radius;
+        const h0 = ht(a0), h1 = ht(a1);
+        pos.push(x0, base - 80, z0, x1, base - 80, z1, x1, h1, z1, x0, base - 80, z0, x1, h1, z1, x0, h0, z0);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, fog: false, side: THREE.DoubleSide }));
+    m.renderOrder = -0.5;
+    return m;
+}
+
+// The low golden sun on the horizon (scenery; the arena's heat "sun" is separate).
+function lowSun(tex, dir) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xFFD08A, blending: THREE.AdditiveBlending,
+        depthWrite: false, transparent: true, fog: false }));
+    s.position.copy(dir).normalize().multiplyScalar(1400);
+    s.scale.setScalar(900);
+    s.renderOrder = -0.8;
+    s.onBeforeRender = (r, sc, cam) => { s.position.copy(dir).normalize().multiplyScalar(1400).add(cam.position); };
+    return s;
+}
+
+// Storm wall as a faint golden qi curtain: slow flowing bands, brighter low
+// down; `warn` (0..1) lights it up as you get close.
+function qiWall(R, H) {
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 }, warn: { value: 0 }, col: { value: new THREE.Color(0xFFD28A) } },
+        vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+        fragmentShader: NOISE_GLSL + `
+            uniform float time, warn; uniform vec3 col; varying vec2 vUv; varying vec3 vW;
+            void main() {
+                float a = atan(vW.z, vW.x);
+                float flow = fbm(vec2(a * 18.0, vUv.y * 6.0 - time * 0.25));
+                float low = 0.45 + 0.55 * (1.0 - vUv.y);
+                float alpha = (0.05 + 0.3 * warn) * low * (0.55 + 0.9 * flow);
+                gl_FragColor = vec4(col * (1.0 + 2.0 * warn), alpha);
+                #include <colorspace_fragment>
+            }`,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    return new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 96, 1, true), mat);
+}
+
+// The Orb's night: a slow nebula of indigo, teal and gold behind the stars.
+function nebulaDome() {
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 } }, side: THREE.BackSide, depthWrite: false, fog: false,
+        vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: NOISE_GLSL + `
+            uniform float time; varying vec3 vP;
+            void main() {
+                vec2 p = vec2(atan(vP.z, vP.x) * 2.0, vP.y * 3.0);
+                float n = fbm(p * 1.3 + time * 0.003), m = fbm(p * 2.7 - 3.0);
+                vec3 c = vec3(0.012, 0.01, 0.035);
+                c += vec3(0.08, 0.035, 0.15) * smoothstep(0.5, 0.88, n);
+                c += vec3(0.012, 0.09, 0.1) * smoothstep(0.6, 0.92, m);
+                c += vec3(0.25, 0.15, 0.05) * pow(smoothstep(0.62, 0.95, n * m * 1.6), 2.0);
+                gl_FragColor = vec4(c, 1.0);
+                #include <colorspace_fragment>
+            }`,
+    });
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1450, 48, 24), mat);
     m.renderOrder = -1;
     m.onBeforeRender = (r, s, cam) => m.position.setFromMatrixPosition(cam.matrixWorld);
     return m;
