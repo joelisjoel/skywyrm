@@ -7,7 +7,7 @@ import { managePopulation, targetBots } from './bots.js?v=4';
 import { Renderer } from './render.js?v=4';
 import { ChaseCam } from './camera.js?v=4';
 import { Input } from './input.js?v=4';
-import { Hud } from './hud.js?v=4';
+import { Hud } from './hud.js?v=5';
 import { Audio } from './audio.js?v=4';
 import { TunePanel } from './tune-panel.js?v=4';
 

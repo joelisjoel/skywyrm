@@ -232,5 +232,10 @@ export class Hud {
         };
         rows.forEach(add);
         if (rank >= 10) add(p, rank);
+        // Footer: everyone in the sky right now (you + bots).
+        const total = document.createElement('div');
+        total.className = 'total';
+        total.textContent = `${lb.length} ${lb.length === 1 ? 'player' : 'players'} in the sky`;
+        b.appendChild(total);
     }
 }

@@ -33,6 +33,7 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats, body
 #board .n { width: 34px; color: var(--dim); }
 #board .name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #board .v { color: var(--dim); }
+#board .total { margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.12); text-align: right; font-size: 12px; color: var(--dim); }
 
 #toasts { position: absolute; top: 26%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { font-weight: 800; font-size: 20px; letter-spacing: 0.04em; text-shadow: 0 2px 8px #000; animation: toast 1.6s ease-out forwards; }
