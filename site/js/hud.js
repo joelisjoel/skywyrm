@@ -7,6 +7,37 @@ import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=8';
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 
+// Minimal status: ring gauges with line icons, no captions. Static SVG
+// only (no user text goes through innerHTML).
+const ICON = {
+    temp: '<path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v6"/>',
+    thrust: '<path d="M13 2 5 13h6l-1 9 8-11h-6z"/>',
+    fire: '<path d="M12 3c.6 3 4.5 5.2 4.5 10a4.5 4.5 0 0 1-9 0c0-2.4 1.3-3.8 2.4-4.8.1 1.7.9 2.8 2 3.2-.4-2.9-.8-5.2.1-8.4z"/>',
+    shield: '<path d="M12 3.2 19 6v5.2c0 4.3-2.9 7.8-7 9.6-4.1-1.8-7-5.3-7-9.6V6z"/>',
+    magnet: '<path d="M6 4h4v8a2 2 0 0 0 4 0V4h4v8a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>',
+};
+const RING = 2 * Math.PI * 17;
+function gauge(key) {
+    const el = document.createElement('div');
+    el.className = 'g g-' + key;
+    el.innerHTML = '<svg class="ring" viewBox="0 0 40 40"><circle class="track" cx="20" cy="20" r="17"/><circle class="val" cx="20" cy="20" r="17"/></svg>'
+        + '<svg class="icon" viewBox="0 0 24 24">' + ICON[key] + '</svg>';
+    const val = el.querySelector('.val');
+    val.style.strokeDasharray = RING;
+    return { el, val, set(f) { val.style.strokeDashoffset = RING * (1 - Math.max(0, Math.min(1, f))); } };
+}
+// Cool → warm → hot, Apple system colours.
+function tempColour(t) {
+    const stops = [[0, [100, 210, 255]], [45, [255, 214, 10]], [75, [255, 159, 10]], [100, [255, 69, 58]]];
+    for (let i = 1; i < stops.length; i++) {
+        if (t <= stops[i][0]) {
+            const [a, ca] = stops[i - 1], [b, cb] = stops[i], k = (t - a) / (b - a);
+            return `rgb(${ca.map((c, j) => Math.round(c + (cb[j] - c) * k)).join(',')})`;
+        }
+    }
+    return 'rgb(255,69,58)';
+}
+
 export class Hud {
     constructor() {
         this.canvas = document.getElementById('overlay');
@@ -21,18 +52,13 @@ export class Hud {
             board: document.getElementById('board'),
             toasts: document.getElementById('toasts'),
             feed: document.getElementById('feed'),
-            pu: document.getElementById('hud-pu'),
-            fire: document.getElementById('hud-fire'),
-            tempText: document.getElementById('hud-temp-text'),
-            tempBar: document.getElementById('hud-tempbar'),
-            thrust: document.getElementById('hud-thrust'),
-            thrustText: document.getElementById('hud-thrust-text'),
-            thrustBar: document.getElementById('hud-thrustbar'),
-            fireText: document.getElementById('hud-fire-text'),
-            fireBar: document.getElementById('hud-fire-bar'),
             fps: document.getElementById('hud-fps'),
             warn: document.getElementById('hud-warn'),
         };
+        this.g = {};
+        const box = document.getElementById('hud-gauges');
+        for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
+        this.g.fire.el.insertAdjacentHTML('beforeend', '<kbd>E</kbd>');
         this.lastBoard = 0;
         this.resize();
     }
@@ -190,39 +216,28 @@ export class Hud {
     updateStats(world, view, now, fps) {
         const p = view.player;
         if (p) {
-            this.el.len.textContent = Math.round(p.shownLen || p.len) + ' m';
-            this.el.kills.textContent = '⚔ ' + p.kills;
+            this.el.len.textContent = Math.round(p.shownLen || p.len);
+            this.el.kills.textContent = p.kills ? '⚔ ' + p.kills : '';
             const t = p.tier, next = TIERS[t + 1];
-            this.el.tier.textContent = TIERS[t].name.toUpperCase() + (next ? ' → ' + next.name : '');
+            this.el.tier.textContent = TIERS[t].name;
             const f = next ? (p.mass - TIERS[t].mass) / (next.mass - TIERS[t].mass) : 1;
             this.el.tierBar.style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
-            // Body temp (sun + crowd) → speed; thrust tank sized by temp.
-            const temp = Math.round(p.temp);
-            this.el.tempText.textContent = `🌡 BODY TEMP ${temp}° · +${Math.round(speedBonus(p.temp) * 100)}% speed`;
-            this.el.tempBar.style.width = Math.max(0, Math.min(100, p.temp)) + '%';
-            const cap = thrustCap(p.temp);
-            this.el.thrust.dataset.state = p.thrustLocked ? 'empty' : 'ok';
-            this.el.thrustText.textContent = p.thrustLocked ? '⚡ THRUST EMPTY — recharging' : `⚡ THRUST ${p.thrust.toFixed(1)} s`;
-            this.el.thrustBar.style.width = Math.round(Math.min(1, p.thrust / cap) * 100) + '%';
-            // Dragonfire slot (always shown): none / ready / breathing.
-            const slot = this.el.fire;
-            if (p.breath > 0) {
-                slot.dataset.state = 'breathing';
-                this.el.fireText.textContent = '🔥 BREATHING FIRE';
-                this.el.fireBar.style.width = Math.round(Math.min(1, p.breath / T.fireTime) * 100) + '%';
-            } else if (p.fire) {
-                slot.dataset.state = 'ready';
-                this.el.fireText.textContent = '🔥 DRAGONFIRE READY — press E';
-                this.el.fireBar.style.width = '100%';
-            } else {
-                slot.dataset.state = 'empty';
-                this.el.fireText.textContent = '🔥 no dragonfire — find a red crystal';
-                this.el.fireBar.style.width = '0%';
-            }
-            const pu = [];
-            if (p.shield > 0) pu.push('🛡 shield ' + Math.ceil(p.shield) + 's');
-            if (p.magnet > 0) pu.push('🧲 lodestone ' + Math.ceil(p.magnet) + 's');
-            this.el.pu.textContent = pu.join('   ');
+            const g = this.g;
+            // Body temp: ring fill + colour; faster when warm.
+            g.temp.set(p.temp / 100);
+            g.temp.el.style.color = tempColour(p.temp);
+            g.temp.el.title = `${Math.round(p.temp)}° · +${Math.round(speedBonus(p.temp) * 100)}% speed`;
+            // Thrust tank (red and pulsing while it recharges from empty).
+            g.thrust.set(p.thrust / thrustCap(p.temp));
+            g.thrust.el.dataset.state = p.thrustLocked ? 'empty' : '';
+            // Dragonfire: dim until you have it, glowing when ready, draining while you breathe.
+            g.fire.el.dataset.state = p.breath > 0 ? 'breathing' : p.fire ? 'ready' : 'empty';
+            g.fire.set(p.breath > 0 ? p.breath / T.fireTime : p.fire ? 1 : 0);
+            // Timed power-ups appear only while active.
+            g.shield.el.hidden = !(p.shield > 0);
+            g.shield.set(p.shield / T.shieldTime);
+            g.magnet.el.hidden = !(p.magnet > 0);
+            g.magnet.set(p.magnet / T.magnetTime);
         }
         this.el.fps.textContent = fps ? fps + ' fps' : '';
         this.el.warn.style.opacity = view.wallWarn > 0.4 && view.state === 'play' ? '1' : '0';
@@ -236,7 +251,7 @@ export class Hud {
         const add = (d, i) => {
             const row = document.createElement('div');
             row.className = 'row' + (d === p ? ' me' : '');
-            const n = document.createElement('span'); n.className = 'n'; n.textContent = (i + 1) + (i === 0 ? ' 👑' : '');
+            const n = document.createElement('span'); n.className = 'n'; n.textContent = i === 0 ? '👑' : String(i + 1);
             const name = document.createElement('span'); name.className = 'name'; name.textContent = d.name;
             name.style.color = d === p ? '#fff' : hex(d.color);
             const len = document.createElement('span'); len.className = 'v'; len.textContent = Math.round(d.shownLen || d.len) + ' m';
@@ -248,7 +263,7 @@ export class Hud {
         // Footer: everyone in the sky right now (you + bots).
         const total = document.createElement('div');
         total.className = 'total';
-        total.textContent = `${lb.length} ${lb.length === 1 ? 'player' : 'players'} in the sky` + (view.humans ? ` · ${view.humans} human${view.humans === 1 ? '' : 's'}` : '');
+        total.textContent = `${lb.length} in the sky` + (view.humans ? ` · ${view.humans} human${view.humans === 1 ? '' : 's'}` : '');
         b.appendChild(total);
     }
 }

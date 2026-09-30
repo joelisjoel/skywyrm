@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=9">
+    <link rel="stylesheet" href="style.css?v=10">
     <script type="importmap">
         {
             "imports": {
@@ -30,17 +30,9 @@
         <div id="hud-warn">⚠ WALL</div>
         <div id="hud-assist"><span class="badge">BEGINNER</span> steering you clear</div>
         <div id="hud-stats">
-            <div id="hud-len">0 m</div>
-            <div id="hud-kills">⚔ 0</div>
-            <div id="hud-tier"></div>
-            <div class="bar"><div id="hud-tierbar"></div></div>
-            <div id="hud-temp" class="meter"><span id="hud-temp-text"></span><div class="bar temp"><div id="hud-tempbar"></div></div></div>
-            <div id="hud-thrust" class="meter" data-state="ok"><span id="hud-thrust-text"></span><div class="bar thrust"><div id="hud-thrustbar"></div></div></div>
-            <div id="hud-fire" data-state="empty">
-                <div id="hud-fire-text"></div>
-                <div class="bar fire"><div id="hud-fire-bar"></div></div>
-            </div>
-            <div id="hud-pu"></div>
+            <div class="hud-len"><span id="hud-len">0</span><small>m</small><span id="hud-kills"></span></div>
+            <div class="hud-tier"><span id="hud-tier"></span><div class="hair"><div id="hud-tierbar"></div></div></div>
+            <div id="hud-gauges"></div>
         </div>
         <canvas id="radar"></canvas>
         <div id="hud-fps"></div>
@@ -160,7 +152,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=9"></script>
+    <script type="module" src="js/main.js?v=10"></script>
 </body>
 
 </html>
