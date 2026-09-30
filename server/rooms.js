@@ -3,7 +3,7 @@
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
 import { randomBytes } from 'node:crypto';
-import { World, Dragon, T, managePopulation, checkName, safePlayerName } from '../docs/wyrm/js/shared.js';
+import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../docs/wyrm/js/shared.js';
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [
@@ -107,7 +107,7 @@ export class Room {
         return Math.max(0, Math.min(ramp, T.popMax - this.humans));
     }
 
-    join(client, rawName) {
+    join(client, rawName, extras = {}) {
         if (this.humans >= LIMITS.humansPerRoom) return { error: 'This server is full' };
         const wasEmpty = this.humans === 0;
         this.ensureWorld();
@@ -117,6 +117,12 @@ export class Room {
         }
         const d = new Dragon(safePlayerName(rawName), false);
         d.human = true; d.remote = true;
+        // Profile extras from the browser, re-checked here: known perk ids
+        // (at most two; the room's `perks` rule decides if they apply) and a
+        // known colour scheme.
+        d.perks = cleanPerks(extras.perks);
+        const skin = skinById(extras.skin);
+        if (skin) { d.color = skin.c1; d.color2 = skin.c2; }
         this.world.spawn(d, T.spawnMass);
         client.dragon = d;
         client.room = this;
@@ -262,7 +268,7 @@ export class Room {
         for (const c of this.clients) {
             const d = c.dragon;
             const me = { temp: r2(d.temp), thrust: r2(d.thrust), lock: d.thrustLocked ? 1 : 0, fire: d.fire, breath: r2(d.breath),
-                shield: r2(d.shield), magnet: r2(d.magnet), kills: d.kills, protect: r2(d.protect) };
+                shield: r2(d.shield), magnet: r2(d.magnet), kills: d.kills, protect: r2(d.protect), tm: d.thrustMult || 1 };
             if (d.corrected) { me.c = [r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]; d.corrected = false; }
             c.send({ ...base, me });
         }

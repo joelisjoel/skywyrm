@@ -100,6 +100,7 @@ export const DEFAULTS = {
     aggrStart: 0.25,        // bot aggression when a world wakes…
     aggrRampMin: 15,        // …rising to full over this many minutes
     botAggrMax: 1,          // cap (beginner rooms use 0.5)
+    perks: 1,               // profile perks apply (0 = everyone plays stock)
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -184,6 +185,7 @@ export const PANEL = [
     ['aggrStart', 0, 1, 0.05, 'Rules'],
     ['aggrRampMin', 1, 60, 1, 'Rules'],
     ['botAggrMax', 0, 1, 0.05, 'Rules'],
+    ['perks', 0, 1, 1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

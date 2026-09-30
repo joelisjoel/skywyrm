@@ -1,6 +1,6 @@
 // Dev panel (` key): live sliders over every tunable + the measurements
 // that decide whether the 3D arena works (spec §2, §4, §6.10).
-import { T, DEFAULTS, PANEL, saveTune, resetTune } from './tunables.js?v=11';
+import { T, DEFAULTS, PANEL, saveTune, resetTune } from './tunables.js?v=12';
 
 export class TunePanel {
     constructor(onRestart) {

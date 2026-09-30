@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=11';
-import { MOOD_ICON } from './bots.js?v=11';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=12';
+import { MOOD_ICON } from './bots.js?v=12';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -236,7 +236,7 @@ export class Hud {
             g.temp.el.style.color = tempColour(p.temp);
             g.temp.el.title = `${Math.round(p.temp)}° · +${Math.round(speedBonus(p.temp) * 100)}% speed`;
             // Thrust tank (red and pulsing while it recharges from empty).
-            g.thrust.set(p.thrust / thrustCap(p.temp));
+            g.thrust.set(p.thrust / (thrustCap(p.temp) * (p.thrustMult || 1)));
             g.thrust.el.dataset.state = p.thrustLocked ? 'empty' : '';
             // Dragonfire: dim until you have it, glowing when ready, draining while you breathe.
             g.fire.el.dataset.state = p.breath > 0 ? 'breathing' : p.fire ? 'ready' : 'empty';

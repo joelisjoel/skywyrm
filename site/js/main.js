@@ -1,18 +1,20 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=11';
-import { World, Dragon, hazardDist } from './sim.js?v=11';
-import { managePopulation, targetBots } from './bots.js?v=11';
-import { Renderer } from './render.js?v=15';
-import { ChaseCam } from './camera.js?v=11';
-import { Input } from './input.js?v=12';
-import { Hud } from './hud.js?v=12';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=12';
+import { World, Dragon, hazardDist } from './sim.js?v=12';
+import { managePopulation, targetBots } from './bots.js?v=12';
+import { Renderer } from './render.js?v=16';
+import { ChaseCam } from './camera.js?v=12';
+import { Input } from './input.js?v=13';
+import { Hud } from './hud.js?v=13';
 import { Audio } from './audio.js?v=10';
-import { TunePanel } from './tune-panel.js?v=11';
+import { TunePanel } from './tune-panel.js?v=12';
 import { checkName } from './names.js?v=8';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=11';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=12';
 import { serverUrl } from './net-config.js?v=8';
+import { Profile } from './profile.js?v=1';
+import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
 
 loadTune();
 
@@ -23,6 +25,7 @@ const cam = new ChaseCam(renderer.camera);
 const input = new Input(canvas);
 const hud = new Hud();
 const audio = new Audio();
+const profile = new Profile();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
 const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, gfx: 'auto', arena: 'sky', name: '', runs: 0, v: 2 };
@@ -58,7 +61,24 @@ let deathInfo = null;
 // respawn after respawnDelay s; the run card shows once, at the end, with
 // the whole game's totals.
 let game = null;
-const newGame = () => { game = { deaths: 0, kills: 0, peak: 0, time: 0, rank: 99 }; };
+const newGame = () => { game = { deaths: 0, kills: 0, peak: 0, time: 0, rank: 99, jade: 0, rankUp: null }; lifeBites = 0; };
+let lifeBites = 0;
+
+// Bank this life's jade into the profile (and the game's total).
+function bankLife(time) {
+    const res = profile.award({ peak: Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass), kills: player.kills, bites: lifeBites, time, rank: player.bestRank });
+    lifeBites = 0;
+    if (!game) newGame();
+    game.jade += res.gained;
+    if (deathInfo) deathInfo.jade = res.gained;
+    if (res.rankUp) {
+        game.rankUp = res.rankUp;
+        hud.toast(`RANK UP — ${res.rankUp.name} ${res.rankUp.zh}`, 'big');
+        audio.tier();
+    }
+    renderProfile();
+    return res;
+}
 const livesTotal = () => (world ? world.rule('lives') : T.lives);
 const livesLeft = () => (livesTotal() > 0 ? livesTotal() - game.deaths : Infinity);
 function pearls(el, total, left) {
@@ -90,9 +110,10 @@ function startPlay() {
     saveSettings();
     if (!player) {
         player = new Dragon(settings.name, false);
-        player.color = 0xFFD93D; player.color2 = 0xFF9A3C;
         world.player = player;
     }
+    player.color = profile.skin.c1; player.color2 = profile.skin.c2;
+    player.perks = [...profile.data.perks];
     player.name = settings.name;
     newGame();
     // First few runs: nearby bots leave you alone for 45 s (spec §6.8).
@@ -146,7 +167,7 @@ function handleEvents() {
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
             case 'bite':
                 renderer.biteBurst(e.x, e.y, e.z, e.color);
-                if (mine) { hud.toast(`CHOMP  +${e.gain}`, 'nm'); audio.bite(); hype(6); }
+                if (mine) { hud.toast(`CHOMP  +${e.gain}`, 'nm'); audio.bite(); hype(6); lifeBites++; }
                 else if (e.o === player) { hud.toast(`${e.d.name} bit your tail`, 'bad'); audio.bitten(); }
                 break;
             case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
@@ -199,9 +220,13 @@ function onPlayerDeath(e) {
     game.time += online ? at - (player.bornWall || at) : world.time - player.bornAt;
     game.rank = Math.min(game.rank, player.bestRank);
     deathInfo.final = livesLeft() <= 0;
+    bankLife(online ? at - (player.bornWall || at) : world.time - player.bornAt);
     deathInfo.respawnAt = at + world.rule('respawnDelay');
     setState('dead');
+    $('respawn-jade').textContent = `+${deathInfo.jade} 玉 jade`;
     if (deathInfo.final) {
+        profile.gameDone();
+        $('card-jade').textContent = `+${game.jade} 玉 jade this game` + (game.rankUp ? ` · Rank up: ${game.rankUp.name} ${game.rankUp.zh}` : '');
         const endless = !(livesTotal() > 0);
         $('card-title').textContent = endless ? deathInfo.text : 'Game over';
         $('card-sub').textContent = endless ? '' : deathInfo.text;
@@ -239,7 +264,7 @@ function joinRoom(id) {
     audio.unlock();
     if (online) leaveOnline();
     setLobbyStatus('Joining…');
-    online = new NetGame(SERVER_BASE, id, name, {
+    online = new NetGame(SERVER_BASE, id, name, { perks: profile.data.perks, skin: profile.data.skin }, {
         onWelcome(w, p, room) {
             world = w; player = p;
             newGame();
@@ -454,6 +479,48 @@ function closeOverlay() { overlay = ''; delete document.body.dataset.overlay; }
 for (const b of document.querySelectorAll('.open-settings')) b.onclick = () => openOverlay('settings');
 for (const b of document.querySelectorAll('.open-controls')) b.onclick = () => openOverlay('controls');
 for (const b of document.querySelectorAll('.close-overlay')) b.onclick = () => closeOverlay();
+$('open-dojo').onclick = () => { renderDojo(); openOverlay('dojo'); };
+
+// Profile strip (start menu) and the Perks & colours panel.
+function renderProfile() {
+    const r = profile.rank;
+    $('rank-seal').textContent = r.zh;
+    $('rank-name').textContent = `${r.name} · rank ${r.level}`;
+    $('rank-jade').textContent = `${profile.data.jade.toLocaleString()} 玉` + (r.next ? ` / ${r.next.jade.toLocaleString()}` : '');
+    $('rank-perks').textContent = profile.data.perks.map((p) => PERKS[p].icon).join(' ');
+    $('rank-bar').style.width = Math.round(r.progress * 100) + '%';
+}
+function renderDojo() {
+    const lv = profile.rank.level, slots = perkSlots(lv);
+    $('dojo-note').textContent = slots ? `Rank ${lv}: equip ${slots === 1 ? 'one perk' : 'two perks'}. Perks carry into every game.` : 'Earn 300 jade (玉) to reach rank 2 and unlock your first perk.';
+    const box = $('dojo-perks');
+    box.textContent = '';
+    for (const [id, p] of Object.entries(PERKS)) {
+        const row = document.createElement('div');
+        const locked = p.level > lv, on = profile.data.perks.includes(id);
+        row.className = 'perk' + (on ? ' on' : '') + (locked ? ' locked' : '');
+        const icon = document.createElement('div'); icon.className = 'pi'; icon.textContent = p.icon;
+        const text = document.createElement('div'); text.className = 'pt'; text.textContent = `${p.name} ${p.zh}`;
+        const small = document.createElement('small'); small.textContent = p.desc; text.appendChild(small);
+        const tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = locked ? `rank ${p.level}` : on ? 'equipped' : '';
+        row.append(icon, text, tag);
+        if (!locked) row.onclick = () => { profile.togglePerk(id); renderDojo(); renderProfile(); };
+        box.appendChild(row);
+    }
+    const sk = $('dojo-skins');
+    sk.textContent = '';
+    for (const s of SKINS) {
+        const b = document.createElement('button');
+        b.className = 'swatch' + (profile.data.skin === s.id ? ' on' : '');
+        const i = document.createElement('i');
+        i.style.background = `linear-gradient(135deg, #${s.c1.toString(16).padStart(6, '0')} 55%, #${s.c2.toString(16).padStart(6, '0')} 55%)`;
+        b.append(i, document.createTextNode(s.level > lv ? `rank ${s.level}` : s.name));
+        b.disabled = s.level > lv;
+        b.onclick = () => { profile.setSkin(s.id); renderDojo(); };
+        sk.appendChild(b);
+    }
+}
+renderProfile();
 
 // Settings tabs: Server (room rules) vs Player (personal).
 for (const b of document.querySelectorAll('#settings .tab')) b.onclick = () => ($('settings').dataset.tab = b.dataset.tab);

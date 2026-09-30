@@ -1,6 +1,6 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
-import { World, Dragon, T, managePopulation, aggression } from '../../docs/wyrm/js/shared.js';
+import { World, Dragon, T, managePopulation, aggression, cleanPerks } from '../../docs/wyrm/js/shared.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
@@ -74,5 +74,21 @@ function setup(beadFromEnd) {
     };
     const young = share(0), old = share(T.aggrRampMin * 60);
     check(old - young > 0.12, `more hunters when the room is old (${Math.round(young * 100)}% → ${Math.round(old * 100)}% of 300)`);
+}
+// Profile perks: applied at spawn, only known ids (max two), room rule can switch them off.
+{
+    check(cleanPerks(['lungs', 'bogus', 'lungs', 'pull', 'ember']).join() === 'lungs,pull', 'perk lists are cleaned (known ids, no repeats, max 2)');
+    const w = new World('orb', 'local');
+    const d = new Dragon('P', false);
+    d.perks = ['scales', 'ember'];
+    w.spawn(d, T.spawnMass);
+    check(d.shield === 6 && d.fire === 1, 'Thick Scales + Ember Heart: each life starts shielded with dragonfire');
+    const e = new Dragon('Q', false);
+    e.perks = ['lungs'];
+    w.spawn(e, T.spawnMass);
+    check(e.thrustMult === 1.2 && Math.abs(e.thrust - 1.2 * d.thrust) < 1e-6, 'Deep Lungs: 20% bigger thrust tank');
+    w.rules.perks = 0;
+    w.spawn(d, T.spawnMass);
+    check(d.shield === 0 && d.fire === 0, 'rule perks = 0: everyone plays stock');
 }
 console.log(`\n${ok} sim checks passed`);

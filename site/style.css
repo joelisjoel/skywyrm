@@ -277,3 +277,31 @@ body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
 #voice-caption .en { font-size: 12px; font-style: italic; color: rgba(245, 238, 225, 0.6); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
 
 #opt-gfx { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--gold-line); background: rgba(0, 0, 0, 0.35); color: #EDE3D1; }
+/* ---------------- Profile: rank seal, jade, perks & colours ---------------- */
+#profile-strip { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--gold-line); border-radius: 12px; text-align: left; background: rgba(255, 240, 210, 0.03); }
+.rank-seal { width: 34px; height: 34px; flex: none; display: grid; place-items: center; font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-size: 24px; color: #F7E8CC;
+    background: radial-gradient(circle at 30% 25%, #C8453B, var(--cinnabar) 60%, #8E2620); border-radius: 6px; box-shadow: inset 0 0 0 2px rgba(247, 232, 204, 0.7); }
+.pinfo { flex: 1; min-width: 0; font-size: 13px; }
+.pinfo b { font-family: 'Cinzel', Georgia, serif; color: var(--gold-hi); letter-spacing: 0.06em; }
+#rank-jade { color: var(--jade); font-size: 12px; }
+#rank-perks { font-size: 12px; }
+#profile-strip .hair { width: 100%; margin-top: 6px; }
+#rank-bar { height: 100%; width: 0; background: var(--jade); }
+#open-dojo { width: auto; margin: 0; padding: 6px 10px; font-size: 12px; }
+body[data-overlay=dojo] #dojo { display: block; }
+#dojo { max-height: calc(100vh - 32px); overflow-y: auto; }
+.perk { display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; margin: 6px 0; border: 1px solid var(--gold-line); border-radius: 10px; cursor: pointer; }
+.perk .pi { font-size: 22px; width: 28px; text-align: center; }
+.perk .pt { flex: 1; font-size: 13px; }
+.perk .pt small { display: block; color: var(--dim); font-size: 12px; }
+.perk.on { border-color: var(--jade); background: rgba(134, 217, 176, 0.08); }
+.perk.locked { opacity: 0.45; cursor: default; }
+.perk .tag { font-size: 11px; color: var(--dim); white-space: nowrap; }
+#dojo-skins { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+.swatch { width: 54px; padding: 6px 0 4px; border: 1px solid var(--gold-line); border-radius: 10px; font-size: 10px; color: var(--dim); cursor: pointer; background: none; margin: 0; }
+.swatch i { display: block; width: 26px; height: 26px; margin: 0 auto 4px; border-radius: 50%; }
+.swatch.on { border-color: var(--gold); color: var(--gold-hi); }
+.swatch:disabled { opacity: 0.4; cursor: default; }
+#card-jade, #respawn-jade { color: var(--jade); font-weight: 700; font-size: 14px; margin: -4px 0 12px; }
+#respawn-jade { margin: 0; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
+#card-jade:empty, #respawn-jade:empty { display: none; }

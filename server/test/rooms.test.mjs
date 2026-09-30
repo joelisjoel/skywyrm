@@ -51,7 +51,7 @@ try {
     const join = (name) => new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room.id}`, { headers: { origin: ORIGIN } });
         const c = { ws, msgs: [], welcome: null, snaps: 0, last: null, events: [], dn: [], dx: [] };
-        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name }));
+        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name, perks: ['lungs', 'hack', 'pull', 'ember'], skin: 'jade' }));
         ws.onmessage = (e) => {
             const m = JSON.parse(e.data);
             if (m.t === 'welcome') { c.welcome = m; resolve(c); }
@@ -70,6 +70,8 @@ try {
     const bInA = () => a.last && a.last.d.some((s) => s[0] === b.welcome.you);
     await sleep(700);
     check(bInA(), 'player A sees player B in snapshots');
+    const meA = a.welcome.dragons.find((d) => d.id === a.welcome.you);
+    check(meA && meA.c1 === 0x3DFFB5 && a.last.me.tm === 1.2, 'profile colours applied; perks re-checked server-side (Deep Lungs active)');
     const names = a.last.lb.map((x) => x[1]);
     const aName = a.welcome.dragons.find((d) => d.id === a.welcome.you)?.name ?? names.find((n) => n.startsWith('Alice'));
     check(a.snaps >= 6, `snapshots flowing (${a.snaps} in 0.7 s)`);

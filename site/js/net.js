@@ -4,9 +4,9 @@
 // server. Other dragons are drawn ~120 ms in the past so their motion is
 // smooth between snapshots.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=11';
-import { World, Dragon } from './sim.js?v=11';
-import { MOODS } from './bots.js?v=11';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=12';
+import { World, Dragon } from './sim.js?v=12';
+import { MOODS } from './bots.js?v=12';
 
 const INTERP = 0.12;
 const _qa = new Quaternion(), _qb = new Quaternion();
@@ -26,7 +26,7 @@ export async function createRoom(base, body) {
 }
 
 export class NetGame {
-    constructor(base, roomId, name, hooks) {
+    constructor(base, roomId, name, extras, hooks) {
         this.hooks = hooks;
         this.events = [];
         this.world = null; this.player = null; this.room = null;
@@ -35,7 +35,7 @@ export class NetGame {
         this.gone = new Map();          // recently removed dragons (to name them in events)
         this.parked = false;            // wings folded (Esc): out of the sky, length kept
         this.ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId));
-        this.ws.onopen = () => this.send({ t: 'hello', name });
+        this.ws.onopen = () => this.send({ t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '' });
         this.ws.onmessage = (e) => { try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); } };
         this.ws.onclose = (e) => { if (!this.closing) hooks.onClose(this.fullError || (this.world ? 'Disconnected from the server' : 'Could not reach the server')); };
     }
@@ -150,7 +150,7 @@ export class NetGame {
         if (me && p) {
             p.temp = me.temp; p.thrust = me.thrust; p.thrustLocked = !!me.lock;
             p.fire = me.fire; p.breath = me.breath; p.shield = me.shield; p.magnet = me.magnet;
-            p.kills = me.kills; p.protect = me.protect;
+            p.kills = me.kills; p.protect = me.protect; p.thrustMult = me.tm || 1;
             if (me.c) p.pos.set(me.c[0], me.c[1], me.c[2]);    // server clamped us: snap back
         }
     }

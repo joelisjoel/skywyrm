@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=11';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=12';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -369,7 +369,14 @@ export class World {
         d.near.clear(); d.lastEncounter.clear();
         d.assisting = 0;
         d.temp = d.heatTarget = T.ambientTemp; d.crowd = 0;
-        d.thrust = thrustCap(d.temp); d.thrustLocked = false;
+        // Profile perks (rule `perks`): bigger tank, longer reach, a shield or
+        // dragonfire to start each life.
+        const perks = this.rule('perks') && d.perks ? d.perks : [];
+        d.thrustMult = perks.includes('lungs') ? 1.2 : 1;
+        d.pickupMult = perks.includes('pull') ? 1.4 : 1;
+        if (perks.includes('scales')) d.shield = 6;
+        if (perks.includes('ember')) d.fire = 1;
+        d.thrust = thrustCap(d.temp) * d.thrustMult; d.thrustLocked = false;
         if (d === this.player) this.rampStart = this.time;   // population ramp restarts each life
         this.findSpawn(d.pos);
         // Face roughly toward the centre, offset so we don't all converge.
@@ -548,7 +555,7 @@ export class World {
         // Boost burns mass; half drops behind as orbs (spec §6.5).
         // Thrust tank: boosting drains it; it refills off-boost. Run it dry
         // and it locks until 1.5 s has refilled (no stutter-boosting).
-        const cap = thrustCap(d.temp);
+        const cap = thrustCap(d.temp) * (d.thrustMult || 1);
         if (d.boosting) {
             d.thrust = Math.max(0, d.thrust - dt);
             if (d.thrust <= 0) { d.thrustLocked = true; if (d === this.player || d.human) this.emit({ type: 'thrustEmpty', d }); }
@@ -778,7 +785,7 @@ export class World {
         // Pickup: attract then consume.
         for (const d of this.dragons) {
             if (!d.alive) continue;
-            const rad = (d.magnet > 0 ? T.magnetRadius : T.pickupBase) + d.r;
+            const rad = (d.magnet > 0 ? T.magnetRadius : T.pickupBase * (d.pickupMult || 1)) + d.r;
             const r2 = rad * rad;
             const px = d.pos.x, py = d.pos.y, pz = d.pos.z;
             for (let i = 0, n = this.oHigh; i < n; i++) {
