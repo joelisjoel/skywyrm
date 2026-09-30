@@ -38,8 +38,10 @@ export const DEFAULTS = {
     boostCost: 4,           // mass/s
     boostDropShare: 0.5,    // share of boost cost dropped as orbs
     boostMinMass: 15,
-    orbTarget: 800,         // ambient orbs per room
+    orbTarget: 2000,        // ambient orbs per room
     orbClusterShare: 0.6,
+    foodSpread: 0.2,        // σ of the central food cloud, × arena radius
+    foodUniformShare: 0.15, // share of food sprinkled evenly everywhere
     pickupBase: 2,          // pickup radius = pickupBase + r
     lootShare: 0.8,         // share of mass dropped on death
     lootTtl: 45,            // s
@@ -64,11 +66,13 @@ export const DEFAULTS = {
     fireAngle: 22,          // deg half-angle
 
     // --- Arena & population (spec §4, §9, §14) ---
-    population: 24,         // dragons incl. you
+    popStart: 3,            // other dragons when you spawn…
+    popMax: 20,             // …growing to this many…
+    popRampSec: 60,         // …one more every this many seconds
+    assistLook: 1.8,        // s of flight path beginner mode checks for walls
     botAggression: 0.6,     // 0 = orb-eaters, 1 = hunters
-    skyRadius: 70,
-    skyCeiling: 85,
-    orbRadius: 65,
+    skyRadius: 350,         // open top: no ceiling
+    orbRadius: 325,
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -96,6 +100,7 @@ export const PANEL = [
     ['steerTau', 0, 0.4, 0.01, 'Flight'],
     ['diveBoost', 0, 20, 0.5, 'Flight'],
     ['rollRate', 30, 360, 5, 'Flight'],
+    ['assistLook', 0.5, 4, 0.1, 'Flight'],
     ['levelRate', 0, 360, 5, 'Flight'],
     ['assistRate', 0, 240, 5, 'Flight'],
     ['steerCircle', 0.1, 0.5, 0.01, 'Controls'],
@@ -105,17 +110,20 @@ export const PANEL = [
     ['lenPerMass', 0.1, 1.5, 0.05, 'Growth & combat'],
     ['radiusGrow', 0, 4, 0.1, 'Growth & combat'],
     ['boostCost', 0, 15, 0.5, 'Growth & combat'],
-    ['orbTarget', 100, 3000, 50, 'Growth & combat'],
+    ['orbTarget', 100, 5000, 50, 'Growth & combat'],
+    ['foodSpread', 0.05, 0.6, 0.01, 'Arena & bots'],
+    ['foodUniformShare', 0, 1, 0.05, 'Arena & bots'],
     ['pickupBase', 0.5, 8, 0.25, 'Growth & combat'],
     ['tailColScale', 0.3, 1.5, 0.05, 'Growth & combat'],
     ['headColScale', 0.3, 1.5, 0.05, 'Growth & combat'],
     ['powerups', 0, 1, 1, 'Growth & combat'],
     ['dragonfire', 0, 1, 1, 'Growth & combat'],
-    ['population', 1, 60, 1, 'Arena & bots'],
+    ['popStart', 0, 40, 1, 'Arena & bots'],
+    ['popMax', 0, 60, 1, 'Arena & bots'],
+    ['popRampSec', 5, 300, 5, 'Arena & bots'],
     ['botAggression', 0, 1, 0.05, 'Arena & bots'],
-    ['skyRadius', 30, 200, 5, 'Arena & bots', true],
-    ['skyCeiling', 40, 200, 5, 'Arena & bots', true],
-    ['orbRadius', 30, 200, 5, 'Arena & bots', true],
+    ['skyRadius', 50, 800, 10, 'Arena & bots', true],
+    ['orbRadius', 50, 800, 10, 'Arena & bots', true],
     ['camDist', 3, 20, 0.5, 'Camera'],
     ['camHeight', 0, 8, 0.1, 'Camera'],
     ['camPosTau', 0, 0.6, 0.01, 'Camera'],
@@ -125,7 +133,7 @@ export const PANEL = [
     ['fovBoost', 50, 120, 1, 'Camera'],
 ];
 
-const KEY = 'wyrm.tune.v1';
+const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over
 
 export const T = { ...DEFAULTS };
 

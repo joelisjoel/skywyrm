@@ -1,15 +1,15 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, loadTune, TIERS } from './tunables.js?v=1';
-import { World, Dragon, hazardDist } from './sim.js?v=1';
-import { managePopulation } from './bots.js?v=1';
-import { Renderer } from './render.js?v=1';
-import { ChaseCam } from './camera.js?v=1';
-import { Input } from './input.js?v=1';
-import { Hud } from './hud.js?v=1';
-import { Audio } from './audio.js?v=1';
-import { TunePanel } from './tune-panel.js?v=1';
+import { T, loadTune, TIERS } from './tunables.js?v=2';
+import { World, Dragon, hazardDist } from './sim.js?v=2';
+import { managePopulation, targetBots } from './bots.js?v=2';
+import { Renderer } from './render.js?v=2';
+import { ChaseCam } from './camera.js?v=2';
+import { Input } from './input.js?v=2';
+import { Hud } from './hud.js?v=2';
+import { Audio } from './audio.js?v=2';
+import { TunePanel } from './tune-panel.js?v=2';
 
 loadTune();
 
@@ -22,7 +22,7 @@ const hud = new Hud();
 const audio = new Audio();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, arena: 'sky', name: '', runs: 0 };
+const settings = { beginner: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, arena: 'sky', name: '', runs: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* defaults */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
 
@@ -70,8 +70,10 @@ function startPlay() {
     player.name = settings.name;
     // First few runs: nearby bots leave you alone for 45 s (spec §6.8).
     world.gentleTime = settings.runs <= 3 ? 45 : 0;
+    player.wallAssist = settings.beginner;
     world.spawn(player, T.spawnMass);
     managePopulation(world);
+    lastTarget = targetBots(world);
     view.player = player;
     cam.snap(player);
     input.requestLock();
@@ -81,6 +83,7 @@ function startPlay() {
 
 function setState(s) {
     state = s; view.state = s;
+    if (s === 'play' || s === 'dead') closeOverlay();
     document.body.dataset.state = s;
     if (s !== 'play') input.releaseLock();
 }
@@ -171,6 +174,8 @@ const bindCheck = (id, key, after) => {
     const el = $(id); el.checked = !!settings[key];
     el.onchange = () => { settings[key] = el.checked; saveSettings(); after && after(); };
 };
+bindCheck('opt-beginner', 'beginner', () => { if (player) player.wallAssist = settings.beginner; });
+bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
 bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.invertY));
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
 bindCheck('opt-assist', 'assist', () => world && (world.assist = settings.assist));
@@ -180,12 +185,22 @@ input.settings.mouseLock = settings.mouseLock;
 cam.reduceMotion = settings.reduceMotion;
 audio.muted = settings.muted;
 
+// Settings / Controls overlays, reachable from the main menu and pause.
+let overlay = '';
+function openOverlay(name) { overlay = name; document.body.dataset.overlay = name; }
+function closeOverlay() { overlay = ''; delete document.body.dataset.overlay; }
+for (const b of document.querySelectorAll('.open-settings')) b.onclick = () => openOverlay('settings');
+for (const b of document.querySelectorAll('.open-controls')) b.onclick = () => openOverlay('controls');
+for (const b of document.querySelectorAll('.close-overlay')) b.onclick = () => closeOverlay();
+
 const tune = new TunePanel(() => { newWorld(); setState('menu'); });
 $('tune-btn').onclick = () => tune.toggle();
 
 input.onKey = (code) => {
     if (code === 'Backquote') tune.toggle();
-    else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); saveSettings(); }
+    else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
+    else if (overlay && (code === 'Escape' || code === 'Enter')) closeOverlay();
+    else if (overlay) return;
     else if (code === 'Escape' || code === 'KeyP') {
         if (state === 'play') setState('pause');
         else if (state === 'pause') { setState('play'); input.requestLock(); }
@@ -202,6 +217,7 @@ addEventListener('resize', () => { renderer.resize(); hud.resize(); });
 // ------------------------------------------------ loop
 newWorld();
 setState('menu');
+let lastTarget = 0;
 let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0, simMs = 0, boardT = 0, wasBoosting = false;
 
 function frame(nowMs) {
@@ -224,6 +240,14 @@ function frame(nowMs) {
         }
         simMs = simMs * 0.9 + (performance.now() - t0) * 0.1;
     }
+
+    // Population ramp: announce each new arrival.
+    if (player && player.alive && state === 'play') {
+        const tb = targetBots(world);
+        if (tb > lastTarget) hud.feed(`🐉 A new dragon arrives — ${tb} others now`);
+        lastTarget = tb;
+    }
+    document.getElementById('hud-assist').style.opacity = player && player.alive && state === 'play' && player.assisting > 0.25 ? '1' : '0';
 
     // Leaderboard + best rank (4 Hz).
     if (now - boardT > 0.25) {

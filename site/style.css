@@ -62,8 +62,9 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats, body
     padding: 22px 26px; width: min(420px, calc(100vw - 32px)); text-align: center;
     display: none; backdrop-filter: blur(4px);
 }
-body[data-state=menu] #menu { display: block; }
-body[data-state=pause] #pause { display: block; }
+body[data-state=menu]:not([data-overlay]) #menu { display: block; }
+body[data-state=pause]:not([data-overlay]) #pause { display: block; }
+body[data-overlay=settings] #settings, body[data-overlay=controls] #controls { display: block; }
 body[data-state=dead][data-card="1"] #card { display: block; }
 
 h1 { margin: 0; font-size: 56px; letter-spacing: 0.12em; font-weight: 900; color: var(--sun); text-shadow: 0 0 24px rgba(255,217,61,0.35); }
@@ -80,11 +81,15 @@ h2 { margin: 0 0 14px; font-size: 22px; }
 button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--slate); background: #141b2e; color: var(--text); padding: 8px 16px; margin: 4px; }
 button.cta { background: var(--sun); color: #1a1400; border: none; font-weight: 900; font-size: 20px; width: 100%; padding: 12px; margin: 6px 0; }
 button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
-.keys { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; text-align: left; font-size: 12px; color: var(--dim); margin: 10px 0 6px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; text-align: left; font-size: 13px; color: var(--dim); margin: 6px 0 12px; }
 .keys b { color: var(--text); font-weight: 700; }
-.opts { text-align: left; font-size: 13px; margin-top: 6px; }
-.opts summary { cursor: pointer; color: var(--dim); }
-.opts label { display: block; margin: 5px 0; }
+.menu-row { display: flex; gap: 8px; }
+.menu-row button { flex: 1; margin: 4px 0; }
+.opt { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 14px; padding: 8px 4px; border-bottom: 1px solid var(--slate); cursor: pointer; }
+.opt input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--sun); }
+.opt small { display: block; color: var(--dim); font-size: 12px; }
+.opt.big { font-size: 16px; }
+#hud-assist { position: absolute; top: calc(42% + 30px); left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 700; color: #3DE0FF; opacity: 0; transition: opacity 0.2s; }
 .home { display: inline-block; margin-top: 10px; color: var(--dim); font-size: 12px; text-decoration: none; }
 
 #card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }

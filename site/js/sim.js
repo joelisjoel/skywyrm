@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=1';
+import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=2';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -15,6 +15,7 @@ const MAX_ORBS = 6000;
 
 const _v1 = new Vector3(), _v2 = new Vector3(), _v3 = new Vector3();
 const _q1 = new Quaternion(), _m = new Matrix4();
+const _a1 = new Vector3(), _a2 = new Vector3(), _a3 = new Vector3();   // wallAssist scratch
 const X = new Vector3(1, 0, 0), Y = new Vector3(0, 1, 0), Z = new Vector3(0, 0, 1);
 
 // ---------------------------------------------------------------- arenas
@@ -25,21 +26,18 @@ export function makeArena(key) {
         const R = T.orbRadius;
         return {
             key, name: 'The Orb', kind: 'sphere', gravity: false, radius: R,
-            center: new Vector3(0, 0, 0),
-            obstacles: [{ type: 'sphere', c: new Vector3(0, 0, 0), r: 5, name: 'the Heart' }],
+            center: new Vector3(0, 0, 0), foodSquashY: 1,
+            obstacles: [],
             wallName: 'the glass shell',
         };
     }
-    const R = T.skyRadius, H = T.skyCeiling;
-    const rockY = H * 0.31;
+    // Open sky: lethal cloud sea below and storm wall around, no roof.
+    const R = T.skyRadius;
     return {
         key: 'sky', name: 'Skyhold', kind: 'cylinder', gravity: true, radius: R,
-        floor: 0, ceiling: H, softCeiling: H - 7,
-        center: new Vector3(0, H * 0.5, 0),
-        obstacles: [
-            { type: 'sphere', c: new Vector3(0, rockY, 0), r: Math.min(12, R * 0.17), name: 'the castle rock' },
-            { type: 'capsule', a: new Vector3(0, rockY, 0), b: new Vector3(0, H * 0.73, 0), r: 3, name: 'the spire' },
-        ],
+        floor: 0, band: R * 0.6,             // uniform food/spawn sampling height (no ceiling)
+        center: new Vector3(0, R * 0.2, 0), foodSquashY: 0.5,
+        obstacles: [],
         wallName: 'the storm wall',
     };
 }
@@ -121,6 +119,9 @@ export class Dragon {
         this.near = new Map();                    // enemy id → near-miss state
         this.lastEncounter = new Map();
         this.brain = null;
+        this.wallAssist = false;   // beginner mode (player only)
+        this.assisting = 0;        // 0..1, how hard beginner mode is steering
+        this.diedAt = 0;
     }
 
     pushPath(x, y, z) {
@@ -190,7 +191,7 @@ export class World {
         this.opull = new Int32Array(MAX_ORBS);    // dragon id pulling it, 0 = free
         this.opullT = new Float32Array(MAX_ORBS);
         this.oFree = []; for (let i = MAX_ORBS - 1; i >= 0; i--) this.oFree.push(i);
-        this.orbCount = 0; this.ambientCount = 0;
+        this.orbCount = 0; this.ambientCount = 0; this.oHigh = 0;
         this.powerups = [];
         this.nextPowerup = 10;
         // Spatial hash over all beads.
@@ -205,6 +206,7 @@ export class World {
         this.statWindow = [];     // [time, encounters, dragonSeconds] per second bucket
         this._bucket = { t: 0, enc: 0, ds: 0, penc: 0, pds: 0 };
         this.player = null;
+        this.rampStart = 0;
         this.botRespawns = [];
     }
 
@@ -214,6 +216,7 @@ export class World {
     addOrb(x, y, z, val, col, ttl) {
         if (!this.oFree.length) return -1;
         const i = this.oFree.pop();
+        if (i >= this.oHigh) this.oHigh = i + 1;
         this.ox[i] = x; this.oy[i] = y; this.oz[i] = z;
         this.oval[i] = val; this.ocol[i] = col; this.ottl[i] = ttl;
         this.oalive[i] = 1; this.opull[i] = 0; this.opullT[i] = 0;
@@ -235,19 +238,46 @@ export class World {
                 out.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).multiplyScalar(a.radius);
             } else {
                 const ang = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * a.radius;
-                out.set(Math.cos(ang) * rr, a.floor + Math.random() * (a.ceiling - a.floor), Math.sin(ang) * rr);
+                out.set(Math.cos(ang) * rr, a.floor + Math.random() * a.band, Math.sin(ang) * rr);
             }
-            if (hazardDist(a, out)[0] > margin && (a.kind !== 'cylinder' || out.y < a.softCeiling - 2)) return out;
+            if (hazardDist(a, out)[0] > margin) return out;
         }
         return out.copy(a.center);
+    }
+
+    // Food is densest at the centre (Gaussian, σ = foodSpread·R) so the
+    // middle is rich and dangerous and the outskirts are safe but lean.
+    foodPoint(margin, out) {
+        const a = this.arena, sig = T.foodSpread * a.radius;
+        for (let tries = 0; tries < 30; tries++) {
+            out.set(gauss() * sig, gauss() * sig * a.foodSquashY, gauss() * sig).add(a.center);
+            if (hazardDist(a, out)[0] > margin) return out;
+        }
+        return this.randomPointInside(margin, out);
+    }
+
+    // Spawn ring: close enough to see the action, far enough to be safe.
+    spawnPoint(out) {
+        const a = this.arena;
+        for (let tries = 0; tries < 30; tries++) {
+            const dist = a.radius * (0.25 + Math.random() * 0.3);
+            const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+            const s = Math.sqrt(1 - u * u);
+            if (a.kind === 'sphere') out.set(s * Math.cos(th), u, s * Math.sin(th)).multiplyScalar(dist);
+            else out.set(Math.cos(th) * dist, a.center.y + (Math.random() - 0.5) * a.radius * 0.15, Math.sin(th) * dist);
+            out.add(a.kind === 'sphere' ? a.center : _v3.set(0, 0, 0));
+            if (hazardDist(a, out)[0] > 15) return out;
+        }
+        return this.randomPointInside(15, out);
     }
 
     spawnAmbient(n) {
         const p = new Vector3();
         let made = 0;
         while (made < n) {
+            const uniform = Math.random() < T.foodUniformShare;
             if (Math.random() < T.orbClusterShare) {
-                this.randomPointInside(8, p);
+                if (uniform) this.randomPointInside(8, p); else this.foodPoint(8, p);
                 const k = 20 + Math.floor(Math.random() * 21);
                 const col = PALETTE[Math.floor(Math.random() * PALETTE.length)];
                 for (let j = 0; j < k; j++) {
@@ -257,7 +287,7 @@ export class World {
                 }
                 made += k;
             } else {
-                this.randomPointInside(3, p);
+                if (uniform) this.randomPointInside(3, p); else this.foodPoint(3, p);
                 this.addOrb(p.x, p.y, p.z, 1, PALETTE[Math.floor(Math.random() * PALETTE.length)], 0);
                 made++;
             }
@@ -291,7 +321,7 @@ export class World {
         const cand = new Vector3();
         let best = -1;
         for (let s = 0; s < 16; s++) {
-            this.randomPointInside(15, cand);
+            this.spawnPoint(cand);
             let dmin = 1e9;
             for (const d of this.dragons) {
                 if (!d.alive) continue;
@@ -321,6 +351,8 @@ export class World {
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
+        d.assisting = 0;
+        if (d === this.player) this.rampStart = this.time;   // population ramp restarts each life
         this.findSpawn(d.pos);
         // Face roughly toward the centre, offset so we don't all converge.
         const aim = _v1.copy(a.center).add(_v2.set(Math.random() - 0.5, (Math.random() - 0.5) * 0.3, Math.random() - 0.5).multiplyScalar(a.radius * 0.5));
@@ -342,8 +374,44 @@ export class World {
     }
 
     // ------------------------------------------------ flight (spec §6.2)
+    // Beginner mode: look ahead along the flight path and, if a wall or the
+    // cloud sea is coming, blend the stick toward a glancing escape
+    // (reflect off the surface, biased inward). Strong enough near the wall
+    // to fully override the player, and it cuts boost / brakes to turn tight.
+    wallAssist(d) {
+        const a = this.arena, inp = d.input;
+        const look = Math.max(20, d.speed * T.assistLook);
+        let hit = -1;
+        for (let s = 2; s <= look; s += 2) {
+            _a1.copy(d.pos).addScaledVector(d.vdir, s);
+            if (hazardDist(a, _a1)[0] < d.r + 4) { hit = s; break; }
+            _a1.copy(d.pos).addScaledVector(d.fwd, s);
+            if (hazardDist(a, _a1)[0] < d.r + 4) { hit = s; break; }
+        }
+        if (hit < 0) { d.assisting = 0; return; }
+        const urgency = 1 - hit / look;
+        // Inward normal of the surface we'd hit (numeric gradient).
+        const p = _a2.copy(d.pos).addScaledVector(d.fwd, hit), e = 0.5;
+        const n = _a3.set(
+            hazardDist(a, _a1.set(p.x + e, p.y, p.z))[0] - hazardDist(a, _a1.set(p.x - e, p.y, p.z))[0],
+            hazardDist(a, _a1.set(p.x, p.y + e, p.z))[0] - hazardDist(a, _a1.set(p.x, p.y - e, p.z))[0],
+            hazardDist(a, _a1.set(p.x, p.y, p.z + e))[0] - hazardDist(a, _a1.set(p.x, p.y, p.z - e))[0]).normalize();
+        const dn = d.fwd.dot(n);
+        const want = _a1.copy(d.fwd).addScaledVector(n, -2 * Math.min(0, dn) + 0.6).normalize();
+        want.applyQuaternion(_q1.copy(d.quat).invert());
+        const sx = Math.max(-1, Math.min(1, Math.atan2(want.x, -want.z) / 0.5));
+        const sy = Math.max(-1, Math.min(1, Math.atan2(want.y, Math.hypot(want.x, want.z)) / 0.5));
+        const w = Math.min(1, urgency * 1.6);
+        inp.sx += (sx - inp.sx) * w;
+        inp.sy += (sy - inp.sy) * w;
+        if (urgency > 0.45) inp.boost = false;
+        if (urgency > 0.7) inp.brake = true;
+        d.assisting = w;
+    }
+
     fly(d, dt) {
         const inp = d.input, a = this.arena;
+        if (d.wallAssist) this.wallAssist(d);
         d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass;
         d.braking = inp.brake;
         const mode = d.braking ? 'Brake' : d.boosting ? 'Boost' : 'Cruise';
@@ -382,30 +450,15 @@ export class World {
             d.updateFrame();
         }
 
-        // Soft ceiling (Skyhold): thin air noses you down and bleeds speed.
-        let ceilingDrag = 1;
-        if (a.kind === 'cylinder' && d.pos.y > a.softCeiling) {
-            const k = Math.min(1, (d.pos.y - a.softCeiling) / (a.ceiling - a.softCeiling));
-            if (d.fwd.y > -0.4) {
-                const R = _v1.crossVectors(d.fwd, d.up).normalize();
-                _q1.setFromAxisAngle(R, -k * 2.0 * dt);
-                d.quat.premultiply(_q1).normalize();
-                d.updateFrame();
-            }
-            ceilingDrag = 1 - 0.3 * k;
-        }
-
         // Speed.
         let target = T['speed' + mode];
         if (a.gravity) target = Math.max(T.speedBrake, target + T.diveBoost * -d.fwd.y);
-        target *= ceilingDrag;
         d.speed += (target - d.speed) * (T.speedTau > 0 ? 1 - Math.exp(-dt / T.speedTau) : 1);
 
         // Velocity direction trails the nose → carved turns.
         const kc = T.carveTau > 0 ? 1 - Math.exp(-dt / T.carveTau) : 1;
         d.vdir.lerp(d.fwd, kc).normalize();
         d.pos.addScaledVector(d.vdir, d.speed * dt);
-        if (a.kind === 'cylinder' && d.pos.y > a.ceiling) d.pos.y = a.ceiling;
 
         // Record path every PATH_STEP metres of travel.
         let dist = d.pos.distanceTo(d.lastPt);
@@ -593,6 +646,7 @@ export class World {
 
     kill(d, killer, cause) {
         d.alive = false;
+        d.diedAt = this.time;
         this.dropLoot(d, T.lootShare);
         if (killer && killer.alive) killer.kills++;
         this.emit({ type: 'death', d, killer, cause });
@@ -605,7 +659,7 @@ export class World {
     // ------------------------------------------------ orbs & pickups
     updateOrbs(dt) {
         // Expire loot.
-        for (let i = 0; i < MAX_ORBS; i++) {
+        for (let i = 0, n = this.oHigh; i < n; i++) {
             if (!this.oalive[i]) continue;
             if (this.ottl[i] > 0 && this.opull[i] === 0) {
                 this.ottl[i] -= dt;
@@ -618,7 +672,7 @@ export class World {
             const rad = (d.magnet > 0 ? T.magnetRadius : T.pickupBase) + d.r;
             const r2 = rad * rad;
             const px = d.pos.x, py = d.pos.y, pz = d.pos.z;
-            for (let i = 0; i < MAX_ORBS; i++) {
+            for (let i = 0, n = this.oHigh; i < n; i++) {
                 if (!this.oalive[i] || this.opull[i]) continue;
                 const dx = this.ox[i] - px; if (dx > rad || dx < -rad) continue;
                 const dy = this.oy[i] - py; if (dy > rad || dy < -rad) continue;
@@ -626,7 +680,7 @@ export class World {
                 if (dx * dx + dy * dy + dz * dz < r2) { this.opull[i] = d.id; this.opullT[i] = 0; }
             }
         }
-        for (let i = 0; i < MAX_ORBS; i++) {
+        for (let i = 0, n = this.oHigh; i < n; i++) {
             if (!this.oalive[i] || !this.opull[i]) continue;
             const d = this.byId.get(this.opull[i]);
             if (!d || !d.alive) { this.opull[i] = 0; continue; }
@@ -656,9 +710,7 @@ export class World {
                 const types = ['shield', 'magnet'];
                 if (T.dragonfire) types.push('fire', 'fire');
                 const p = new Vector3();
-                this.randomPointInside(12, p);
-                // Pull toward the centre: hotspots near landmarks.
-                p.lerp(this.arena.center, 0.35);
+                this.foodPoint(12, p);   // hotspots where the food is
                 const type = types[Math.floor(Math.random() * types.length)];
                 this.powerups.push({ pos: p, type, spin: Math.random() * 6 });
                 this.emit({ type: 'powerupSpawn', kind: type, pos: p });
@@ -758,6 +810,12 @@ export class World {
     leaderboard() {
         return this.dragons.filter((d) => d.alive).sort((a, b) => b.mass - a.mass);
     }
+}
+
+function gauss() {
+    let u = 0;
+    while (u === 0) u = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
 }
 
 function hashCell(x, y, z) {

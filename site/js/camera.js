@@ -2,7 +2,7 @@
 // back as you grow, FOV kick on boost, partial roll with the bank.
 // Also the death-cam orbit and the menu's attract orbit.
 import * as THREE from 'three';
-import { T } from './tunables.js?v=1';
+import { T } from './tunables.js?v=2';
 
 const _v = new THREE.Vector3(), _u = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -54,10 +54,10 @@ export class ChaseCam {
 
     attract(arena, dt) {
         this.orbitAngle += dt * 0.06;
-        const R = arena.radius * 0.95;
+        // Orbit the rich middle, where the action is.
+        const R = arena.radius * 0.33;
         const c = arena.center;
-        _t.set(Math.cos(this.orbitAngle) * R, (arena.kind === 'cylinder' ? 0.25 : 0.35) * R, Math.sin(this.orbitAngle) * R).add(c);
-        if (arena.kind === 'cylinder') _t.y = Math.min(_t.y, arena.ceiling - 5);
+        _t.set(Math.cos(this.orbitAngle) * R, arena.radius * 0.1, Math.sin(this.orbitAngle) * R).add(c);
         this.pos.lerp(_t, 0.05);
         this.look.lerp(c, 0.05);
         this.up.set(0, 1, 0);

@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=1';
+import { T, TIERS } from './tunables.js?v=2';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -16,7 +16,7 @@ export class Renderer {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(T.fov, 1, 0.1, 2000);
+        this.camera = new THREE.PerspectiveCamera(T.fov, 1, 0.1, 3000);
         this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x302040, 1.6));
         const sun = new THREE.DirectionalLight(0xffffff, 1.4);
         sun.position.set(40, 80, 30);
@@ -118,25 +118,36 @@ export class Renderer {
         this.wallMats = [];
         if (arena.kind === 'cylinder') {
             this.scene.background = new THREE.Color(0x1b1740);
-            this.scene.fog = new THREE.Fog(0x2a1f55, 60, 230);
+            this.scene.fog = new THREE.Fog(0x2a1f55, 90, 560);
             g.add(skyDome(0x0d0b2e, 0x3a2470, 0xff7a4a));
             // Cloud sea: flat plane + grid for motion reference.
             const floor = new THREE.Mesh(new THREE.CircleGeometry(arena.radius * 4, 64),
                 new THREE.MeshLambertMaterial({ color: 0x6f5aa8 }));
             floor.rotation.x = -Math.PI / 2; floor.position.y = arena.floor - 0.05;
             g.add(floor);
-            const grid = new THREE.GridHelper(arena.radius * 8, Math.round(arena.radius * 8 / 6), 0xb9a8ff, 0x9c86e8);
+            const grid = new THREE.GridHelper(arena.radius * 8, Math.round(arena.radius * 8 / 10), 0xb9a8ff, 0x9c86e8);
             grid.position.y = arena.floor + 0.02;
             grid.material.transparent = true; grid.material.opacity = 0.35;
             g.add(grid);
+            // Rings on the cloud sea mark the rich middle.
+            const rings = [];
+            for (let rr = 25; rr < arena.radius; rr += rr < 100 ? 25 : 50) {
+                for (let k = 0; k < 96; k++) {
+                    const a0 = k / 96 * Math.PI * 2, a1 = (k + 1) / 96 * Math.PI * 2;
+                    rings.push(Math.cos(a0) * rr, 0.08, Math.sin(a0) * rr, Math.cos(a1) * rr, 0.08, Math.sin(a1) * rr);
+                }
+            }
+            const rg = new THREE.BufferGeometry();
+            rg.setAttribute('position', new THREE.Float32BufferAttribute(rings, 3));
+            g.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.35 })));
             // Storm wall: vertical lines + rings, brightens as you approach.
             const pts = [];
-            const R = arena.radius, H = arena.ceiling;
-            for (let k = 0; k < 72; k++) {
-                const a = k / 72 * Math.PI * 2;
+            const R = arena.radius, H = arena.band;   // no roof: wall drawn to the food band
+            for (let k = 0; k < 144; k++) {
+                const a = k / 144 * Math.PI * 2;
                 pts.push(Math.cos(a) * R, arena.floor, Math.sin(a) * R, Math.cos(a) * R, H, Math.sin(a) * R);
             }
-            for (let y = 0; y <= H; y += 10) {
+            for (let y = 0; y <= H; y += 20) {
                 for (let k = 0; k < 72; k++) {
                     const a0 = k / 72 * Math.PI * 2, a1 = (k + 1) / 72 * Math.PI * 2;
                     pts.push(Math.cos(a0) * R, y, Math.sin(a0) * R, Math.cos(a1) * R, y, Math.sin(a1) * R);
@@ -148,23 +159,9 @@ export class Renderer {
             wallSurf.position.y = H / 2;
             g.add(wallSurf);
             this.wallMats.push(wallSurf.material);
-            // Castle rock + spire.
-            const rockMat = new THREE.MeshLambertMaterial({ color: 0x8a7fa6 });
-            for (const o of arena.obstacles) {
-                if (o.type === 'sphere') {
-                    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(o.r, 1), rockMat);
-                    m.position.copy(o.c); g.add(m);
-                } else {
-                    const len = o.b.distanceTo(o.a);
-                    const m = new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r, len, 16), new THREE.MeshLambertMaterial({ color: 0xd8cdea }));
-                    m.position.copy(o.a).lerp(o.b, 0.5); g.add(m);
-                    const cap = new THREE.Mesh(new THREE.ConeGeometry(o.r * 1.6, o.r * 4, 16), new THREE.MeshLambertMaterial({ color: 0xff6b8a }));
-                    cap.position.copy(o.b).y += o.r * 1.5; g.add(cap);
-                }
-            }
         } else {
             this.scene.background = new THREE.Color(0x07060f);
-            this.scene.fog = new THREE.Fog(0x07060f, 50, 190);
+            this.scene.fog = new THREE.Fog(0x07060f, 90, 560);
             const R = arena.radius;
             // Shell: latitude/longitude lines.
             const pts = [];
@@ -189,14 +186,11 @@ export class Renderer {
                 new THREE.MeshBasicMaterial({ color: 0x3de0ff, transparent: true, opacity: 0.04, side: THREE.BackSide, depthWrite: false }));
             g.add(shell);
             this.wallMats.push(shell.material);
-            // The Heart.
-            const heart = new THREE.Mesh(new THREE.SphereGeometry(arena.obstacles[0].r, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
-            g.add(heart);
-            const glow = new THREE.Mesh(new THREE.SphereGeometry(arena.obstacles[0].r * 1.8, 24, 16),
-                new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false }));
+            // Soft glow at the centre (not solid) marks the rich middle.
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 16),
+                new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false }));
             g.add(glow);
-            const light = new THREE.PointLight(0xffd9a0, 900, 0, 1.6);
-            g.add(light);
+            g.add(new THREE.PointLight(0xffd9a0, 2500, 0, 1.4));
             // Distant stars.
             const sp = [];
             for (let i = 0; i < 1500; i++) {
@@ -358,7 +352,7 @@ export class Renderer {
         // Orbs.
         const om = this.orbs.instanceMatrix.array, oc = this.orbs.instanceColor.array;
         let no = 0;
-        for (let i = 0; i < world.oalive.length && no < MAX_ORBS; i++) {
+        for (let i = 0; i < world.oHigh && no < MAX_ORBS; i++) {
             if (!world.oalive[i]) continue;
             const v = world.oval[i];
             let s = 0.28 + 0.13 * Math.sqrt(v);
@@ -461,7 +455,7 @@ function wrap(v, size) {
 }
 
 function skyDome(top, mid, horizon) {
-    const geo = new THREE.SphereGeometry(900, 32, 16);
+    const geo = new THREE.SphereGeometry(1500, 32, 16);
     const mat = new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
         uniforms: { top: { value: new THREE.Color(top) }, mid: { value: new THREE.Color(mid) }, hor: { value: new THREE.Color(horizon) } },

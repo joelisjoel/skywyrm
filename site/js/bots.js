@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=1';
-import { Dragon, hazardDist } from './sim.js?v=1';
+import { T } from './tunables.js?v=2';
+import { Dragon, hazardDist } from './sim.js?v=2';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -154,7 +154,7 @@ class Brain {
         this.goal = null;
         let best = -1, bestScore = 0;
         for (let s = 0; s < 80; s++) {
-            const i = Math.floor(Math.random() * world.oalive.length);
+            const i = Math.floor(Math.random() * world.oHigh);
             if (!world.oalive[i] || world.opull[i]) continue;
             _p.set(world.ox[i], world.oy[i], world.oz[i]);
             const dist = _p.distanceTo(d.pos);
@@ -163,7 +163,7 @@ class Brain {
             if (score > bestScore) { bestScore = score; best = i; }
         }
         if (best >= 0) { this.goal = { kind: 'orb', i: best }; this.goalUntil = world.time + 2.5; }
-        else { this.goal = { kind: 'point', p: world.randomPointInside(10, new Vector3()) }; this.goalUntil = world.time + 3; }
+        else { this.goal = { kind: 'point', p: world.foodPoint(10, new Vector3()) }; this.goalUntil = world.time + 3; }
     }
 
     goalDir(d) {
@@ -199,22 +199,34 @@ function randomBotMass(initial) {
     return r < 0.8 ? 10 + Math.random() * 30 : 40 + Math.random() * 80;
 }
 
-// Keep the room at T.population dragons (bots fill; spec §14).
+// How many other dragons there should be right now: popStart when you
+// spawn, one more every popRampSec, up to popMax. The ramp restarts each
+// life so every run eases in. The menu's attract mode shows a full sky.
+export function targetBots(world) {
+    const p = world.player;
+    if (!p) return Math.round(T.popMax);
+    const t = (p.alive ? world.time : p.diedAt) - world.rampStart;
+    return Math.max(0, Math.min(Math.round(T.popMax), Math.round(T.popStart) + Math.floor(Math.max(0, t) / T.popRampSec)));
+}
+
 export function managePopulation(world, initial = false) {
     worldRef = world;
-    const want = Math.round(T.population);
-    let alive = world.dragons.filter((d) => d.isBot).length + (world.player ? 1 : 0);
-    // Scheduled respawns.
+    const want = targetBots(world);
+    let alive = world.dragons.filter((d) => d.isBot).length;
+    // Scheduled respawns of eaten bots.
     world.botRespawns.sort((a, b) => a - b);
     while (world.botRespawns.length && (world.botRespawns[0] <= world.time || initial)) {
         world.botRespawns.shift();
         if (alive < want) { spawnBot(world, randomBotMass(false)); alive++; }
     }
-    const pending = world.botRespawns.length;
-    while (alive + pending < want) { spawnBot(world, randomBotMass(initial)); alive++; }
-    // Too many (slider lowered): retire the smallest bots.
+    while (world.botRespawns.length && alive + world.botRespawns.length > want) world.botRespawns.pop();
+    while (alive + world.botRespawns.length < want) { spawnBot(world, randomBotMass(initial)); alive++; }
+    // Too many (new life, or slider lowered): retire the ones farthest from
+    // you, so nobody vanishes in front of you.
     if (alive > want) {
-        const bots = world.dragons.filter((d) => d.isBot).sort((a, b) => a.mass - b.mass);
+        const p = world.player;
+        const bots = world.dragons.filter((d) => d.isBot)
+            .sort((a, b) => (p ? b.pos.distanceToSquared(p.pos) - a.pos.distanceToSquared(p.pos) : a.mass - b.mass));
         for (let k = 0; k < alive - want && k < bots.length; k++) world.removeDragon(bots[k]);
     }
 }

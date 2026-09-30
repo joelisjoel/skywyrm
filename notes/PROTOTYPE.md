@@ -4,7 +4,7 @@ Sep 29, 2026 · Built to answer one question: **is the flight and the 3D
 snake loop fun on PC?** Graphics are deliberately minimal. This covers the
 spec's week-1 "Fun alone" milestone (SPEC-v2 §18).
 
-**Play:** `dendroslabs.com/wyrm/` once merged to `main`. Locally, serve
+**Play:** `dendroslabs.com/wyrm/`. Locally, serve
 `docs/` and open `/wyrm/`.
 
 ## What's in
@@ -74,6 +74,39 @@ spec's week-1 "Fun alone" milestone (SPEC-v2 §18).
 
 Guardrail: `scripts/smoke-test.mjs` now boots `/wyrm/` headless and fails on
 any page error.
+
+## Round 2 changes (after Joel's first play: "this is too hard")
+
+- **Arenas are 5× wider:** Skyhold is 350 m in radius and The Orb is 325 m,
+  up from 70 m and 65 m.
+  - **No roof** in Skyhold.
+  - **No centre obstacles:** the castle rock, the spire and the Heart are gone.
+- **Food is densest in the middle.** It follows a Gaussian cloud with
+  σ = 0.2 × radius (`foodSpread`), and 15% is sprinkled evenly
+  (`foodUniformShare`). There are 2,000 orbs (up from 800).
+  - The middle is rich and dangerous; the outskirts are safe but lean.
+  - Rings on the cloud sea and a soft glow in The Orb mark the middle.
+  - A ring on the radar rim always points toward the middle.
+  - You spawn 25–55% of the radius out from the centre.
+- **Beginner mode** (Settings, on by default) steers you away from walls
+  and the cloud sea.
+  - It looks 1.8 s ahead along your flight path, blends your stick toward a
+    glancing escape, cuts boost, and brakes if it's close.
+  - Headless test: 0 of 80 deaths while deliberately boosting into walls
+    for 30 s, versus 80 of 80 with it off.
+- **The population ramps up.** Each life starts with 3 other dragons, and
+  one more arrives every minute up to 20 (`popStart`, `popMax`,
+  `popRampSec`). The menu background still shows a full sky.
+- **Settings and Controls are separate menus**, opened from both the main
+  menu and the pause screen.
+- **Tuning storage key bumped to v2**, so earlier saved slider values reset
+  to the new defaults.
+
+Headless check, bots only, full 20 dragons:
+- Bots gather 0.25–0.4 × radius from the centre, as intended.
+- Among themselves they still meet about every 3 s, because they crowd the
+  same food.
+- For a human, the pressure now comes from choosing to go to the middle.
 
 ## Findings so far (headless bot runs)
 

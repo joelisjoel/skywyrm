@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=1';
+import { T, TIERS } from './tunables.js?v=2';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -136,15 +136,17 @@ export class Hud {
         c.beginPath(); c.ellipse(cx, cy, rx / 2, ry / 2, 0, 0, Math.PI * 2); c.stroke();
         c.beginPath(); c.moveTo(cx - rx, cy); c.lineTo(cx + rx, cy); c.moveTo(cx, cy - ry); c.lineTo(cx, cy + ry); c.stroke();
         _q.copy(p.quat).invert();
-        const draw = (pos, color, crown) => {
+        const draw = (pos, color, crown, ring) => {
             const l = _v.copy(pos).sub(p.pos).applyQuaternion(_q);
             let k = 1, dist = l.length();
-            if (dist > range) { if (!crown) return; k = range / dist * 0.98; }
+            if (dist > range) { if (!crown && !ring) return; k = range / dist * 0.98; }
             const px = cx + l.x / range * rx * k, pz = cy + l.z / range * ry * k;
             const py = pz - l.y / range * ry * 1.3 * k;
             c.strokeStyle = color; c.fillStyle = color; c.lineWidth = 1.5;
             c.beginPath(); c.moveTo(px, pz); c.lineTo(px, py); c.stroke();
-            if (crown) {
+            if (ring) {
+                c.lineWidth = 2; c.beginPath(); c.arc(px, py, 5, 0, Math.PI * 2); c.stroke();
+            } else if (crown) {
                 c.font = '14px system-ui'; c.textAlign = 'center'; c.fillText('👑', px, py - 2);
             } else {
                 c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
@@ -155,6 +157,8 @@ export class Hud {
             draw(d.pos, hex(d.color), false);
         }
         for (const pu of world.powerups) draw(pu.pos, '#ffffff', false);
+        // The rich middle: a ring that sits on the rim when it's out of range.
+        draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
         if (view.top && view.top !== p && view.top.mass >= TIERS[2].mass) draw(view.top.pos, '#FFD93D', true);
         // You.
         c.fillStyle = '#fff';

@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=1">
+    <link rel="stylesheet" href="style.css?v=2">
     <script type="importmap">
         {
             "imports": {
@@ -28,6 +28,7 @@
         <div id="board"></div>
         <div id="toasts"></div>
         <div id="hud-warn">⚠ WALL</div>
+        <div id="hud-assist">beginner mode steering</div>
         <div id="hud-stats">
             <div id="hud-len">0 m</div>
             <div id="hud-kills">⚔ 0</div>
@@ -45,32 +46,53 @@
         <div class="sub">prototype · PC · you vs. bots</div>
         <input id="name" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Dragon name">
         <div class="arenas">
-            <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · castle spire · storm wall</span></label>
+            <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · open sky · storm wall</span></label>
             <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
         </div>
         <button id="play" class="cta">PLAY</button>
-        <div class="keys">
-            <div><b>Mouse</b> steer (offset from centre)</div>
-            <div><b>Click / W</b> boost — burns length</div>
-            <div><b>Right-click / S</b> brake — tighter turns</div>
-            <div><b>A / D</b> roll</div>
-            <div><b>C</b> look back · <b>E</b> dragonfire</div>
-            <div><b>Esc</b> pause · <b>M</b> mute · <b>`</b> tuning</div>
+        <div class="menu-row">
+            <button class="open-settings">⚙ Settings</button>
+            <button class="open-controls">🎮 Controls</button>
         </div>
-        <details class="opts">
-            <summary>Settings</summary>
-            <label><input type="checkbox" id="opt-invert"> Invert pitch</label>
-            <label><input type="checkbox" id="opt-lock"> Lock mouse (virtual stick — cursor can't leave the window)</label>
-            <label><input type="checkbox" id="opt-assist"> Zero-G orientation assist</label>
-            <label><input type="checkbox" id="opt-motion"> Reduce motion</label>
-        </details>
         <a class="home" href="../">← dendroslabs</a>
     </div>
 
     <div id="pause" class="panel">
         <h2>Paused</h2>
         <button id="resume" class="cta">Resume</button>
+        <div class="menu-row">
+            <button class="open-settings">⚙ Settings</button>
+            <button class="open-controls">🎮 Controls</button>
+        </div>
         <button id="quit">Quit to menu</button>
+    </div>
+
+    <div id="settings" class="panel">
+        <h2>Settings</h2>
+        <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><b>Beginner mode</b><small>Automatically steers you away from walls and the cloud sea</small></span></label>
+        <label class="opt"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>Mouse up = nose down, like a flight sim</small></span></label>
+        <label class="opt"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
+        <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
+        <label class="opt"><input type="checkbox" id="opt-motion"> <span>Reduce motion<small>Less camera roll, no FOV kick</small></span></label>
+        <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute sound <small>(M)</small></span></label>
+        <button class="cta close-overlay">Done</button>
+    </div>
+
+    <div id="controls" class="panel">
+        <h2>Controls</h2>
+        <div class="keys">
+            <div><b>Mouse</b></div><div>steer — the further from centre, the harder you turn</div>
+            <div><b>Click / W / Space</b></div><div>boost (burns length)</div>
+            <div><b>Right-click / S</b></div><div>brake — tighter turns</div>
+            <div><b>A / D</b></div><div>roll</div>
+            <div><b>Arrow keys</b></div><div>steer without the mouse</div>
+            <div><b>C</b></div><div>look back</div>
+            <div><b>E / F</b></div><div>breathe dragonfire (when you have it)</div>
+            <div><b>Esc / P</b></div><div>pause</div>
+            <div><b>M</b></div><div>mute</div>
+            <div><b>`</b></div><div>tuning panel</div>
+        </div>
+        <button class="cta close-overlay">Done</button>
     </div>
 
     <div id="card" class="panel">
@@ -88,7 +110,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=1"></script>
+    <script type="module" src="js/main.js?v=2"></script>
 </body>
 
 </html>
