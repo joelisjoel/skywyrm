@@ -7,7 +7,12 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=10">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Title capitals + brush calligraphy for the few Chinese characters used (text= keeps the font tiny). -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&text=%E9%BE%8D%E9%A8%B0%E9%9B%B2%E9%A7%95%E9%9C%A7%E7%BF%BB%E6%B1%9F%E5%80%92%E6%B5%B7&display=swap">
+    <link rel="stylesheet" href="style.css?v=11">
     <script type="importmap">
         {
             "imports": {
@@ -21,6 +26,7 @@
 <body data-state="menu">
     <canvas id="game"></canvas>
     <canvas id="overlay"></canvas>
+    <div id="vignette"></div>
 
     <!-- HUD -->
     <div id="hud">
@@ -38,10 +44,17 @@
         <div id="hud-fps"></div>
     </div>
 
+    <!-- Couplet either side of the start menu: "soar through cloud and mist" / "overturn rivers and seas". -->
+    <div class="couplet left" aria-hidden="true">騰雲駕霧</div>
+    <div class="couplet right" aria-hidden="true">翻江倒海</div>
+
     <!-- Menu (attract mode runs behind it) -->
     <div id="menu" class="panel">
-        <h1>WYRM</h1>
-        <div class="sub">3D dragon snake · PC prototype</div>
+        <div class="brand">
+            <div class="seal" aria-hidden="true">龍</div>
+            <h1>WYRM</h1>
+        </div>
+        <div class="sub">Ride the clouds · rule the sky</div>
         <input id="name" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Dragon name">
         <div id="name-error" class="err"></div>
 
