@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wyrm — prototype</title>
+    <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css?v=1">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://esm.sh/three@0.163.0"
+            }
+        }
+    </script>
+    <script src="../include/analytics.js"></script>
+</head>
+
+<body data-state="menu">
+    <canvas id="game"></canvas>
+    <canvas id="overlay"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div id="feed"></div>
+        <div id="board"></div>
+        <div id="toasts"></div>
+        <div id="hud-warn">⚠ WALL</div>
+        <div id="hud-stats">
+            <div id="hud-len">0 m</div>
+            <div id="hud-kills">⚔ 0</div>
+            <div id="hud-tier"></div>
+            <div class="bar"><div id="hud-tierbar"></div></div>
+        </div>
+        <canvas id="radar"></canvas>
+        <div id="hud-pu"></div>
+        <div id="hud-fps"></div>
+    </div>
+
+    <!-- Menu (attract mode runs behind it) -->
+    <div id="menu" class="panel">
+        <h1>WYRM</h1>
+        <div class="sub">prototype · PC · you vs. bots</div>
+        <input id="name" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Dragon name">
+        <div class="arenas">
+            <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · castle spire · storm wall</span></label>
+            <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
+        </div>
+        <button id="play" class="cta">PLAY</button>
+        <div class="keys">
+            <div><b>Mouse</b> steer (offset from centre)</div>
+            <div><b>Click / W</b> boost — burns length</div>
+            <div><b>Right-click / S</b> brake — tighter turns</div>
+            <div><b>A / D</b> roll</div>
+            <div><b>C</b> look back · <b>E</b> dragonfire</div>
+            <div><b>Esc</b> pause · <b>M</b> mute · <b>`</b> tuning</div>
+        </div>
+        <details class="opts">
+            <summary>Settings</summary>
+            <label><input type="checkbox" id="opt-invert"> Invert pitch</label>
+            <label><input type="checkbox" id="opt-lock"> Lock mouse (virtual stick — cursor can't leave the window)</label>
+            <label><input type="checkbox" id="opt-assist"> Zero-G orientation assist</label>
+            <label><input type="checkbox" id="opt-motion"> Reduce motion</label>
+        </details>
+        <a class="home" href="../">← dendroslabs</a>
+    </div>
+
+    <div id="pause" class="panel">
+        <h2>Paused</h2>
+        <button id="resume" class="cta">Resume</button>
+        <button id="quit">Quit to menu</button>
+    </div>
+
+    <div id="card" class="panel">
+        <h2 id="card-title"></h2>
+        <div class="grid">
+            <div><span>peak length</span><b id="card-len"></b></div>
+            <div><span>kills</span><b id="card-kills"></b></div>
+            <div><span>time alive</span><b id="card-time"></b></div>
+            <div><span>best rank</span><b id="card-rank"></b></div>
+        </div>
+        <button id="again" class="cta">Play again <small>(Space)</small></button>
+        <button id="menu-btn">Menu</button>
+    </div>
+
+    <button id="tune-btn" title="Tuning panel (`)">⚙</button>
+    <div id="tune"></div>
+
+    <script type="module" src="js/main.js?v=1"></script>
+</body>
+
+</html>
