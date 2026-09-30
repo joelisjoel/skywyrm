@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=9';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=10';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -217,6 +217,13 @@ export class Hud {
         const p = view.player;
         if (p) {
             this.el.len.textContent = Math.round(p.shownLen || p.len);
+            const L = view.lives, key = L ? L.total + '/' + L.left : '';
+            if (key !== this.livesKey) {
+                this.livesKey = key;
+                const box = document.getElementById('hud-lives');
+                box.textContent = '';
+                if (L) for (let i = 0; i < L.total; i++) { const s = document.createElement('span'); if (i >= L.left) s.className = 'used'; box.appendChild(s); }
+            }
             this.el.kills.textContent = p.kills ? '⚔ ' + p.kills : '';
             const t = p.tier, next = TIERS[t + 1];
             this.el.tier.textContent = TIERS[t].name;

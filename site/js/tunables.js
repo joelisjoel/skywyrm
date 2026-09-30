@@ -94,6 +94,8 @@ export const DEFAULTS = {
     tailBite: 1,            // a head can nibble the tip of a tail instead of dying on it
     biteBeads: 5,           // how many tail-tip beads are edible
     biteMult: 5,            // each bitten bead is worth this many orbs
+    lives: 3,               // lives per game (0 = endless: every death ends the run)
+    respawnDelay: 3,        // s between lives
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -172,6 +174,8 @@ export const PANEL = [
     ['tailBite', 0, 1, 1, 'Rules'],
     ['biteBeads', 1, 15, 1, 'Rules'],
     ['biteMult', 1, 15, 1, 'Rules'],
+    ['lives', 0, 9, 1, 'Rules'],
+    ['respawnDelay', 1, 10, 0.5, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

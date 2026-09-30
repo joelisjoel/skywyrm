@@ -12,7 +12,7 @@
     <!-- Title capitals + brush calligraphy for the few Chinese characters used (text= keeps the font tiny). -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&text=%E9%BE%8D%E9%A8%B0%E9%9B%B2%E9%A7%95%E9%9C%A7%E7%BF%BB%E6%B1%9F%E5%80%92%E6%B5%B7&display=swap">
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
     <script type="importmap">
         {
             "imports": {
@@ -37,6 +37,7 @@
         <div id="hud-assist"><span class="badge">BEGINNER</span> steering you clear</div>
         <div id="hud-stats">
             <div class="hud-len"><span id="hud-len">0</span><small>m</small><span id="hud-kills"></span></div>
+            <div id="hud-lives" class="pearls"></div>
             <div class="hud-tier"><span id="hud-tier"></span><div class="hair"><div id="hud-tierbar"></div></div></div>
             <div id="hud-gauges"></div>
         </div>
@@ -150,8 +151,15 @@
         <button class="cta close-overlay">Done</button>
     </div>
 
+    <div id="respawn" aria-live="polite">
+        <div id="respawn-text"></div>
+        <div id="respawn-count"></div>
+        <div id="respawn-lives" class="pearls"></div>
+    </div>
+
     <div id="card" class="panel">
         <h2 id="card-title"></h2>
+        <div id="card-sub"></div>
         <div class="grid">
             <div><span>peak length</span><b id="card-len"></b></div>
             <div><span>kills</span><b id="card-kills"></b></div>
@@ -165,7 +173,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=11"></script>
+    <script type="module" src="js/main.js?v=12"></script>
 </body>
 
 </html>

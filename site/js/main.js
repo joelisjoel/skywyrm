@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=9';
-import { World, Dragon, hazardDist } from './sim.js?v=9';
-import { managePopulation, targetBots } from './bots.js?v=9';
-import { Renderer } from './render.js?v=9';
-import { ChaseCam } from './camera.js?v=9';
-import { Input } from './input.js?v=9';
-import { Hud } from './hud.js?v=10';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=10';
+import { World, Dragon, hazardDist } from './sim.js?v=10';
+import { managePopulation, targetBots } from './bots.js?v=10';
+import { Renderer } from './render.js?v=10';
+import { ChaseCam } from './camera.js?v=10';
+import { Input } from './input.js?v=10';
+import { Hud } from './hud.js?v=11';
 import { Audio } from './audio.js?v=9';
-import { TunePanel } from './tune-panel.js?v=9';
+import { TunePanel } from './tune-panel.js?v=10';
 import { checkName } from './names.js?v=8';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=9';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=10';
 import { serverUrl } from './net-config.js?v=8';
 
 loadTune();
@@ -54,6 +54,18 @@ let actionUntil = 0;
 const hype = (secs = 8) => { actionUntil = Math.max(actionUntil, performance.now() / 1000 + secs); };
 const view = { state: 'menu', player: null, top: null, board: [], wallWarn: 0 };
 let deathInfo = null;
+// A game is up to `lives` lives (rule; 0 = endless). Between lives you
+// respawn after respawnDelay s; the run card shows once, at the end, with
+// the whole game's totals.
+let game = null;
+const newGame = () => { game = { deaths: 0, kills: 0, peak: 0, time: 0, rank: 99 }; };
+const livesTotal = () => (world ? world.rule('lives') : T.lives);
+const livesLeft = () => (livesTotal() > 0 ? livesTotal() - game.deaths : Infinity);
+function pearls(el, total, left) {
+    el.textContent = '';
+    if (!(total > 0)) return;
+    for (let i = 0; i < total; i++) { const s = document.createElement('span'); if (i >= left) s.className = 'used'; el.appendChild(s); }
+}
 const run = { startMass: T.spawnMass };
 
 function newWorld() {
@@ -82,6 +94,7 @@ function startPlay() {
         world.player = player;
     }
     player.name = settings.name;
+    newGame();
     // First few runs: nearby bots leave you alone for 45 s (spec §6.8).
     world.gentleTime = settings.runs <= 3 ? 45 : 0;
     player.wallAssist = settings.beginner;
@@ -169,23 +182,49 @@ function handleEvents() {
 
 function onPlayerDeath(e) {
     audio.death();
+    if (!game) newGame();
+    const at = performance.now() / 1000;
     deathInfo = {
-        at: performance.now() / 1000,
+        at,
         pos: player.pos.clone(),
         killer: e.killer,
         text: e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
-        peak: Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass)),
-        kills: player.kills,
-        time: online ? performance.now() / 1000 - (player.bornWall || 0) : world.time - player.bornAt,
-        rank: player.bestRank,
     };
+    // This life's numbers roll into the game's.
+    game.deaths++;
+    game.kills += player.kills;
+    game.peak = Math.max(game.peak, Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass)));
+    game.time += online ? at - (player.bornWall || at) : world.time - player.bornAt;
+    game.rank = Math.min(game.rank, player.bestRank);
+    deathInfo.final = livesLeft() <= 0;
+    deathInfo.respawnAt = at + world.rule('respawnDelay');
     setState('dead');
-    $('card-title').textContent = deathInfo.text;
-    $('card-len').textContent = deathInfo.peak + ' m';
-    $('card-kills').textContent = String(deathInfo.kills);
-    const t = Math.round(deathInfo.time);
-    $('card-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-    $('card-rank').textContent = deathInfo.rank < 99 ? '#' + deathInfo.rank : '—';
+    if (deathInfo.final) {
+        const endless = !(livesTotal() > 0);
+        $('card-title').textContent = endless ? deathInfo.text : 'Game over';
+        $('card-sub').textContent = endless ? '' : deathInfo.text;
+        $('card-len').textContent = game.peak + ' m';
+        $('card-kills').textContent = String(game.kills);
+        const t = Math.round(game.time);
+        $('card-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+        $('card-rank').textContent = game.rank < 99 ? '#' + game.rank : '—';
+    } else {
+        $('respawn-text').textContent = deathInfo.text;
+        pearls($('respawn-lives'), livesTotal(), livesLeft());
+    }
+}
+
+// Next life: same game, fresh dragon at a safe spot.
+function nextLife() {
+    if (online) { online.respawn(); return; }         // the server respawns you (onRespawn → play)
+    const ramp = world.rampStart;                   // the bot population keeps building across lives
+    world.spawn(player, T.spawnMass);
+    world.rampStart = ramp;
+    view.player = player;
+    cam.snap(player);
+    input.zero();
+    input.requestLock();
+    setState('play');
 }
 
 // ------------------------------------------------ multiplayer
@@ -201,6 +240,7 @@ function joinRoom(id) {
     online = new NetGame(SERVER_BASE, id, name, {
         onWelcome(w, p, room) {
             world = w; player = p;
+            newGame();
             w.assist = settings.assist;
             p.bornWall = performance.now() / 1000; p.peakMass = p.mass; p.kills = 0; p.bestRank = 99;
             renderer.clearHeads();
@@ -341,7 +381,7 @@ function resume() {
 }
 
 function playAgain() {
-    if (online) { online.respawn(); return; }       // the server respawns you
+    if (online) { newGame(); online.respawn(); return; }       // the server respawns you
     startPlay();
 }
 for (const r of document.querySelectorAll('input[name=arena]')) {
@@ -419,7 +459,7 @@ input.onKey = (code) => {
         // Leaving pointer lock with Esc can deliver both the lock change and
         // the key; ignore a second Esc that arrives right after pausing.
         else if (state === 'pause' && performance.now() - pausedAt > 400) resume();
-    } else if ((code === 'Space' || code === 'Enter') && state === 'dead' && performance.now() / 1000 - deathInfo.at > 0.9) playAgain();
+    } else if ((code === 'Space' || code === 'Enter') && state === 'dead' && deathInfo.final && performance.now() / 1000 - deathInfo.at > 0.9) playAgain();
     else if (code === 'Enter' && state === 'menu') startPlay();
 };
 // Clicking back into the game re-grabs the pointer in lock mode.
@@ -507,13 +547,20 @@ function frame(nowMs) {
         cam.deathOrbit(deathInfo.pos, k, dt);
         view.wallWarn = 0;
         audio.wind(0, false);
-        if (now - deathInfo.at > 1.5) document.body.dataset.card = '1';
+        if (deathInfo.final) { if (now - deathInfo.at > 1.5) document.body.dataset.card = '1'; }
+        else {
+            const left = deathInfo.respawnAt - now;
+            document.body.dataset.respawn = '1';
+            $('respawn-count').textContent = String(Math.max(1, Math.ceil(left)));
+            if (left <= 0 && !deathInfo.respawning) { deathInfo.respawning = true; nextLife(); }
+        }
     } else {
         cam.attract(world.arena, dt);
         view.wallWarn = 0;
         audio.wind(0, false);
     }
-    if (state !== 'dead') document.body.dataset.card = '';
+    if (state !== 'dead') { document.body.dataset.card = ''; document.body.dataset.respawn = ''; }
+    view.lives = game && livesTotal() > 0 ? { total: livesTotal(), left: livesLeft() } : null;
 
     // Soundtrack: calm in menus, driving while you fly, full band in the action.
     let level = 0;

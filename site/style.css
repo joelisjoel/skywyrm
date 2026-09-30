@@ -255,3 +255,16 @@ button.cta:hover, .room button:hover { filter: brightness(1.06); }
 .badge { background: rgba(134, 217, 176, 0.14); color: var(--jade); }
 #hud-assist { color: var(--jade); }
 .opt input, .opt-range input { accent-color: var(--gold); }
+
+/* ---------------- Lives: dragon pearls + respawn countdown ---------------- */
+.pearls { display: flex; gap: 6px; }
+.pearls span { width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #F3DDA4 40%, #C9973E); box-shadow: 0 0 6px rgba(243, 221, 164, 0.6); }
+.pearls span.used { background: none; box-shadow: inset 0 0 0 1.2px rgba(255, 255, 255, 0.28); }
+#hud-lives { margin: 8px 0 2px; }
+#hud-lives:empty { display: none; }
+#respawn { position: fixed; left: 0; right: 0; top: 34%; display: none; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; text-align: center; }
+body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
+#respawn-text { font-size: 18px; font-weight: 600; color: rgba(245, 238, 225, 0.85); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7); }
+#respawn-count { font-family: 'Cinzel', Georgia, serif; font-size: 72px; font-weight: 700; line-height: 1; color: #F3DDA4; text-shadow: 0 0 30px rgba(217, 181, 108, 0.45); }
+#respawn .pearls span { width: 12px; height: 12px; }
+#card-sub { color: var(--dim); font-size: 13px; margin: -6px 0 14px; }
