@@ -1,15 +1,15 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, loadTune, TIERS } from './tunables.js?v=2';
-import { World, Dragon, hazardDist } from './sim.js?v=2';
-import { managePopulation, targetBots } from './bots.js?v=2';
-import { Renderer } from './render.js?v=2';
-import { ChaseCam } from './camera.js?v=2';
-import { Input } from './input.js?v=2';
-import { Hud } from './hud.js?v=2';
-import { Audio } from './audio.js?v=2';
-import { TunePanel } from './tune-panel.js?v=2';
+import { T, loadTune, saveTune, TIERS } from './tunables.js?v=3';
+import { World, Dragon, hazardDist } from './sim.js?v=3';
+import { managePopulation, targetBots } from './bots.js?v=3';
+import { Renderer } from './render.js?v=3';
+import { ChaseCam } from './camera.js?v=3';
+import { Input } from './input.js?v=3';
+import { Hud } from './hud.js?v=3';
+import { Audio } from './audio.js?v=3';
+import { TunePanel } from './tune-panel.js?v=3';
 
 loadTune();
 
@@ -22,7 +22,7 @@ const hud = new Hud();
 const audio = new Audio();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { beginner: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, arena: 'sky', name: '', runs: 0 };
+const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, arena: 'sky', name: '', runs: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* defaults */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
 
@@ -114,11 +114,14 @@ function handleEvents() {
                 }
                 break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
-            case 'fire':
-                renderer.burstFire(e.d);
-                if (mine || e.d.pos.distanceTo(cam.pos) < 40) audio.fire();
+            case 'fireStart':
+                if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.fire();
+                break;
+            case 'fireMiss':
+                if (mine) hud.toast(`Missed — dragonfire reaches ${Math.round(T.fireRange)} m ahead`, 'bad');
                 break;
             case 'sever':
+                renderer.burnSegment(e.burn);
                 if (mine) hud.toast(`SEVERED ${e.o.name}!`, 'big');
                 if (e.o === player) hud.toast(`${e.d.name} burned your tail!`, 'bad');
                 hud.feed(`🔥 ${e.d.name} severed ${e.o.name}`);
@@ -193,14 +196,39 @@ for (const b of document.querySelectorAll('.open-settings')) b.onclick = () => o
 for (const b of document.querySelectorAll('.open-controls')) b.onclick = () => openOverlay('controls');
 for (const b of document.querySelectorAll('.close-overlay')) b.onclick = () => closeOverlay();
 
-const tune = new TunePanel(() => { newWorld(); setState('menu'); });
+// Settings tabs: Server (room rules) vs Player (personal).
+for (const b of document.querySelectorAll('#settings .tab')) b.onclick = () => ($('settings').dataset.tab = b.dataset.tab);
+bindCheck('opt-wide', 'wideView', () => (renderer.view.wide = settings.wideView));
+bindCheck('opt-mirror', 'mirror', () => (renderer.view.mirror = settings.mirror));
+renderer.view.wide = settings.wideView;
+renderer.view.mirror = settings.mirror;
+
+const tune = new TunePanel(() => { newWorld(); setState('menu'); syncServer(); });
 $('tune-btn').onclick = () => tune.toggle();
+
+// Server sliders edit the same tunables as the dev panel.
+const SERVER = [['srv-start', 'popStart', (v) => String(v)], ['srv-max', 'popMax', (v) => String(v)], ['srv-every', 'popRampSec', (v) => v + ' s']];
+function syncServer() {
+    for (const [id, key, fmt] of SERVER) { $(id).value = T[key]; $(id + '-v').textContent = fmt(T[key]); }
+}
+for (const [id, key, fmt] of SERVER) {
+    $(id).oninput = () => {
+        T[key] = +$(id).value;
+        if (key === 'popStart' && T.popStart > T.popMax) T.popMax = T.popStart;
+        if (key === 'popMax' && T.popMax < T.popStart) T.popStart = T.popMax;
+        saveTune(); syncServer(); tune.sync();
+    };
+}
+syncServer();
 
 input.onKey = (code) => {
     if (code === 'Backquote') tune.toggle();
     else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
     else if (overlay && (code === 'Escape' || code === 'Enter')) closeOverlay();
     else if (overlay) return;
+    else if ((code === 'KeyE' || code === 'KeyF') && state === 'play' && player && player.alive && !player.fire && !(player.breath > 0)) {
+        hud.toast('No dragonfire — grab a red crystal first', 'hint');
+    }
     else if (code === 'Escape' || code === 'KeyP') {
         if (state === 'play') setState('pause');
         else if (state === 'pause') { setState('play'); input.requestLock(); }
@@ -257,7 +285,7 @@ function frame(nowMs) {
         if (player && player.alive) {
             const r = view.board.indexOf(player) + 1;
             if (r > 0 && r < player.bestRank) {
-                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) hud.toast('YOU ARE #1 — everyone can see your beacon', 'big');
+                if (r === 1 && player.bestRank > 1 && world.time - player.bornAt > 5) hud.toast('YOU ARE #1 — your head is ablaze for all to see', 'big');
                 player.bestRank = r;
             }
         }
@@ -285,7 +313,7 @@ function frame(nowMs) {
     if (state !== 'dead') document.body.dataset.card = '';
 
     renderer.update(world, view, dt, now);
-    hud.draw(world, view, renderer.camera, input, now);
+    hud.draw(world, view, renderer, input, now);
     hud.updateStats(world, view, now, fps);
     tune.update(world, renderer, simMs, fps);
 }

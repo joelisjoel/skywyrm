@@ -45,7 +45,7 @@ spec's week-1 "Fun alone" milestone (SPEC-v2 §18).
   - names over nearby dragons
   - blob shadows
   - speed dust
-  - the Beacon over #1
+  - the #1 dragon's blazing head
   - walls brighten as you approach
 - **Your own body** is translucent and shrinks away near the camera, so it
   never blocks the view.
@@ -107,6 +107,45 @@ Headless check, bots only, full 20 dragons:
 - Among themselves they still meet about every 3 s, because they crowd the
   same food.
 - For a human, the pressure now comes from choosing to go to the middle.
+
+## Round 3 changes
+
+Feedback: the arena is better; also asked for more dragons, split settings,
+a Dragonfire fix, side/rear view, and a blazing leader.
+
+- **Population:** 3 dragons at spawn, then one more every 20 s, up to 30.
+  - With 30 dragons the sim costs about 1.3 ms per frame.
+- **Settings are split into two tabs:**
+  - **Server** (room rules; in multiplayer, one set per room): beginner mode,
+    starting dragons, max dragons, and spawn interval.
+  - **Player** (personal): wide view, mirror, invert, lock mouse, zero-G
+    assist, reduce motion, mute.
+- **Dragonfire fixed.** It worked mechanically but felt like nothing: an
+  instant 0.35 s puff, 14 m range, no feedback.
+  - It's now a **1.2 s breath** with a visible flame cone and stream,
+    **24 m range and a 30° cone**. The first tail to enter the cone gets cut,
+    once per breath.
+  - The severed part bursts into flame.
+  - Feedback: "Missed" on a miss, and a "grab a red crystal" hint if you
+    press E without a charge.
+  - Power-ups spawn more often: up to 5 at a time, about every 20 s.
+- **Wide view** (on by default): the centre is an ordinary sharp render. A
+  low-res cube map around the camera fills everything else, warped into
+  the screen edges.
+  - The warp: θ(r) = atan(tan(fov/2)·r) + extra·(r/rMax)^expo, reaching
+    about 150° from forward at the corners (`wideCorner`, `wideExpo`).
+  - Names, arrows and the nose marker use the same projection.
+- **Rear-view mirror** (on by default): top centre, fed by the same cube
+  map, mirror-flipped.
+- **The leader blazes.** The light pillar is replaced by a head that glows
+  and burns:
+  - a white-gold star halo that stays the same size at any distance and
+    draws through obstacles
+  - a world-size glow and a warm light
+  - a stream of flame particles
+  - When *you* lead, the effect is toned down so it doesn't blind you.
+- The sky dome now uses proper colour management, so it's a bit brighter
+  and more saturated.
 
 ## Findings so far (headless bot runs)
 

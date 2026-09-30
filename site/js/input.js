@@ -2,7 +2,7 @@
 // centre, inside a steering circle, is the stick. Optional pointer-lock
 // "virtual stick" mode for players who don't want the cursor to escape.
 // Touch comes later; everything funnels into the same {sx, sy, …} struct.
-import { T } from './tunables.js?v=2';
+import { T } from './tunables.js?v=3';
 
 export class Input {
     constructor(canvas) {

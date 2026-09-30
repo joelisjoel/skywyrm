@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
     <script type="importmap">
         {
             "imports": {
@@ -67,14 +67,28 @@
         <button id="quit">Quit to menu</button>
     </div>
 
-    <div id="settings" class="panel">
-        <h2>Settings</h2>
-        <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><b>Beginner mode</b><small>Automatically steers you away from walls and the cloud sea</small></span></label>
-        <label class="opt"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>Mouse up = nose down, like a flight sim</small></span></label>
-        <label class="opt"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
-        <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
-        <label class="opt"><input type="checkbox" id="opt-motion"> <span>Reduce motion<small>Less camera roll, no FOV kick</small></span></label>
-        <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute sound <small>(M)</small></span></label>
+    <div id="settings" class="panel" data-tab="server">
+        <div class="tabs">
+            <button class="tab" data-tab="server">🖧 Server</button>
+            <button class="tab" data-tab="player">👤 Player</button>
+        </div>
+        <div class="tab-body" data-body="server">
+            <p class="note">Room rules. In multiplayer the room sets these for everyone in it.</p>
+            <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><b>Beginner mode</b><small>Dragons are steered away from walls and the cloud sea</small></span></label>
+            <label class="opt-range"><span>Starting dragons</span><input type="range" id="srv-start" min="0" max="30" step="1"><b id="srv-start-v"></b></label>
+            <label class="opt-range"><span>Max dragons</span><input type="range" id="srv-max" min="1" max="40" step="1"><b id="srv-max-v"></b></label>
+            <label class="opt-range"><span>New dragon every</span><input type="range" id="srv-every" min="5" max="120" step="5"><b id="srv-every-v"></b></label>
+        </div>
+        <div class="tab-body" data-body="player">
+            <p class="note">Just for you, on this device.</p>
+            <label class="opt big"><input type="checkbox" id="opt-wide"> <span><b>Wide view</b><small>See to your sides: the screen edges bend to show what's beside and behind you</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-mirror"> <span>Rear-view mirror<small>A mirror at the top of the screen shows what's behind you</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>Mouse up = nose down, like a flight sim</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-motion"> <span>Reduce motion<small>Less camera roll, no FOV kick</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute sound <small>(M)</small></span></label>
+        </div>
         <button class="cta close-overlay">Done</button>
     </div>
 
@@ -86,8 +100,8 @@
             <div><b>Right-click / S</b></div><div>brake — tighter turns</div>
             <div><b>A / D</b></div><div>roll</div>
             <div><b>Arrow keys</b></div><div>steer without the mouse</div>
-            <div><b>C</b></div><div>look back</div>
-            <div><b>E / F</b></div><div>breathe dragonfire (when you have it)</div>
+            <div><b>C</b></div><div>look back (also: wide view &amp; mirror in Settings → Player)</div>
+            <div><b>E / F</b></div><div>breathe dragonfire — grab a red crystal first; cuts the first tail in the cone</div>
             <div><b>Esc / P</b></div><div>pause</div>
             <div><b>M</b></div><div>mute</div>
             <div><b>`</b></div><div>tuning panel</div>
@@ -110,7 +124,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=2"></script>
+    <script type="module" src="js/main.js?v=3"></script>
 </body>
 
 </html>

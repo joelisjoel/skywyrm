@@ -2,7 +2,7 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=2';
+import { T, TIERS } from './tunables.js?v=3';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -57,7 +57,8 @@ export class Hud {
 
     clearOverlay() { this.ctx.clearRect(0, 0, innerWidth, innerHeight); }
 
-    draw(world, view, camera, input, now) {
+    draw(world, view, renderer, input, now) {
+        const camera = renderer.camera, pr = this._pr || (this._pr = { x: 0, y: 0, on: false });
         const ctx = this.ctx, W = innerWidth, H = innerHeight, cx = W / 2, cy = H / 2;
         ctx.clearRect(0, 0, W, H);
         const p = view.player;
@@ -70,14 +71,22 @@ export class Hud {
             if (!d.alive || d === p) continue;
             const dist = camera.position.distanceTo(d.pos);
             if (dist > 50) continue;
-            _v.copy(d.pos).project(camera);
-            if (_v.z > 1) continue;
-            const sx = (_v.x + 1) / 2 * W, sy = (1 - _v.y) / 2 * H;
+            renderer.project(d.pos, pr);
+            if (!pr.on) continue;
+            const sx = pr.x, sy = pr.y;
             ctx.globalAlpha = Math.min(1, (50 - dist) / 15);
             ctx.fillStyle = '#fff';
             ctx.fillText(d.name, sx, sy - 14 - 60 / Math.max(4, dist));
         }
         ctx.globalAlpha = 1;
+        // Rear-view mirror frame.
+        const mr = renderer.mirrorPx();
+        if (mr && view.state !== 'menu') {
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.roundRect(mr.x, mr.y, mr.w, mr.h, 8); ctx.stroke();
+            ctx.font = '700 10px Nunito, system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.textAlign = 'center'; ctx.fillText('REAR', mr.x + mr.w / 2, mr.y + mr.h + 12);
+        }
         if (!playing) return;
 
         // Steering circle, reticle, nose marker (Freelancer-style, spec §7).
@@ -91,9 +100,9 @@ export class Hud {
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + rx, cy + ry); ctx.stroke();
         ctx.strokeStyle = '#FFD93D'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(cx + rx, cy + ry, 9, 0, Math.PI * 2); ctx.stroke();
-        _v.copy(p.pos).addScaledVector(p.vdir, 40).project(camera);
-        if (_v.z < 1) {
-            const nx = (_v.x + 1) / 2 * W, ny = (1 - _v.y) / 2 * H;
+        renderer.project(_v.copy(p.pos).addScaledVector(p.vdir, 40), pr);
+        if (pr.on) {
+            const nx = pr.x, ny = pr.y;
             ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(nx - 7, ny); ctx.lineTo(nx - 3, ny); ctx.moveTo(nx + 3, ny); ctx.lineTo(nx + 7, ny);
@@ -107,9 +116,8 @@ export class Hud {
             if (!d.alive || d === p) continue;
             const dist = d.pos.distanceTo(p.pos);
             if (dist > 30) continue;
-            _v.copy(d.pos).project(camera);
-            const on = _v.z < 1 && Math.abs(_v.x) < 0.95 && Math.abs(_v.y) < 0.95;
-            if (on) continue;
+            renderer.project(d.pos, pr);
+            if (pr.on && pr.x > 20 && pr.x < W - 20 && pr.y > 20 && pr.y < H - 20) continue;
             const l = _v.copy(d.pos).sub(camera.position).applyQuaternion(_q);
             const ang = Math.atan2(-l.y, l.x);
             const ex = cx + Math.cos(ang) * (Math.min(W, H) * 0.42), ey = cy + Math.sin(ang) * (Math.min(W, H) * 0.42);
@@ -159,7 +167,7 @@ export class Hud {
         for (const pu of world.powerups) draw(pu.pos, '#ffffff', false);
         // The rich middle: a ring that sits on the rim when it's out of range.
         draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
-        if (view.top && view.top !== p && view.top.mass >= TIERS[2].mass) draw(view.top.pos, '#FFD93D', true);
+        if (view.top && view.top !== p) draw(view.top.pos, '#FFD93D', true);
         // You.
         c.fillStyle = '#fff';
         c.beginPath(); c.moveTo(cx, cy - 6); c.lineTo(cx - 4, cy + 4); c.lineTo(cx + 4, cy + 4); c.closePath(); c.fill();

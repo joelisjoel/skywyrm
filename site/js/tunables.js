@@ -57,18 +57,19 @@ export const DEFAULTS = {
     // --- Power-ups (spec §6.6) ---
     powerups: 1,            // 0 = off
     dragonfire: 1,          // 0 = off (signature power-up, flagged)
-    powerupMax: 3,
-    powerupEvery: 35,       // s (±25%)
+    powerupMax: 5,
+    powerupEvery: 20,       // s (±25%)
     shieldTime: 12,
     magnetTime: 10,
     magnetRadius: 18,
-    fireRange: 14,
-    fireAngle: 22,          // deg half-angle
+    fireRange: 24,
+    fireAngle: 30,          // deg half-angle
+    fireTime: 1.2,          // s the breath lasts
 
     // --- Arena & population (spec §4, §9, §14) ---
     popStart: 3,            // other dragons when you spawn…
-    popMax: 20,             // …growing to this many…
-    popRampSec: 60,         // …one more every this many seconds
+    popMax: 30,             // …growing to this many…
+    popRampSec: 20,         // …one more every this many seconds
     assistLook: 1.8,        // s of flight path beginner mode checks for walls
     botAggression: 0.6,     // 0 = orb-eaters, 1 = hunters
     skyRadius: 350,         // open top: no ceiling
@@ -85,6 +86,8 @@ export const DEFAULTS = {
     camRollFollow: 0.35,
     fov: 72,
     fovBoost: 84,
+    wideCorner: 150,        // deg from forward shown at the screen corners (wide view)
+    wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
 };
 
 // Slider metadata for the dev panel: [key, min, max, step, group, restart?]
@@ -131,6 +134,11 @@ export const PANEL = [
     ['camRollFollow', 0, 1, 0.05, 'Camera'],
     ['fov', 50, 110, 1, 'Camera'],
     ['fovBoost', 50, 120, 1, 'Camera'],
+    ['wideCorner', 60, 178, 1, 'Camera'],
+    ['wideExpo', 1, 6, 0.1, 'Camera'],
+    ['fireRange', 5, 60, 1, 'Growth & combat'],
+    ['fireAngle', 5, 60, 1, 'Growth & combat'],
+    ['fireTime', 0.2, 4, 0.1, 'Growth & combat'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

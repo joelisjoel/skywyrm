@@ -34,7 +34,7 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats, body
 #board .name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #board .v { color: var(--dim); }
 
-#toasts { position: absolute; top: 18%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#toasts { position: absolute; top: 26%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { font-weight: 800; font-size: 20px; letter-spacing: 0.04em; text-shadow: 0 2px 8px #000; animation: toast 1.6s ease-out forwards; }
 .toast.big { font-size: 28px; color: var(--sun); }
 .toast.nm { color: #3DE0FF; }
@@ -112,3 +112,14 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .tune-row.changed span:first-child { color: var(--sun); }
 .tune-row input { width: 100%; }
 .tune-val { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Settings tabs: Server (room rules) vs Player (personal) */
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabs .tab { flex: 1; margin: 0; font-weight: 800; }
+#settings[data-tab=server] .tab[data-tab=server], #settings[data-tab=player] .tab[data-tab=player] { background: var(--sun); color: #1a1400; border-color: var(--sun); }
+#settings[data-tab=server] [data-body=player], #settings[data-tab=player] [data-body=server] { display: none; }
+.note { font-size: 12px; color: var(--dim); margin: 4px 0 6px; text-align: left; }
+.opt-range { display: grid; grid-template-columns: 130px 1fr 52px; gap: 8px; align-items: center; text-align: left; font-size: 14px; padding: 8px 4px; border-bottom: 1px solid var(--slate); }
+.opt-range input { width: 100%; accent-color: var(--sun); }
+.opt-range b { text-align: right; font-variant-numeric: tabular-nums; }
+#settings { max-height: calc(100vh - 32px); overflow-y: auto; }

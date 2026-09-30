@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=2';
+import { T, lengthFor, radiusFor, tierFor } from './tunables.js?v=3';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -102,7 +102,7 @@ export class Dragon {
         this.r = radiusFor(this.mass);
         this.alive = true;
         this.protect = 0;
-        this.shield = 0; this.magnet = 0; this.fire = 0;
+        this.shield = 0; this.magnet = 0; this.fire = 0; this.breath = 0; this.breathHit = false;
         this.kills = 0; this.bornAt = 0; this.peakMass = this.mass; this.bestRank = 99;
         this.tier = 0;
         this.boosting = false; this.braking = false; this.boostAcc = 0;
@@ -347,7 +347,7 @@ export class World {
         d.tier = tierFor(mass);
         d.kills = 0; d.bornAt = this.time; d.bestRank = 99;
         d.protect = T.spawnProtect;
-        d.shield = 0; d.magnet = 0; d.fire = 0;
+        d.shield = 0; d.magnet = 0; d.fire = 0; d.breath = 0; d.breathHit = false;
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
@@ -752,19 +752,33 @@ export class World {
         return best;
     }
 
-    // Dragonfire: sever the first enemy tail in the cone (spec §6.6).
-    breathe(d) {
-        if (!d.fire) return;
-        d.fire = 0;
-        const t = this.fireTarget(d);
-        this.emit({ type: 'fire', d, hit: !!t });
-        if (!t) return;
+    // Dragonfire (spec §6.6): a breath lasting fireTime. The first enemy
+    // tail that enters the cone during the breath is cut; everything past
+    // the cut burns into loot. Heads can't be hit.
+    updateBreath(d, dt) {
+        if (d.input.fire && d.fire && d.breath <= 0) {
+            d.fire = 0; d.breath = T.fireTime;
+            this.emit({ type: 'fireStart', d });
+        }
+        if (d.breath <= 0) return;
+        d.breath -= dt;
+        const t = d.breathHit ? null : this.fireTarget(d);   // one cut per breath
+        if (t) { this.sever(d, t); d.breath = Math.min(d.breath, 0.25); d.breathHit = true; }
+        if (d.breath <= 0) {
+            if (!d.breathHit) this.emit({ type: 'fireMiss', d });
+            d.breathHit = false; d.breath = 0;
+        }
+    }
+
+    sever(d, t) {
         const o = t.o;
         const cutLen = t.bead * o.beadSpacing;
         const newMass = Math.max(T.spawnMass, (cutLen - T.lenBase) / T.lenPerMass);
         const lost = o.mass - newMass;
         if (lost <= 0) return;
-        // Drop the severed part as loot along beads past the cut.
+        // Burning segment (for the renderer) + loot along it.
+        const burn = [];
+        for (let b = t.bead; b < o.nBeads; b += 2) burn.push(o.beads[b * 3], o.beads[b * 3 + 1], o.beads[b * 3 + 2]);
         const n = Math.max(1, Math.ceil(lost * T.lootShare / 6));
         const val = lost * T.lootShare / n;
         for (let k = 0; k < n; k++) {
@@ -772,7 +786,7 @@ export class World {
             this.addOrb(o.beads[b], o.beads[b + 1], o.beads[b + 2], val, k % 2 ? o.color : 0xFF9A3C, T.lootTtl);
         }
         o.mass = newMass; o.len = Math.min(o.len, cutLen);
-        this.emit({ type: 'sever', d, o, lost });
+        this.emit({ type: 'sever', d, o, lost, burn, color: o.color });
     }
 
     // ------------------------------------------------ main step
@@ -783,7 +797,7 @@ export class World {
             if (!d.alive) continue;
             if (d.brain) d.brain.think(this, d, dt);
             this.fly(d, dt);
-            if (d.input.fire && d.fire) this.breathe(d);
+            this.updateBreath(d, dt);
         }
         for (const d of this.dragons) if (d.alive) d.rebuildBeads();
         this.buildHash();

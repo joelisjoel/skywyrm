@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=2';
+import { T, TIERS } from './tunables.js?v=3';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -72,23 +72,48 @@ export class Renderer {
         };
         this.puMeshes = [];
 
-        // The Beacon over the #1 dragon.
-        this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 400, 12, 1, true),
-            new THREE.MeshBasicMaterial({ color: 0xFFD93D, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-        this.scene.add(this.beacon);
+        // The leader's blazing head (replaces the old light pillar): a very
+        // bright additive halo + a warm point light + flame particles.
+        this.glowTex = radialTexture();
+        this.leaderGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd27a,
+            blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+        // A second halo that keeps a constant on-screen size, so the leader
+        // blazes like a star even from across the arena.
+        this.starTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,245,210,1)'], [0.5, 'rgba(255,190,80,0.6)'], [1, 'rgba(255,120,20,0)']]);
+        this.leaderStar = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starTex, color: 0xffe8b0,
+            blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
+        this.leaderStarCore = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starTex, color: 0xffffff,
+            blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
+        this.leaderStar.renderOrder = this.leaderStarCore.renderOrder = 10;
+        this.scene.add(this.leaderStar, this.leaderStarCore);
+        this.leaderCore = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffffff,
+            blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+        this.leaderLight = new THREE.PointLight(0xffb040, 1500, 60, 1.5);
+        this.scene.add(this.leaderGlow, this.leaderCore, this.leaderLight);
+
+        // Dragonfire cone (shown while breathing).
+        const coneGeo = new THREE.ConeGeometry(1, 1, 24, 1, true);
+        coneGeo.translate(0, -0.5, 0); coneGeo.rotateX(-Math.PI / 2);   // apex at origin, opens toward −Z
+        this.fireCone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true,
+            opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        this.fireCones = [];
 
         // Shield bubble / magnet ring for the player.
         this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14),
             new THREE.MeshBasicMaterial({ color: 0xFF9A3C, transparent: true, opacity: 0.1, depthWrite: false }));
         this.scene.add(this.bubble);
 
-        // Fire bursts (short-lived particle clouds).
-        this.fireGeo = new THREE.BufferGeometry();
-        this.fireGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(600 * 3), 3));
-        this.fire = new THREE.Points(this.fireGeo, new THREE.PointsMaterial({ color: 0xFF7A2A, size: 0.6, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
-        this.fire.frustumCulled = false;
-        this.scene.add(this.fire);
-        this.fireParts = [];
+        // Particles: dragonfire, burning severed tails, the leader's flames.
+        const PN = 4000;
+        this.partGeo = new THREE.BufferGeometry();
+        this.partGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(PN * 3), 3));
+        this.partGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(PN * 3), 3));
+        this.parts = new THREE.Points(this.partGeo, new THREE.PointsMaterial({ size: 1.6, map: this.glowTex, vertexColors: true,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        this.parts.frustumCulled = false;
+        this.scene.add(this.parts);
+        this.particles = [];
+        this.PN = PN;
 
         // Speed dust: a box of motes wrapped around the camera.
         const N = 1800, dust = new Float32Array(N * 3);
@@ -100,8 +125,76 @@ export class Renderer {
         this.dust.frustumCulled = false;
         this.scene.add(this.dust);
 
+        // Wide view (spec: side/rear awareness): the centre is a normal sharp
+        // render; a low-res cube map around the camera supplies everything
+        // else, warped into the screen edges and corners. The same cube map
+        // feeds the rear-view mirror.
+        this.view = { wide: true, mirror: true };
+        this.mirrorRect = { x: 0.36, y: 0.80, w: 0.28, h: 0.15 };    // uv, origin bottom-left
+        this.cubeRT = new THREE.WebGLCubeRenderTarget(768, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+        this.cubeCam = new THREE.CubeCamera(0.1, 3000, this.cubeRT);
+        this.mainRT = new THREE.WebGLRenderTarget(4, 4, { samples: 4 });
+        this.warpMat = new THREE.ShaderMaterial({
+            uniforms: {
+                cube: { value: this.cubeRT.texture }, mainTex: { value: this.mainRT.texture },
+                camRot: { value: new THREE.Matrix3() }, aspect: { value: 1 }, tanHalf: { value: 1 },
+                extra: { value: 0 }, rMax: { value: 1 }, expo: { value: 3 }, wide: { value: 1 },
+                mirror: { value: 1 }, mRect: { value: new THREE.Vector4() }, mTan: { value: Math.tan(28 * Math.PI / 180) },
+            },
+            vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+            fragmentShader: WARP_FRAG, depthTest: false, depthWrite: false,
+        });
+        this.warpScene = new THREE.Scene();
+        this.warpScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.warpMat));
+        this.warpCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
         this.arenaGroup = null;
         this.resize();
+    }
+
+    // Screen-space projection matching whatever view is active (the HUD
+    // needs it for names, the nose marker and off-screen arrows).
+    project(pos, out) {
+        const cam = this.camera, W = innerWidth, H = innerHeight, aspect = W / H;
+        _p.copy(pos).applyMatrix4(cam.matrixWorldInverse);
+        const len = _p.length() || 1;
+        const theta = Math.acos(Math.max(-1, Math.min(1, -_p.z / len)));
+        const tanHalf = Math.tan(cam.fov * Math.PI / 360);
+        let r;
+        out.on = false;
+        if (!this.view.wide) {
+            if (_p.z >= 0) return out;
+            r = Math.tan(theta) / tanHalf;
+        } else {
+            const rMax = Math.hypot(aspect, 1), extra = this.wideExtra(tanHalf, rMax);
+            const g = (rr) => Math.atan(tanHalf * rr) + extra * Math.pow(rr / rMax, T.wideExpo);
+            if (theta > g(rMax)) return out;
+            let lo = 0, hi = rMax;
+            for (let i = 0; i < 22; i++) { const mid = (lo + hi) / 2; if (g(mid) < theta) lo = mid; else hi = mid; }
+            r = (lo + hi) / 2;
+        }
+        const phi = Math.atan2(_p.y, _p.x);
+        const px = r * Math.cos(phi), py = r * Math.sin(phi);
+        out.x = (px / aspect + 1) / 2 * W;
+        out.y = (1 - (py + 1) / 2) * H;
+        out.on = Math.abs(px) <= aspect && Math.abs(py) <= 1 && !this.inMirror(out.x, out.y);
+        return out;
+    }
+
+    wideExtra(tanHalf, rMax) {
+        return Math.max(0, T.wideCorner * Math.PI / 180 - Math.atan(tanHalf * rMax));
+    }
+
+    // Mirror rectangle in CSS pixels (for the HUD frame), or null.
+    mirrorPx() {
+        if (!this.mirrorOn) return null;
+        const m = this.mirrorRect, W = innerWidth, H = innerHeight;
+        return { x: m.x * W, y: (1 - m.y - m.h) * H, w: m.w * W, h: m.h * H };
+    }
+
+    inMirror(x, y) {
+        const m = this.mirrorPx();
+        return !!m && x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h;
     }
 
     resize() {
@@ -109,6 +202,8 @@ export class Renderer {
         this.renderer.setSize(w, h, false);
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
+        const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+        this.mainRT.setSize(size.x, size.y);
     }
 
     // ------------------------------------------------ arena visuals
@@ -324,6 +419,7 @@ export class Renderer {
             const a = Math.sin(h.flap) * 0.5 * (1 - fold);
             h.wl.rotation.set(0, -fold, a); h.wr.rotation.set(0, fold, -a);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
+            h.mat.emissive.setHex(d === view.top ? 0xffc85a : 0x000000);
             for (const c of h.g.children) if (c.userData.horn) c.visible = d.tier >= 1;
             // Shadow.
             if (sh < MAX_HEADS) {
@@ -387,10 +483,58 @@ export class Renderer {
             m.scale.setScalar(1 + 0.12 * Math.sin(time * 5));
         });
 
-        // Beacon on #1 once it's at least a Wyvern.
+        // The leader blazes: halo + core + light + flames streaming back.
         const top = view.top;
-        this.beacon.visible = !!(top && top.mass >= TIERS[2].mass);
-        if (this.beacon.visible) this.beacon.position.set(top.pos.x, top.pos.y + 200, top.pos.z);
+        const lead = !!(top && top.alive);
+        const mine = lead && top === player;
+        this.leaderGlow.visible = this.leaderCore.visible = this.leaderLight.visible = lead;
+        this.leaderStar.visible = this.leaderStarCore.visible = lead && !mine;   // don't blind yourself when you lead
+        if (lead) {
+            const hr = top.r * 1.25;
+            const flick = 1 + 0.12 * Math.sin(time * 23) + 0.08 * Math.sin(time * 37);
+            this.leaderGlow.position.copy(top.pos);
+            this.leaderGlow.scale.setScalar(hr * (mine ? 2.4 : 11) * flick);
+            this.leaderCore.position.copy(top.pos);
+            this.leaderCore.scale.setScalar(hr * (mine ? 1.1 : 6) * flick);
+            this.leaderStar.position.copy(top.pos);
+            this.leaderStar.scale.setScalar(0.2 * flick);
+            this.leaderStarCore.position.copy(top.pos);
+            this.leaderStarCore.scale.setScalar(0.07 * flick);
+            this.leaderLight.position.copy(top.pos);
+            const n = mine ? 1 : 5;
+            for (let i = 0; i < n; i++) {
+                const j = hr * 0.8;
+                this.emit(top.pos.x + (Math.random() - 0.5) * j, top.pos.y + (Math.random() - 0.5) * j, top.pos.z + (Math.random() - 0.5) * j,
+                    -top.vdir.x * top.speed * 0.35 + (Math.random() - 0.5) * 3 + top.up.x * 3,
+                    -top.vdir.y * top.speed * 0.35 + (Math.random() - 0.5) * 3 + top.up.y * 3,
+                    -top.vdir.z * top.speed * 0.35 + (Math.random() - 0.5) * 3 + top.up.z * 3,
+                    0.35 + Math.random() * 0.35, 1);
+            }
+        }
+
+        // Dragonfire: a translucent cone + a thick stream of flame while breathing.
+        let fc = 0;
+        for (const d of world.dragons) {
+            if (!d.alive || !(d.breath > 0)) continue;
+            if (!this.fireCones[fc]) { this.fireCones[fc] = this.fireCone.clone(); this.scene.add(this.fireCones[fc]); }
+            const cone = this.fireCones[fc++];
+            cone.visible = true;
+            const rad = T.fireRange * Math.tan(T.fireAngle * Math.PI / 180);
+            cone.position.copy(d.pos).addScaledVector(d.fwd, d.r);
+            cone.quaternion.copy(d.quat);
+            cone.scale.set(rad, rad, T.fireRange);
+            cone.material.opacity = 0.12 + 0.06 * Math.sin(time * 30);
+            const spd = T.fireRange / 0.45;
+            for (let i = 0; i < 26; i++) {
+                const a = Math.random() * Math.PI * 2, s = Math.tan(T.fireAngle * Math.PI / 180) * Math.sqrt(Math.random());
+                _s.set(Math.cos(a) * s, Math.sin(a) * s, -1).normalize().applyQuaternion(d.quat);
+                const sp = spd * (0.8 + Math.random() * 0.4);
+                this.emit(cone.position.x, cone.position.y, cone.position.z,
+                    _s.x * sp + d.vdir.x * d.speed, _s.y * sp + d.vdir.y * d.speed, _s.z * sp + d.vdir.z * d.speed,
+                    0.35 + Math.random() * 0.15, 1.6);
+            }
+        }
+        for (let i = fc; i < this.fireCones.length; i++) this.fireCones[i].visible = false;
 
         // Player shield bubble.
         this.bubble.visible = !!(player && player.alive && (player.shield > 0 || player.protect > 0));
@@ -400,18 +544,24 @@ export class Renderer {
             this.bubble.material.color.set(player.shield > 0 ? 0xFF9A3C : 0xffffff);
         }
 
-        // Fire particles.
-        const fp = this.fireGeo.attributes.position.array;
-        let nf = 0;
-        for (let i = this.fireParts.length - 1; i >= 0; i--) {
-            const p = this.fireParts[i];
-            p.t += dt;
-            if (p.t > p.life) { this.fireParts.splice(i, 1); continue; }
-            p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-            if (nf < 600) { fp[nf * 3] = p.x; fp[nf * 3 + 1] = p.y; fp[nf * 3 + 2] = p.z; nf++; }
+        // Particles (additive; colour fades white-gold → orange → deep red).
+        const pp = this.partGeo.attributes.position.array, pc = this.partGeo.attributes.color.array;
+        let np = 0;
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const q = this.particles[i];
+            q.t += dt;
+            if (q.t > q.life) { this.particles[i] = this.particles[this.particles.length - 1]; this.particles.pop(); continue; }
+            q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
+            q.vx *= 0.97; q.vy = q.vy * 0.97 + 2.5 * dt; q.vz *= 0.97;     // drag + a little rise
+            if (np >= this.PN) continue;
+            const k = q.t / q.life, fade = (1 - k) * q.heat;
+            pp[np * 3] = q.x; pp[np * 3 + 1] = q.y; pp[np * 3 + 2] = q.z;
+            pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k);
+            np++;
         }
-        this.fireGeo.setDrawRange(0, nf);
-        this.fireGeo.attributes.position.needsUpdate = true;
+        this.partGeo.setDrawRange(0, np);
+        this.partGeo.attributes.position.needsUpdate = true;
+        this.partGeo.attributes.color.needsUpdate = true;
 
         // Walls brighten as the player approaches (spec §9).
         const warn = view.wallWarn || 0;
@@ -429,17 +579,40 @@ export class Renderer {
         }
         this.dustGeo.attributes.position.needsUpdate = true;
 
-        this.renderer.render(this.scene, this.camera);
+        this.camera.updateMatrixWorld();
+        this.mirrorOn = this.view.mirror && view.state === 'play';
+        if (this.view.wide || this.mirrorOn) {
+            this.renderer.setRenderTarget(this.mainRT);
+            this.renderer.render(this.scene, this.camera);
+            this.renderer.setRenderTarget(null);
+            this.cubeCam.position.copy(this.camera.position);
+            this.cubeCam.update(this.renderer, this.scene);
+            const u = this.warpMat.uniforms, aspect = innerWidth / innerHeight;
+            const tanHalf = Math.tan(this.camera.fov * Math.PI / 360), rMax = Math.hypot(aspect, 1);
+            u.camRot.value.setFromMatrix4(this.camera.matrixWorld);
+            u.aspect.value = aspect; u.tanHalf.value = tanHalf; u.rMax.value = rMax;
+            u.extra.value = this.wideExtra(tanHalf, rMax); u.expo.value = T.wideExpo;
+            u.wide.value = this.view.wide ? 1 : 0; u.mirror.value = this.mirrorOn ? 1 : 0;
+            const m = this.mirrorRect;
+            u.mRect.value.set(m.x, m.y, m.w, m.h);
+            this.renderer.render(this.warpScene, this.warpCam);
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
-    burstFire(d) {
-        for (let i = 0; i < 160; i++) {
-            const spread = 0.38;
-            const dir = _p.copy(d.fwd).add(_s.set((Math.random() - 0.5) * spread * 2, (Math.random() - 0.5) * spread * 2, (Math.random() - 0.5) * spread * 2)).normalize();
-            const sp = 18 + Math.random() * 14;
-            this.fireParts.push({ x: d.pos.x + d.fwd.x * d.r, y: d.pos.y + d.fwd.y * d.r, z: d.pos.z + d.fwd.z * d.r,
-                vx: dir.x * sp + d.vdir.x * d.speed, vy: dir.y * sp + d.vdir.y * d.speed, vz: dir.z * sp + d.vdir.z * d.speed,
-                t: 0, life: 0.35 + Math.random() * 0.25 });
+    emit(x, y, z, vx, vy, vz, life, heat) {
+        if (this.particles.length >= this.PN * 1.5) return;
+        this.particles.push({ x, y, z, vx, vy, vz, t: 0, life, heat });
+    }
+
+    // A severed tail bursts into flame along its length.
+    burnSegment(pts) {
+        for (let i = 0; i < pts.length; i += 3) {
+            for (let k = 0; k < 3; k++) {
+                this.emit(pts[i], pts[i + 1], pts[i + 2], (Math.random() - 0.5) * 6, Math.random() * 5, (Math.random() - 0.5) * 6,
+                    0.5 + Math.random() * 0.6, 1.3);
+            }
         }
     }
 
@@ -448,6 +621,57 @@ export class Renderer {
         this.heads.clear();
     }
 }
+
+function radialTexture(stops = [[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(255,240,200,0.9)'], [0.5, 'rgba(255,170,60,0.35)'], [1, 'rgba(255,120,20,0)']]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    for (const [at, col] of stops) grad.addColorStop(at, col);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+}
+
+// Screen pixel → view direction. θ(r) = atan(tanHalf·r) keeps the centre
+// exactly like a normal camera; the extra·(r/rMax)^expo term only bends
+// the edges, reaching wideCorner° from forward at the corners. The sharp
+// centre comes from the normal render; everything else from the cube map.
+const WARP_FRAG = `
+uniform samplerCube cube; uniform sampler2D mainTex; uniform mat3 camRot;
+uniform float aspect, tanHalf, extra, rMax, expo, wide, mirror, mTan;
+uniform vec4 mRect;
+varying vec2 vUv;
+void main() {
+    vec2 p = (vUv * 2.0 - 1.0) * vec2(aspect, 1.0);
+    vec3 dir;
+    bool inMirror = false;
+    if (mirror > 0.5) {
+        vec2 q = (vUv - mRect.xy) / mRect.zw;
+        if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) {
+            inMirror = true;
+            vec2 m = (q * 2.0 - 1.0) * vec2(mRect.z * aspect / mRect.w, 1.0);
+            dir = normalize(vec3(m.x * mTan, m.y * mTan, 1.0));   // behind you, mirror-flipped
+        }
+    }
+    if (!inMirror) {
+        float r = length(p);
+        float theta = atan(tanHalf * r) + wide * extra * pow(r / rMax, expo);
+        vec2 d2 = r > 1e-6 ? p / r : vec2(0.0);
+        dir = vec3(sin(theta) * d2.x, sin(theta) * d2.y, -cos(theta));
+    }
+    vec4 col = textureCube(cube, camRot * dir);
+    if (!inMirror && dir.z < -1e-4) {
+        vec2 uvN = (dir.xy / -dir.z) / (tanHalf * vec2(aspect, 1.0)) * 0.5 + 0.5;
+        vec2 edge = min(uvN, 1.0 - uvN);
+        float k = smoothstep(0.0, 0.04, min(edge.x, edge.y));
+        if (k > 0.0) col = mix(col, texture2D(mainTex, uvN), k);
+    }
+    gl_FragColor = col;
+    #include <colorspace_fragment>
+}`;
 
 function wrap(v, size) {
     const h = size / 2;
@@ -462,11 +686,13 @@ function skyDome(top, mid, horizon) {
         vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 hor; varying vec3 vP;
             void main(){ float h = vP.y; vec3 c = h > 0.08 ? mix(mid, top, smoothstep(0.08, 0.7, h)) : mix(hor, mid, smoothstep(-0.05, 0.08, h));
-            gl_FragColor = vec4(c, 1.0); }`,
+            gl_FragColor = vec4(c, 1.0);
+            #include <colorspace_fragment>
+            }`,
     });
     const m = new THREE.Mesh(geo, mat);
     m.renderOrder = -1;
-    m.onBeforeRender = (r, s, cam) => m.position.copy(cam.position);
+    m.onBeforeRender = (r, s, cam) => m.position.setFromMatrixPosition(cam.matrixWorld);
     return m;
 }
 
