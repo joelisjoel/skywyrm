@@ -7,7 +7,7 @@
     <title>Wyrm — prototype</title>
     <meta name="description" content="Wyrm: a 3D dragon take on Slither. Early PC prototype — fly, eat, grow, don't touch their tails.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
     <script type="importmap">
         {
             "imports": {
@@ -49,13 +49,37 @@
     <!-- Menu (attract mode runs behind it) -->
     <div id="menu" class="panel">
         <h1>WYRM</h1>
-        <div class="sub">prototype · PC · you vs. bots</div>
+        <div class="sub">3D dragon snake · PC prototype</div>
         <input id="name" maxlength="16" autocomplete="off" spellcheck="false" aria-label="Dragon name">
-        <div class="arenas">
-            <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · open sky · storm wall</span></label>
-            <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
-        </div>
-        <button id="play" class="cta">PLAY</button>
+        <div id="name-error" class="err"></div>
+
+        <section class="lobby">
+            <div class="lobby-head"><b>Servers</b><span id="lobby-status"></span></div>
+            <div id="room-list"></div>
+            <button id="create-open" class="ghost">＋ Create server</button>
+            <form id="create-form" hidden>
+                <input id="create-name" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Server name" aria-label="Server name">
+                <div class="arenas">
+                    <label><input type="radio" name="create-arena" value="sky" checked> <b>Skyhold</b></label>
+                    <label><input type="radio" name="create-arena" value="orb"> <b>The Orb</b></label>
+                </div>
+                <label class="opt"><input type="checkbox" id="create-beginner" checked> <span>Beginner mode<small>Steer everyone away from walls</small></span></label>
+                <div id="create-error" class="err"></div>
+                <div class="menu-row">
+                    <button type="submit" class="cta small">Create &amp; join</button>
+                    <button type="button" id="create-cancel">Cancel</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="solo">
+            <div class="lobby-head"><b>Solo vs bots</b></div>
+            <div class="arenas">
+                <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · open sky · storm wall</span></label>
+                <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
+            </div>
+            <button id="play" class="cta">PLAY SOLO</button>
+        </section>
         <div class="menu-row">
             <button class="open-settings">⚙ Settings</button>
             <button class="open-controls">🎮 Controls</button>
@@ -70,7 +94,7 @@
             <button class="open-settings">⚙ Settings</button>
             <button class="open-controls">🎮 Controls</button>
         </div>
-        <button id="quit">Quit to menu</button>
+        <button id="quit">Leave to menu</button>
     </div>
 
     <div id="settings" class="panel" data-tab="server">
@@ -132,7 +156,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=6"></script>
+    <script type="module" src="js/main.js?v=7"></script>
 </body>
 
 </html>

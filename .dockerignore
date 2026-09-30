@@ -1,0 +1,7 @@
+# Only the game server and the shared sim go into the image.
+*
+!Dockerfile
+!wyrm-server
+!docs/wyrm/js
+wyrm-server/node_modules
+wyrm-server/test

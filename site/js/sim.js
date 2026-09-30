@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=6';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=7';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -123,6 +123,10 @@ export class Dragon {
         this.heatTarget = this.temp; this.crowd = 0;
         this.thrust = thrustCap(this.temp); this.thrustLocked = false;
         this.wallAssist = false;   // beginner mode (player only)
+        // Multiplayer: humans flown from a browser (server side), their
+        // latest reported pose, and the speed budget it's checked against.
+        this.human = false; this.remote = false; this.net = null;
+        this.moveBudget = 0; this.corrected = false;
         this.assisting = 0;        // 0..1, how hard beginner mode is steering
         this.diedAt = 0;
     }
@@ -181,7 +185,9 @@ export function quatFromForwardUp(F, Uhint, out) {
 
 // ---------------------------------------------------------------- world
 export class World {
-    constructor(arenaKey) {
+    constructor(arenaKey, mode = 'local') {
+        this.mode = mode;
+        this.orbLog = mode === 'server' ? [] : null;
         this.arena = makeArena(arenaKey);
         this.time = 0;
         this.dragons = [];
@@ -225,6 +231,7 @@ export class World {
         this.oalive[i] = 1; this.opull[i] = 0; this.opullT[i] = 0;
         this.orbCount++;
         if (!ttl) this.ambientCount++;
+        if (this.orbLog) this.orbLog.push(['a', i, x, y, z, val, col, ttl]);
         return i;
     }
     removeOrb(i) {
@@ -232,6 +239,7 @@ export class World {
         this.oalive[i] = 0; this.orbCount--;
         if (!this.ottl[i]) this.ambientCount--;
         this.oFree.push(i);
+        if (this.orbLog) this.orbLog.push(['d', i]);
     }
 
     randomPointInside(margin, out) {
@@ -414,7 +422,16 @@ export class World {
         d.assisting = w;
     }
 
+    // mode: 'local' (solo — the whole game here), 'server' (authoritative
+    // room; humans' poses arrive over the network) or 'client' (browser in
+    // a room — only your own dragon is flown here, everything else comes
+    // from the server).
     fly(d, dt) {
+        this.move(d, dt);
+        if (this.mode !== 'client') this.upkeep(d, dt);
+    }
+
+    move(d, dt) {
         const inp = d.input, a = this.arena;
         if (d.wallAssist) this.wallAssist(d);
         d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
@@ -468,25 +485,68 @@ export class World {
         d.vdir.lerp(d.fwd, kc).normalize();
         d.pos.addScaledVector(d.vdir, d.speed * dt);
 
-        // Record path every PATH_STEP metres of travel.
+        this.recordPath(d);
+
+        // Cosmetic bank into turns.
+        const bt = sx * T.visualBank * DEG;
+        d.bank += (bt - d.bank) * (1 - Math.exp(-dt / 0.15));
+    }
+
+    // Record a path point every PATH_STEP metres of travel (the tail).
+    recordPath(d) {
         let dist = d.pos.distanceTo(d.lastPt);
+        if (dist > 60) {                       // teleport (respawn / correction): restart the trail
+            d.lastPt.copy(d.pos);
+            return;
+        }
         while (dist >= PATH_STEP) {
             _v1.subVectors(d.pos, d.lastPt).multiplyScalar(PATH_STEP / dist).add(d.lastPt);
             d.pushPath(_v1.x, _v1.y, _v1.z);
             dist = d.pos.distanceTo(d.lastPt);
         }
+    }
 
-        // Cosmetic bank into turns.
-        const bt = sx * T.visualBank * DEG;
-        d.bank += (bt - d.bank) * (1 - Math.exp(-dt / 0.15));
+    // Multiplayer (server): take a human's reported pose, but never let it
+    // move faster than they're allowed to fly (a rolling speed budget that
+    // tolerates network bunching). Anything clamped is flagged so the
+    // server can correct that player's browser.
+    applyNet(d, dt) {
+        const inp = d.input, n = d.net;
+        d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
+        d.braking = inp.brake;
+        const top = (d.boosting ? T.speedBoost : T.speedCruise) * (1 + speedBonus(d.temp)) + T.diveBoost + 1;
+        d.moveBudget = Math.min(top * 0.5, d.moveBudget + top * dt * 1.15);
+        if (n && n.fresh) {
+            n.fresh = false;
+            const want = _a1.set(n.x, n.y, n.z);
+            let dist = want.distanceTo(d.pos);
+            if (dist > d.moveBudget) {
+                want.sub(d.pos).multiplyScalar(d.moveBudget / dist).add(d.pos);
+                dist = d.moveBudget;
+                d.corrected = true;
+            }
+            d.moveBudget -= dist;
+            if (dist > 1e-4) d.vdir.subVectors(want, d.pos).normalize();
+            d.pos.copy(want);
+            _q1.set(n.qx, n.qy, n.qz, n.qw);
+            if (_q1.lengthSq() > 0.5) d.quat.copy(_q1).normalize();
+            d.updateFrame();
+            d.bank = Math.max(-1.2, Math.min(1.2, n.bank || 0));
+        }
+        d.speed += (Math.min(top, (n && n.speed) || d.speed) - d.speed) * 0.3;
+        this.recordPath(d);
+    }
 
+    // Thrust, boost cost, growth, timers (not run in the browser in rooms:
+    // the server owns them there).
+    upkeep(d, dt) {
         // Boost burns mass; half drops behind as orbs (spec §6.5).
         // Thrust tank: boosting drains it; it refills off-boost. Run it dry
         // and it locks until 1.5 s has refilled (no stutter-boosting).
         const cap = thrustCap(d.temp);
         if (d.boosting) {
             d.thrust = Math.max(0, d.thrust - dt);
-            if (d.thrust <= 0) { d.thrustLocked = true; if (d === this.player) this.emit({ type: 'thrustEmpty', d }); }
+            if (d.thrust <= 0) { d.thrustLocked = true; if (d === this.player || d.human) this.emit({ type: 'thrustEmpty', d }); }
         } else {
             d.thrust = Math.min(cap, d.thrust + T.thrustRegen * dt);
             if (d.thrustLocked && d.thrust >= Math.min(1.5, cap)) d.thrustLocked = false;
@@ -610,7 +670,7 @@ export class World {
                 const lethal = rh + o.r * T.tailColScale;
                 if (dd < lethal * lethal) { killer = o; return true; }
                 // Near miss tracking for the player.
-                if (d === P) {
+                if (d === P || d.human) {
                     const nm = lethal + T.nearMissPad;
                     if (dd < nm * nm && d.speed >= T.speedCruise * 0.9) {
                         const st = d.near.get(owner);
@@ -651,12 +711,13 @@ export class World {
             seen.add(x.d);
             this.kill(x.d, x.killer, x.cause);
         }
-        // Resolve pending near misses for the player (must survive 0.4 s).
-        if (P && P.alive) {
-            for (const [id, st] of P.near) {
+        // Resolve pending near misses for humans (must survive 0.4 s).
+        for (const h of this.dragons) {
+            if (!h.alive || !(h === P || h.human)) continue;
+            for (const [id, st] of h.near) {
                 if (st.pending && this.time - st.t > 0.4) {
                     st.pending = false;
-                    this.emit({ type: 'nearMiss', d: P, other: this.byId.get(id) });
+                    this.emit({ type: 'nearMiss', d: h, other: this.byId.get(id) });
                 }
             }
         }
@@ -827,14 +888,18 @@ export class World {
     step(dt) {
         this.time += dt;
         this.events.length = 0;
+        const client = this.mode === 'client';
         for (const d of this.dragons) {
             if (!d.alive) continue;
+            if (client) { if (d === this.player) this.fly(d, dt); continue; }   // the rest arrive in snapshots
             if (d.brain) d.brain.think(this, d, dt);
             this.updateHeat(d, dt);
-            this.fly(d, dt);
+            if (d.remote) { this.applyNet(d, dt); this.upkeep(d, dt); }
+            else this.fly(d, dt);
             this.updateBreath(d, dt);
         }
         for (const d of this.dragons) if (d.alive) d.rebuildBeads();
+        if (client) return;
         this.buildHash();
         this.collide();
         this.updateOrbs(dt);

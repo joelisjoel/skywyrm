@@ -1,0 +1,16 @@
+{
+  "name": "wyrm-server",
+  "private": true,
+  "type": "module",
+  "description": "Multiplayer rooms for Wyrm (dendroslabs.com/wyrm). Runs the shared sim from docs/wyrm/js.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/rooms.test.mjs"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "7.11.6",
+    "three": "0.163.0",
+    "ws": "8.22.0"
+  }
+}

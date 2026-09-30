@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=6';
-import { Dragon, hazardDist } from './sim.js?v=6';
+import { T } from './tunables.js?v=7';
+import { Dragon, hazardDist } from './sim.js?v=7';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -203,6 +203,7 @@ function randomBotMass(initial) {
 // spawn, one more every popRampSec, up to popMax. The ramp restarts each
 // life so every run eases in. The menu's attract mode shows a full sky.
 export function targetBots(world) {
+    if (world.botTarget) return world.botTarget();   // rooms set their own rule
     const p = world.player;
     if (!p) return Math.round(T.popMax);
     const t = (p.alive ? world.time : p.diedAt) - world.rampStart;

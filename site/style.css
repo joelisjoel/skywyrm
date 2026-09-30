@@ -141,3 +141,25 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 #hud-thrust { color: #7FE8FF; }
 #hud-thrust[data-state=empty] { color: #FF4D4D; animation: fireReady 0.4s ease-in-out infinite alternate; }
 #hud-thrust[data-state=empty] #hud-thrustbar { background: #FF4D4D; }
+
+/* Lobby */
+#menu { max-height: calc(100vh - 24px); overflow-y: auto; width: min(460px, calc(100vw - 32px)); }
+.lobby, .solo { text-align: left; margin-top: 12px; }
+.lobby-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.lobby-head b { color: var(--text); }
+#lobby-status { text-transform: none; letter-spacing: 0; font-size: 12px; }
+#room-list { display: flex; flex-direction: column; gap: 6px; }
+.room { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--slate); border-radius: 10px; background: rgba(255,255,255,0.03); }
+.room > div:first-child { min-width: 0; }
+.room .rn { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room .rm { font-size: 11px; color: var(--dim); }
+.room .rc { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.room button { margin: 0; padding: 6px 12px; font-weight: 800; background: var(--sun); color: #1a1400; border: none; }
+.room button:disabled { background: #333; color: #888; }
+.badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 6px; margin-left: 6px; background: rgba(61,224,255,0.15); color: #7FE8FF; vertical-align: 1px; }
+button.ghost { width: 100%; margin: 8px 0 0; background: transparent; border: 1px dashed var(--slate); color: var(--dim); }
+#create-form { margin-top: 8px; padding: 10px; border: 1px solid var(--slate); border-radius: 10px; }
+#create-form input[type=text], #create-name { width: 100%; font: inherit; font-weight: 700; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--slate); background: #0f1526; color: var(--text); }
+button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
+.err { color: #FF7A6A; font-size: 12px; min-height: 0; margin-top: 4px; text-align: left; }
+.err:empty { display: none; }
