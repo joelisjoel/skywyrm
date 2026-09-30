@@ -106,8 +106,9 @@ export class Input {
         const k = this.keys;
         const kx = (k.has('ArrowRight') ? 1 : 0) - (k.has('ArrowLeft') ? 1 : 0);
         const ky = (k.has('ArrowUp') ? 1 : 0) - (k.has('ArrowDown') ? 1 : 0);
-        if (kx || ky) { x = kx * T.keySteer; y = ky * T.keySteer; }
-        if (this.settings.invertY) y = -y;
+        // Invert pitch applies to the up/down keys only; the mouse always
+        // points where you want to go.
+        if (kx || ky) { x = kx * T.keySteer; y = (this.settings.invertY ? -ky : ky) * T.keySteer; }
         out.sx = x; out.sy = y;
         out.roll = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
         out.boost = this.lmb || k.has('KeyW') || k.has('Space');
