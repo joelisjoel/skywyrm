@@ -54,6 +54,20 @@ export class Renderer {
         this.fins.setColorAt(0, _white);
         this.fins.frustumCulled = false;
         this.scene.add(this.fins);
+        // Legs with five ivory claws, like an imperial dragon (earned from
+        // Drake). Right and left are separate meshes so mirrored triangles
+        // still face outward.
+        this.legMat = legMaterial();
+        const legR = legGeometry();
+        this.legs = [legR, mirrorX(legR)].map((g) => {
+            const m = new THREE.InstancedMesh(g, this.legMat, MAX_HEADS * 2);
+            m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            m.setColorAt(0, _white);
+            m.frustumCulled = false;
+            m.count = 0;
+            this.scene.add(m);
+            return m;
+        });
         this.finM = new THREE.Matrix4();
         this.ownBeads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.ownBeads.setColorAt(0, _white);
@@ -444,6 +458,7 @@ export class Renderer {
         const ownM = this.ownBeads.instanceMatrix.array, ownC = this.ownBeads.instanceColor.array;
         let nAll = 0, nOwn = 0, n = 0, bm, bc, cap, nFin = 0;
         const fm = this.fins.instanceMatrix.array, fcol = this.fins.instanceColor.array, finCap = this.fins.instanceMatrix.count;
+        let nLeg = 0;
         const seen = new Set();
         const cp = this.camera.position;
         const biteFrom = world.rule('tailBite') ? world.rule('biteBeads') : 0;
@@ -469,6 +484,7 @@ export class Renderer {
             hd.swim = (hd.swim || 0) + d.speed * dt;
             // Your own body swims more gently, so the view behind your head stays calm.
             const amp = r * T.swimAmp * (isOther ? 1 : 0.6), kw = 2 * Math.PI / Math.max(1, r * T.swimWave), lift = T.swimLift;
+            const legF = Math.max(5, Math.round(nb * 0.12)), legB = Math.round(nb * 0.55);
             for (let b = 0; b < nb && n < cap; b++) {
                 const o = b * 3;
                 let x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
@@ -511,6 +527,22 @@ export class Renderer {
                 bm[k + 4] = wU.x * sy; bm[k + 5] = wU.y * sy; bm[k + 6] = wU.z * sy; bm[k + 7] = 0;
                 bm[k + 8] = wT.x * sz; bm[k + 9] = wT.y * sz; bm[k + 10] = wT.z * sz; bm[k + 11] = 0;
                 bm[k + 12] = x; bm[k + 13] = y; bm[k + 14] = z; bm[k + 15] = 1;
+                // Legs: front pair from Drake, back pair from Wyvern, paddling
+                // as the dragon swims.
+                if (d.tier >= 1 && nLeg < MAX_HEADS * 2 && (b === legF || (b === legB && d.tier >= 2)) && s > 0.05) {
+                    const sw = Math.sin(hd.swim * 1.1 / r + (b === legB ? 1.6 : 0)) * 0.45;
+                    for (let side = 0; side < 2; side++) {
+                        const a = side ? -sw : sw, ca = Math.cos(a), sa = Math.sin(a);
+                        const lm = this.legs[side].instanceMatrix.array, kk = nLeg * 16;
+                        lm[kk] = wR.x * s; lm[kk + 1] = wR.y * s; lm[kk + 2] = wR.z * s; lm[kk + 3] = 0;
+                        lm[kk + 4] = (wU.x * ca + wT.x * sa) * s; lm[kk + 5] = (wU.y * ca + wT.y * sa) * s; lm[kk + 6] = (wU.z * ca + wT.z * sa) * s; lm[kk + 7] = 0;
+                        lm[kk + 8] = (wT.x * ca - wU.x * sa) * s; lm[kk + 9] = (wT.y * ca - wU.y * sa) * s; lm[kk + 10] = (wT.z * ca - wU.z * sa) * s; lm[kk + 11] = 0;
+                        lm[kk + 12] = x; lm[kk + 13] = y; lm[kk + 14] = z; lm[kk + 15] = 1;
+                        const lc = this.legs[side].instanceColor.array;
+                        lc[nLeg * 3] = r1 * ghost; lc[nLeg * 3 + 1] = g1 * ghost; lc[nLeg * 3 + 2] = b1 * ghost;
+                    }
+                    nLeg++;
+                }
                 // Crest: a fin every other segment, rising from the back and
                 // swept toward the tail; a three-fin fan at the very tip.
                 const last = b === nb - 1;
@@ -561,6 +593,7 @@ export class Renderer {
         this.fins.count = nFin;
         this.fins.instanceMatrix.needsUpdate = true;
         this.fins.instanceColor.needsUpdate = true;
+        for (const m of this.legs) { m.count = nLeg; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
         this.beadCount = nAll + nOwn;
 
         // Heads.
@@ -1301,6 +1334,62 @@ function merged(parts) {
     out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     return out;
+}
+
+// A dragon leg (right side) in units of the body radius: +x out from the
+// body, +y up its back, +z toward the head. Shoulder, upper leg, elbow,
+// foreleg, foot and five curved claws. A `claw` attribute (0/1) lets the
+// material paint the claws ivory whatever the dragon's colour.
+function legGeometry() {
+    const V3 = (x, y, z) => new THREE.Vector3(x, y, z), Y = V3(0, 1, 0);
+    const sph = new THREE.SphereGeometry(1, 10, 8), cone = new THREE.ConeGeometry(1, 1, 6).translate(0, 0.5, 0);
+    const cyl = new THREE.CylinderGeometry(0.8, 1, 1, 8);
+    const M = (p, q, sc) => new THREE.Matrix4().compose(p, q, sc), Q0 = new THREE.Quaternion();
+    const blob = (x, y, z, sx, sy, sz) => [sph, M(V3(x, y, z), Q0, V3(sx, sy, sz))];
+    const bone = (a, b, r) => { const d = b.clone().sub(a), len = d.length(); return [cyl, M(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(Y, d.normalize()), V3(r, len, r))]; };
+    const shoulder = V3(0.72, -0.28, 0.05), elbow = V3(1.32, -0.78, 0.32), wrist = V3(1.4, -1.3, -0.05);
+    const leg = merged([
+        blob(shoulder.x, shoulder.y, shoulder.z, 0.34, 0.34, 0.4),
+        bone(shoulder, elbow, 0.2), blob(elbow.x, elbow.y, elbow.z, 0.18, 0.18, 0.2),
+        bone(elbow, wrist, 0.15), blob(1.42, -1.36, -0.16, 0.22, 0.1, 0.27),
+    ]);
+    const claws = merged([-0.16, -0.08, 0, 0.08, 0.16].map((o) => {
+        const d = V3(o * 1.4, -0.55, -1).normalize();
+        return [cone, M(V3(1.42 + o, -1.38, -0.32), new THREE.Quaternion().setFromUnitVectors(Y, d), V3(0.045, 0.3, 0.045))];
+    }));
+    const n1 = leg.attributes.position.count, n2 = claws.attributes.position.count;
+    const pos = new Float32Array((n1 + n2) * 3), nor = new Float32Array((n1 + n2) * 3), claw = new Float32Array(n1 + n2);
+    pos.set(leg.attributes.position.array); pos.set(claws.attributes.position.array, n1 * 3);
+    nor.set(leg.attributes.normal.array); nor.set(claws.attributes.normal.array, n1 * 3);
+    claw.fill(1, n1);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('claw', new THREE.BufferAttribute(claw, 1));
+    return g;
+}
+
+// Mirror a non-indexed geometry across x, keeping its triangles front-facing.
+function mirrorX(src) {
+    const g = src.clone();
+    g.applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1));
+    for (const name of Object.keys(g.attributes)) {
+        const a = g.attributes[name], k = a.itemSize, arr = a.array;
+        for (let t = 0; t < a.count; t += 3)
+            for (let c = 0; c < k; c++) { const i1 = (t + 1) * k + c, i2 = (t + 2) * k + c, v = arr[i1]; arr[i1] = arr[i2]; arr[i2] = v; }
+    }
+    return g;
+}
+
+function legMaterial() {
+    const m = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.25 });
+    m.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float claw;\nvarying float vClaw;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvClaw = claw;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vClaw;')
+            .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.88, 0.7), vClaw);');
+    };
+    return m;
 }
 
 // Head, looking down −z, in units of the dragon's radius × head scale.
