@@ -79,8 +79,14 @@ export class Renderer {
         // Chinese-dragon head parts, merged per material (built once, shared).
         this.headParts = dragonHeadParts();
         this.eyeMat = new THREE.MeshStandardMaterial({ color: 0xFFB43A, emissive: 0xFF8A10, emissiveIntensity: 1.6, roughness: 0.2 });
+        this.eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0xFFD27A, emissive: 0xFFB030, emissiveIntensity: 2.6, roughness: 0.2 });
         this.pupilMat = new THREE.MeshBasicMaterial({ color: 0x120804 });
+        this.mouthMat = new THREE.MeshStandardMaterial({ color: 0x8A1020, roughness: 0.6, emissive: 0x300006 });
         this.hornMat = new THREE.MeshStandardMaterial({ color: 0xEADBB6, roughness: 0.45, metalness: 0.15 });
+        this.goldMat = new THREE.MeshStandardMaterial({ color: 0xF2C14E, roughness: 0.25, metalness: 0.9, emissive: 0x3A2400 });
+        // The flaming pearl an Ancient chases.
+        this.pearlMat = new THREE.MeshStandardMaterial({ color: 0xFFF4DA, emissive: 0xFFB050, emissiveIntensity: 1.1, roughness: 0.1 });
+        this.pearlGeo = new THREE.SphereGeometry(1, 20, 14);
         this.whiskerMat = new THREE.MeshStandardMaterial({ color: 0xF3E3BF, roughness: 0.4, metalness: 0.2 });
 
         // Power-up crystals.
@@ -410,14 +416,20 @@ export class Renderer {
         const P = this.headParts, g = new THREE.Group();
         const mat = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.35, metalness: 0.3 });
         const mat2 = new THREE.MeshStandardMaterial({ color: d.color2, roughness: 0.5, metalness: 0.2 });
-        g.add(new THREE.Mesh(P.skin, mat), new THREE.Mesh(P.accent, mat2), new THREE.Mesh(P.eyes, this.eyeMat), new THREE.Mesh(P.pupils, this.pupilMat));
-        const antlers = new THREE.Mesh(P.antlers, this.hornMat), crown = new THREE.Mesh(P.crown, this.hornMat);
-        g.add(antlers, crown, new THREE.Mesh(P.fangs, this.whiskerMat));
-        // Whiskers sway from the snout.
+        const eyes = new THREE.Mesh(P.eyes, this.eyeMat);
+        g.add(new THREE.Mesh(P.skin, mat), new THREE.Mesh(P.mouth, this.mouthMat), new THREE.Mesh(P.accent, mat2),
+            eyes, new THREE.Mesh(P.pupils, this.pupilMat), new THREE.Mesh(P.fangs, this.whiskerMat));
+        // Earned with length (see update): buds → antlers → long mane → crown, gold → pearl.
+        const buds = new THREE.Mesh(P.buds, this.hornMat), antlers = new THREE.Mesh(P.antlers, this.hornMat);
+        const crown = new THREE.Mesh(P.crown, this.goldMat), mane = new THREE.Mesh(P.maneLong, mat2);
+        const pearl = new THREE.Mesh(this.pearlGeo, this.pearlMat);
+        pearl.scale.setScalar(0.24);
+        g.add(buds, antlers, crown, mane, pearl);
+        // Whiskers sway from the nose.
         const wl = new THREE.Mesh(P.whisker, this.whiskerMat), wr = new THREE.Mesh(P.whisker, this.whiskerMat);
-        wl.position.set(-0.3, -0.12, -1.55); wr.position.set(0.3, -0.12, -1.55); wr.scale.x = -1;
+        wl.position.set(-0.3, 0.1, -1.85); wr.position.set(0.3, 0.1, -1.85);
         g.add(wl, wr);
-        h = { g, mat, mat2, wl, wr, antlers, crown, flap: Math.random() * 6 };
+        h = { g, mat, mat2, wl, wr, eyes, buds, antlers, crown, mane, pearl, tier: -1, flap: Math.random() * 6 };
         this.scene.add(g);
         this.heads.set(d.id, h);
         return h;
@@ -484,9 +496,9 @@ export class Renderer {
                     _R2.crossVectors(_U2, _T2);
                     wT = _T2; wU = _U2; wR = _R2;
                 }
-                // Taper the last 15% of the tail.
+                // Taper the last 15% of the tail, and a slimmer neck so the head stands out.
                 const f = b / d.nBeads;
-                let s = r * (f > 0.85 ? 1 - (f - 0.85) / 0.15 * 0.6 : 1);
+                let s = r * (f > 0.85 ? 1 - (f - 0.85) / 0.15 * 0.6 : 1) * (b < 6 ? 0.7 + 0.05 * b : 1);
                 // Your own body shrinks away near the camera so it never
                 // blocks the view in a turn.
                 if (!isOther) {
@@ -562,19 +574,34 @@ export class Renderer {
             h.g.quaternion.copy(d.quat);
             _q.setFromAxisAngle(Zaxis, -d.bank);
             h.g.quaternion.multiply(_q);
-            const hs = d.r * 1.15;
+            const t = d.tier;
+            // Heads read bigger than the neck, and grow a little more with each
+            // tier. Your own is drawn a little smaller so it never hides the way ahead.
+            const hs = d.r * (1.45 + 0.05 * t) * (d === player ? 0.85 : 1);
             h.g.scale.setScalar(hs);
             h.flap += dt * (d.boosting ? 9 : 4);
             const sway = Math.sin(h.flap) * 0.25, trail = d.boosting ? 0.35 : 0;
             h.wl.rotation.set(sway * 0.5 + trail, -0.25 - sway * 0.4, 0); h.wr.rotation.set(-sway * 0.5 + trail, 0.25 + sway * 0.4, 0);
+            if (t !== h.tier) {
+                // What a dragon has earned, by tier (Hatchling 0 … Ancient 4).
+                h.tier = t;
+                h.buds.visible = t === 0;
+                h.antlers.visible = t >= 1;
+                h.mane.visible = t >= 2;
+                h.crown.visible = t >= 3;
+                h.antlers.material = t >= 3 ? this.goldMat : this.hornMat;
+                h.eyes.material = t >= 3 ? this.eyeGlowMat : this.eyeMat;
+                h.pearl.visible = t >= 4;
+                const wk = 0.6 + 0.2 * t;           // whiskers lengthen with age
+                h.wl.scale.setScalar(wk); h.wr.scale.set(-wk, wk, wk);
+            }
+            // The pearl floats ahead of the nose, bobbing and circling.
+            if (h.pearl.visible) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
             h.mat2.color.set(d.color2).multiplyScalar(d.protect > 0 ? 0.5 : 1);
             // Hot dragons glow; the leader blazes gold.
-            if (d === view.top) h.mat.emissive.setHex(0xffc85a);
+            if (d === view.top) h.mat.emissive.setHex(0xffc85a).multiplyScalar(0.45);
             else h.mat.emissive.setRGB(1, 0.35, 0.05).multiplyScalar(Math.max(0, (d.temp - 25) / 75) * 0.7);
-            // Antlers grow with the dragon: none as a hatchling, branching from Drake, a crown from Elder.
-            h.antlers.visible = d.tier >= 1;
-            h.crown.visible = d.tier >= 3;
             // Shadow.
             if (sh < MAX_HEADS) {
                 if (arena.kind === 'cylinder') {
@@ -1276,45 +1303,102 @@ function merged(parts) {
     return out;
 }
 
-// Head in units of 1.25 × r, looking down −z: long snout and jaw, amber
-// eyes with slit pupils, a flame mane and beard, deer-like antlers.
+// Head, looking down −z, in units of the dragon's radius × head scale.
+// A Chinese "long": big lion nose, open jaws with a red mouth and fangs,
+// amber eyes under heavy flame brows, cheek frills, a flame ruff around
+// the head, a beard, deer antlers. Parts are grouped so a dragon earns
+// them as it grows (see Renderer.update): horn buds → antlers → long
+// mane and beard → crown tines and gold horns → the flaming pearl.
 function dragonHeadParts() {
-    const M = (x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) =>
-        new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
-    const sph = new THREE.SphereGeometry(1, 16, 12), cone = new THREE.ConeGeometry(1, 1, 7), cyl = new THREE.CylinderGeometry(1, 1, 1, 6);
+    const V3 = (x, y, z) => new THREE.Vector3(x, y, z), Y = V3(0, 1, 0);
+    const sph = new THREE.SphereGeometry(1, 16, 12), lo = new THREE.SphereGeometry(1, 10, 8);
+    const cone = new THREE.ConeGeometry(1, 1, 8).translate(0, 0.5, 0);     // base at origin, tip at +y
+    const cyl = new THREE.CylinderGeometry(0.75, 1, 1, 7);                  // tapers toward +y
+    const M = (pos, quat, scale) => new THREE.Matrix4().compose(pos, quat, scale);
+    // An ellipsoid blob, optionally tilted about x.
+    const blob = (x, y, z, sx, sy, sz, rx = 0, g = sph) => [g, M(V3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, 0)), V3(sx, sy, sz))];
+    // A flame lick / fang / horn: a cone from `a` along `dir`, `w` wide, `flat` = thickness share.
+    // `wide` (optional) is the direction its broad side spreads along.
+    const lick = (a, dir, len, w, flat = 1, wide = null) => {
+        const d = dir.clone().normalize();
+        let q;
+        if (wide) {
+            const x = wide.clone().addScaledVector(d, -wide.dot(d)).normalize(), z = new THREE.Vector3().crossVectors(x, d);
+            q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, d, z));
+        } else q = new THREE.Quaternion().setFromUnitVectors(Y, d);
+        return [cone, M(a, q, V3(w, len, w * flat))];
+    };
+    // An antler bone from a to b, radius r (a little thinner at b).
+    const bone = (a, b, r) => {
+        const d = b.clone().sub(a), len = d.length();
+        return [cyl, M(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(Y, d.normalize()), V3(r, len, r))];
+    };
+    const both = (f) => [f(1), f(-1)];                                      // left and right
     const skin = merged([
-        [sph, M(0, 0.08, 0.05, 0.72, 0.58, 0.9)],             // skull
-        [sph, M(0, 0.02, -0.95, 0.42, 0.3, 1.0, -0.06)],      // long snout
-        [sph, M(0, -0.3, -0.85, 0.36, 0.14, 0.85, 0.22)],     // lower jaw, a little open
-        [sph, M(0.3, 0.3, -0.42, 0.17, 0.12, 0.36, 0, 0, 0.35)],  // brow ridges
-        [sph, M(-0.3, 0.3, -0.42, 0.17, 0.12, 0.36, 0, 0, -0.35)],
-        [sph, M(0.26, 0.12, -1.72, 0.1, 0.09, 0.1)],          // nostrils
-        [sph, M(-0.26, 0.12, -1.72, 0.1, 0.09, 0.1)],
+        blob(0, 0.12, 0.05, 0.76, 0.54, 0.9),                    // skull
+        blob(0, 0.3, -0.38, 0.5, 0.28, 0.55),                     // forehead rising to the brows
+        blob(0, 0.06, -1.0, 0.44, 0.3, 0.95, -0.05),              // long snout
+        blob(0, 0.2, -1.78, 0.42, 0.26, 0.3),                     // lion nose, turned up
+        blob(0, -0.36, -0.8, 0.36, 0.13, 0.82, 0.36),             // lower jaw, open
+        ...both((s) => blob(0.28 * s, -0.04, -1.38, 0.2, 0.19, 0.45)),     // muzzle corners
+        ...both((s) => blob(0.45 * s, 0.0, -0.1, 0.26, 0.26, 0.42)),       // cheeks
+        ...both((s) => blob(0.31 * s, 0.37, -0.56, 0.23, 0.11, 0.3)),      // brow overhang
+        ...both((s) => blob(0.2 * s, 0.31, -1.93, 0.09, 0.08, 0.07, 0, lo)),   // nostrils
     ]);
+    const mouth = merged([blob(0, -0.18, -0.95, 0.32, 0.1, 0.75, 0.17)]);   // red inside the open jaws
+    // The flame ruff: licks fanned around the back of the head, pointing
+    // outward and back, so it frames the face and reads from behind.
+    const ruff = (n, len, w, back, z = 0.42) => {
+        const out = [];
+        for (let i = 0; i < n; i++) {
+            const t = -0.45 + (Math.PI + 0.9) * i / (n - 1);                // from below one cheek, over the top, to the other
+            const c = Math.cos(t), sn = Math.sin(t);
+            out.push(lick(V3(0.6 * c, 0.12 + 0.48 * sn, z), V3(c, sn, back), len * (0.8 + 0.2 * sn), w, 0.35, V3(-sn, c, 0)));
+        }
+        return out;
+    };
     const accent = merged([
-        [sph, M(0, 0.14, -1.78, 0.24, 0.16, 0.2)],            // nose pad
-        ...[-0.55, -0.3, 0, 0.3, 0.55].map((x, i) => [cone, M(x, 0.25 - Math.abs(x) * 0.3, 0.55, 0.16, 0.95, 0.16, 1.9 + Math.abs(x) * 0.4, x * 0.6, 0)]),   // mane flames
-        ...[-0.2, 0, 0.2].map((x) => [cone, M(x, -0.55, -0.55, 0.08, 0.55, 0.08, Math.PI - 0.5, 0, 0)]),   // beard
+        ...both((s) => lick(V3(0.3 * s, 0.44, -0.58), V3(0.35 * s, 0.62, 0.7), 0.8, 0.1, 0.6)),     // flame brows
+        ...both((s) => lick(V3(0.42 * s, 0.4, -0.48), V3(0.65 * s, 0.45, 0.62), 0.55, 0.075, 0.6)),
+        ...both((s) => lick(V3(0.58 * s, -0.08, -0.08), V3(0.85 * s, -0.2, 0.5), 0.55, 0.16, 0.35)), // cheek frills
+        ...ruff(7, 0.62, 0.17, 0.55),
+        lick(V3(0, -0.45, -0.62), V3(0, -0.7, 0.7), 0.45, 0.07),                                   // goatee
+        blob(0, 0.21, -2.04, 0.09, 0.07, 0.05),                                                     // nose tip
     ]);
-    const eyes = merged([[sph, M(0.33, 0.22, -0.55, 0.16, 0.14, 0.17)], [sph, M(-0.33, 0.22, -0.55, 0.16, 0.14, 0.17)]]);
-    const pupils = merged([[sph, M(0.41, 0.22, -0.64, 0.03, 0.11, 0.05)], [sph, M(-0.41, 0.22, -0.64, 0.03, 0.11, 0.05)]]);
-    const fangs = merged([-0.22, 0.22].flatMap((x) => [[cone, M(x, -0.16, -1.45, 0.05, 0.22, 0.05, Math.PI, 0, 0)], [cone, M(x * 0.8, -0.28, -1.2, 0.035, 0.15, 0.035, 0, 0, 0)]]));
-    const antlerParts = [];
-    for (const sx of [-1, 1]) {
-        antlerParts.push([cyl, M(0.32 * sx, 0.72, 0.25, 0.06, 1.0, 0.06, -0.9, 0, -0.35 * sx)]);     // main beam
-        antlerParts.push([cyl, M(0.42 * sx, 0.95, 0.25, 0.045, 0.45, 0.045, -0.2, 0, -0.7 * sx)]);   // front tine
-        antlerParts.push([cyl, M(0.46 * sx, 1.0, 0.72, 0.04, 0.4, 0.04, -1.4, 0, -0.5 * sx)]);       // rear tine
-    }
-    const crownParts = [];
-    for (const sx of [-1, 1]) {
-        crownParts.push([cyl, M(0.58 * sx, 1.25, 0.55, 0.035, 0.45, 0.035, -0.6, 0, -1.0 * sx)]);
-        crownParts.push([cyl, M(0.3 * sx, 1.28, 0.85, 0.035, 0.4, 0.035, -1.1, 0, -0.2 * sx)]);
-    }
-    // Whisker: a thin tube curving out and back from the snout, then drooping.
-    const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(-0.4, -0.05, 0.25),
-        new THREE.Vector3(-0.8, -0.25, 0.9), new THREE.Vector3(-1.05, -0.55, 1.7), new THREE.Vector3(-1.1, -0.9, 2.5)]);
+    // Long, flowing mane and beard (Wyvern and up).
+    const maneLong = merged([
+        ...ruff(11, 1.25, 0.2, 0.85, 0.5),
+        ...[-0.18, 0, 0.18].map((x) => lick(V3(x, -0.44, -0.66), V3(x, -0.75, 0.66), 0.95, 0.075)),  // beard
+    ]);
+    const eyes = merged(both((s) => blob(0.36 * s, 0.25, -0.58, 0.17, 0.15, 0.18)));
+    const pupils = merged(both((s) => blob(0.465 * s, 0.25, -0.715, 0.03, 0.11, 0.04, 0, lo)));
+    const fangs = merged([
+        ...both((s) => lick(V3(0.24 * s, -0.08, -1.55), V3(0, -1, 0.05), 0.3, 0.06)),       // upper fangs
+        ...both((s) => lick(V3(0.15 * s, -0.08, -1.76), V3(0, -1, 0), 0.16, 0.035)),
+        ...both((s) => lick(V3(0.2 * s, -0.38, -1.3), V3(0, 1, -0.2), 0.22, 0.045)),        // lower fangs
+    ]);
+    const buds = merged(both((s) => lick(V3(0.24 * s, 0.48, -0.08), V3(0.25 * s, 0.85, 0.5), 0.34, 0.08)));
+    // Deer antlers: a beam rising up and back, with two tines.
+    const antlerSide = (s) => {
+        const a = V3(0.26 * s, 0.46, -0.05), b = V3(0.46 * s, 1.1, 0.45), c = V3(0.6 * s, 1.42, 1.2);
+        return [
+            bone(a, b, 0.075), bone(b, c, 0.058), blob(b.x, b.y, b.z, 0.06, 0.06, 0.06, 0, lo),
+            bone(V3(0.4 * s, 0.92, 0.3), V3(0.56 * s, 1.36, 0.08), 0.045),          // front tine
+            bone(V3(0.54 * s, 1.27, 0.85), V3(0.86 * s, 1.62, 0.78), 0.04),        // outer tine
+        ];
+    };
+    const antlers = merged([...antlerSide(1), ...antlerSide(-1)]);
+    const crownSide = (s) => [
+        bone(V3(0.5 * s, 1.2, 0.6), V3(0.42 * s, 1.75, 0.55), 0.038),
+        bone(V3(0.58 * s, 1.38, 1.05), V3(0.55 * s, 1.85, 1.3), 0.034),
+        bone(V3(0.6 * s, 1.42, 1.2), V3(0.98 * s, 1.5, 1.6), 0.034),
+    ];
+    const crown = merged([...crownSide(1), ...crownSide(-1)]);
+    // Whisker: a thin tube curving out and back from the nose, then drooping.
+    const curve = new THREE.CatmullRomCurve3([V3(0, 0, 0), V3(-0.4, -0.02, 0.25),
+        V3(-0.85, -0.2, 0.95), V3(-1.1, -0.5, 1.8), V3(-1.15, -0.85, 2.7)]);
     const whisker = new THREE.TubeGeometry(curve, 20, 0.035, 5, false);
-    return { skin, accent, eyes, pupils, fangs, antlers: merged(antlerParts), crown: merged(crownParts), whisker };
+    return { skin, mouth, accent, maneLong, eyes, pupils, fangs, buds, antlers, crown, whisker };
 }
 
 function disposeTree(o) {
