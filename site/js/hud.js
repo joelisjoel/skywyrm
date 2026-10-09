@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=13';
-import { MOOD_ICON } from './bots.js?v=13';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=14';
+import { MOOD_ICON } from './bots.js?v=14';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -227,7 +227,8 @@ export class Hud {
             }
             this.el.kills.textContent = p.kills ? '⚔ ' + p.kills : '';
             const t = p.tier, next = TIERS[t + 1];
-            this.el.tier.textContent = TIERS[t].name;
+            const fast = Math.round((p.sizeBonus || 0) * 100);
+            this.el.tier.textContent = fast >= 1 ? `${TIERS[t].name} · +${fast}% speed` : TIERS[t].name;
             const f = next ? (p.mass - TIERS[t].mass) / (next.mass - TIERS[t].mass) : 1;
             this.el.tierBar.style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
             const g = this.g;

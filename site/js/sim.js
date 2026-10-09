@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus } from './tunables.js?v=13';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=14';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -324,6 +324,12 @@ export class World {
     // A rule's value for this world: the room's override, else the tunable.
     rule(k) { const v = this.rules[k]; return v === undefined ? T[k] : v; }
 
+    // Cruise/boost multiplier: heat plus the length reward (rule lengthSpeed).
+    speedMult(d) {
+        d.sizeBonus = sizeSpeed(d.mass, this.rule('lengthSpeed'), this.rule('lengthSpeedMass'));
+        return 1 + speedBonus(d.temp) + d.sizeBonus;
+    }
+
     addDragon(d) { this.dragons.push(d); this.byId.set(d.id, d); return d; }
 
     removeDragon(d) {
@@ -488,7 +494,7 @@ export class World {
         }
 
         // Speed.
-        let target = T['speed' + mode] * (mode === 'Brake' ? 1 : 1 + speedBonus(d.temp));
+        let target = T['speed' + mode] * (mode === 'Brake' ? 1 : this.speedMult(d));
         if (a.gravity) target = Math.max(T.speedBrake, target + T.diveBoost * -d.fwd.y);
         d.speed += (target - d.speed) * (T.speedTau > 0 ? 1 - Math.exp(-dt / T.speedTau) : 1);
 
@@ -526,7 +532,7 @@ export class World {
         const inp = d.input, n = d.net;
         d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
         d.braking = inp.brake;
-        const top = (d.boosting ? T.speedBoost : T.speedCruise) * (1 + speedBonus(d.temp)) + T.diveBoost + 1;
+        const top = (d.boosting ? T.speedBoost : T.speedCruise) * this.speedMult(d) + T.diveBoost + 1;
         d.moveBudget = Math.min(top * 0.5, d.moveBudget + top * dt * 1.15);
         if (n && n.fresh) {
             n.fresh = false;

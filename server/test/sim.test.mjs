@@ -91,4 +91,23 @@ function setup(beadFromEnd) {
     w.spawn(d, T.spawnMass);
     check(d.shield === 0 && d.fire === 0, 'rule perks = 0: everyone plays stock');
 }
+// Longer dragons fly faster (rule lengthSpeed), and the server lets them.
+{
+    const cruise = (rules) => {
+        const w = new World('orb', 'local');
+        Object.assign(w.rules, rules);
+        const small = new Dragon('S', false), big = new Dragon('B', false);
+        w.spawn(small, T.spawnMass); w.spawn(big, T.lengthSpeedMass);
+        for (let i = 0; i < 120; i++) for (const d of [small, big]) { d.temp = 0; w.move(d, 1 / 40); }
+        return big.speed / small.speed;
+    };
+    const on = cruise({}), off = cruise({ lengthSpeed: 0 });
+    check(on > 1.15, `a full-size dragon cruises ${Math.round((on - 1) * 100)}% faster than a hatchling`);
+    check(Math.abs(off - 1) < 0.01, 'lengthSpeed 0 turns the reward off');
+    const w = new World('orb', 'server');
+    const d = new Dragon('N', true); w.spawn(d, T.lengthSpeedMass); d.temp = 0;
+    const budget = (rules) => { w.rules = rules; d.moveBudget = 0; d.boosting = false; w.applyNet(d, 0.1); return d.moveBudget; };
+    check(budget({}) > budget({ lengthSpeed: 0 }) * 1.1, 'the server allows a long dragon its extra speed');
+}
+
 console.log(`\n${ok} sim checks passed`);

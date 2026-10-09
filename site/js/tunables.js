@@ -101,6 +101,8 @@ export const DEFAULTS = {
     aggrRampMin: 15,        // …rising to full over this many minutes
     botAggrMax: 1,          // cap (beginner rooms use 0.5)
     perks: 1,               // profile perks apply (0 = everyone plays stock)
+    lengthSpeed: 0.2,       // longer = faster: cruise/boost × (1 + lengthSpeed·√(m / lengthSpeedMass)), 0 = off
+    lengthSpeedMass: 800,   // mass that earns the full bonus (Ancient)
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -186,6 +188,8 @@ export const PANEL = [
     ['aggrRampMin', 1, 60, 1, 'Rules'],
     ['botAggrMax', 0, 1, 0.05, 'Rules'],
     ['perks', 0, 1, 1, 'Rules'],
+    ['lengthSpeed', 0, 0.6, 0.05, 'Rules'],
+    ['lengthSpeedMass', 100, 3000, 50, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over
@@ -220,6 +224,10 @@ export const radiusFor = (m) => T.radiusBase + T.radiusGrow * Math.min(1, m / 20
 // Heat helpers shared by sim and HUD.
 export const thrustCap = (temp) => T.thrustBase * (1 + T.tempThrust * temp / 100);
 export const speedBonus = (temp) => T.tempSpeed * temp / 100;
+// Reward for growing: extra top speed, fast at first and levelling off
+// (√), full at `full` mass. Callers pass the room's rule values.
+export const sizeSpeed = (m, k = T.lengthSpeed, full = T.lengthSpeedMass) =>
+    k > 0 ? k * Math.sqrt(Math.min(1, Math.max(0, m) / Math.max(1, full))) : 0;
 
 export const TIERS = [
     { name: 'Hatchling', mass: 0 },

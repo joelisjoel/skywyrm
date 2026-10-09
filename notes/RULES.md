@@ -15,6 +15,8 @@ Each newer mechanic is a **rule**: a number in `docs/wyrm/js/tunables.js`
 | `aggrRampMin` | 15 | …rising to full over this many minutes |
 | `botAggrMax` | 1 | Aggression cap (beginner rooms and solo Beginner use 0.5) |
 | `perks` | 1 | Profile perks apply; 0 = everyone plays stock |
+| `lengthSpeed` | 0.2 | Longer dragons fly faster: cruise and boost × (1 + 0.2·√(mass ÷ `lengthSpeedMass`)). That is about +5% at Drake, +10% at Wyvern, +15% at Elder and +20% at Ancient. 0 = off |
+| `lengthSpeedMass` | 800 | Mass that earns the full length bonus |
 
 ## Where to change them
 
