@@ -113,7 +113,7 @@ export const DEFAULTS = {
     camRollFollow: 0.35,
     fov: 72,
     fovBoost: 84,
-    wideCorner: 150,        // deg from forward shown at the screen corners (wide view)
+    wideCorner: 122,        // deg from forward shown at the screen corners (wide view; was 150, 30% less warp)
     wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
 };
 
