@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=14';
+import { T, TIERS } from './tunables.js?v=15';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -13,6 +13,7 @@ const LODE = 0x3D8BFF;           // lodestone blue
 const MAX_BEAMS = 240;
 const Zaxis = new THREE.Vector3(0, 0, 1);
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
+const _T2 = new THREE.Vector3(), _U2 = new THREE.Vector3(), _R2 = new THREE.Vector3();
 
 export class Renderer {
     constructor(canvas) {
@@ -448,9 +449,17 @@ export class Renderer {
             // T points toward the head, U is the back, R = U × T.
             _U.copy(d.up);
             const nb = d.nBeads, seg = Math.max(d.beadSpacing * 1.3, r * 0.8);
+            // Swimming: a wave fixed in space that the body slides through,
+            // like a snake following its own S-curve. Its phase is the
+            // distance flown, so faster = quicker strokes. Drawing only: the
+            // sim (collisions, bites) still uses the true path.
+            const hd = this.headFor(d);
+            hd.swim = (hd.swim || 0) + d.speed * dt;
+            // Your own body swims more gently, so the view behind your head stays calm.
+            const amp = r * T.swimAmp * (isOther ? 1 : 0.6), kw = 2 * Math.PI / Math.max(1, r * T.swimWave), lift = T.swimLift;
             for (let b = 0; b < nb && n < cap; b++) {
                 const o = b * 3;
-                const x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
+                let x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
                 const ia = Math.max(0, b - 1) * 3, ib = Math.min(nb - 1, b + 1) * 3;
                 _T.set(d.beads[ia] - d.beads[ib], d.beads[ia + 1] - d.beads[ib + 1], d.beads[ia + 2] - d.beads[ib + 2]);
                 if (b === 0 || _T.lengthSq() < 1e-8) _T.copy(d.fwd); else _T.normalize();
@@ -458,6 +467,23 @@ export class Renderer {
                 if (_U.lengthSq() < 1e-6) _U.copy(d.up);
                 _U.normalize();
                 _R.crossVectors(_U, _T);
+                // Swim offset: none at the head, full a few beads back, a
+                // little stronger toward the tail. The drawn frame turns with
+                // the wave's slope so the plates follow the S-curve.
+                let wT = _T, wU = _U, wR = _R;
+                if (amp > 0 && b > 0) {
+                    const a = amp * Math.min(1, b / 6) * (0.75 + 0.35 * b / nb);
+                    const ph = kw * (hd.swim - b * d.beadSpacing);
+                    const sn = Math.sin(ph), cs = Math.cos(ph);
+                    const side = a * sn, up = a * lift * cs;
+                    x += _R.x * side + _U.x * up; y += _R.y * side + _U.y * up; z += _R.z * side + _U.z * up;
+                    // d(offset)/d(distance toward the head) = −d/ds of the phase.
+                    const gs = a * kw * cs, gu = -a * lift * kw * sn;
+                    _T2.copy(_T).addScaledVector(_R, gs).addScaledVector(_U, gu).normalize();
+                    _U2.copy(_U).addScaledVector(_T2, -_U.dot(_T2)).normalize();
+                    _R2.crossVectors(_U2, _T2);
+                    wT = _T2; wU = _U2; wR = _R2;
+                }
                 // Taper the last 15% of the tail.
                 const f = b / d.nBeads;
                 let s = r * (f > 0.85 ? 1 - (f - 0.85) / 0.15 * 0.6 : 1);
@@ -469,9 +495,9 @@ export class Renderer {
                     if (cd < 3.5) s *= Math.max(0, (cd - 0.8) / 2.7);
                 }
                 const k = n * 16, sx = s * 1.08, sy = s * 0.94, sz = seg * (s / r);
-                bm[k] = _R.x * sx; bm[k + 1] = _R.y * sx; bm[k + 2] = _R.z * sx; bm[k + 3] = 0;
-                bm[k + 4] = _U.x * sy; bm[k + 5] = _U.y * sy; bm[k + 6] = _U.z * sy; bm[k + 7] = 0;
-                bm[k + 8] = _T.x * sz; bm[k + 9] = _T.y * sz; bm[k + 10] = _T.z * sz; bm[k + 11] = 0;
+                bm[k] = wR.x * sx; bm[k + 1] = wR.y * sx; bm[k + 2] = wR.z * sx; bm[k + 3] = 0;
+                bm[k + 4] = wU.x * sy; bm[k + 5] = wU.y * sy; bm[k + 6] = wU.z * sy; bm[k + 7] = 0;
+                bm[k + 8] = wT.x * sz; bm[k + 9] = wT.y * sz; bm[k + 10] = wT.z * sz; bm[k + 11] = 0;
                 bm[k + 12] = x; bm[k + 13] = y; bm[k + 14] = z; bm[k + 15] = 1;
                 // Crest: a fin every other segment, rising from the back and
                 // swept toward the tail; a three-fin fan at the very tip.
@@ -480,12 +506,12 @@ export class Renderer {
                     const fh = s * (last ? 1.9 : 0.95 * (1 - 0.35 * b / nb)), fl = seg * 1.6 * (s / r);
                     for (let q = 0; q < (last ? 3 : 1); q++) {
                         const tilt = last ? (q - 1) * 0.75 : 0, ct = Math.cos(tilt), st = Math.sin(tilt);
-                        const ux = _U.x * ct + _R.x * st, uy = _U.y * ct + _R.y * st, uz = _U.z * ct + _R.z * st;
-                        const rx = _R.x * ct - _U.x * st, ry = _R.y * ct - _U.y * st, rz = _R.z * ct - _U.z * st;
+                        const ux = wU.x * ct + wR.x * st, uy = wU.y * ct + wR.y * st, uz = wU.z * ct + wR.z * st;
+                        const rx = wR.x * ct - wU.x * st, ry = wR.y * ct - wU.y * st, rz = wR.z * ct - wU.z * st;
                         const kk = nFin * 16, base = last ? 0.2 : 0.75;
                         fm[kk] = rx; fm[kk + 1] = ry; fm[kk + 2] = rz; fm[kk + 3] = 0;
                         fm[kk + 4] = ux * fh; fm[kk + 5] = uy * fh; fm[kk + 6] = uz * fh; fm[kk + 7] = 0;
-                        fm[kk + 8] = _T.x * fl; fm[kk + 9] = _T.y * fl; fm[kk + 10] = _T.z * fl; fm[kk + 11] = 0;
+                        fm[kk + 8] = wT.x * fl; fm[kk + 9] = wT.y * fl; fm[kk + 10] = wT.z * fl; fm[kk + 11] = 0;
                         fm[kk + 12] = x + ux * s * base; fm[kk + 13] = y + uy * s * base; fm[kk + 14] = z + uz * s * base; fm[kk + 15] = 1;
                         fcol[nFin * 3] = r2 * ghost; fcol[nFin * 3 + 1] = g2 * ghost; fcol[nFin * 3 + 2] = b2 * ghost;
                         nFin++;

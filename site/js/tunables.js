@@ -117,6 +117,11 @@ export const DEFAULTS = {
     fovBoost: 84,
     wideCorner: 122,        // deg from forward shown at the screen corners (wide view; was 150, 30% less warp)
     wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
+
+    // --- Look (drawing only; never changes where a body really is) ---
+    swimAmp: 0.7,           // side-to-side swim wave, × body radius (0 = straight)
+    swimWave: 10,           // wave length, × body radius
+    swimLift: 0.35,         // up-and-down share of the wave (Chinese-dragon roll)
 };
 
 // Slider metadata for the dev panel: [key, min, max, step, group, restart?]
@@ -175,6 +180,9 @@ export const PANEL = [
     ['fovBoost', 50, 120, 1, 'Camera'],
     ['wideCorner', 60, 178, 1, 'Camera'],
     ['wideExpo', 1, 6, 0.1, 'Camera'],
+    ['swimAmp', 0, 1.5, 0.05, 'Look'],
+    ['swimWave', 4, 30, 0.5, 'Look'],
+    ['swimLift', 0, 1, 0.05, 'Look'],
     ['fireRange', 5, 60, 1, 'Growth & combat'],
     ['fireAngle', 5, 60, 1, 'Growth & combat'],
     ['fireTime', 0.2, 4, 0.1, 'Growth & combat'],
