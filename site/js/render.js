@@ -15,6 +15,7 @@ const Zaxis = new THREE.Vector3(0, 0, 1);
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
 const _T2 = new THREE.Vector3(), _U2 = new THREE.Vector3(), _R2 = new THREE.Vector3();
+const _a = new THREE.Vector3(), _bw = new THREE.Vector3(), _cn = new THREE.Vector3();
 
 export class Renderer {
     constructor(canvas) {
@@ -59,6 +60,13 @@ export class Renderer {
         this.fins.setColorAt(0, _white);
         this.fins.frustumCulled = false;
         this.scene.add(this.fins);
+        // Plumes: feathers along the flanks of bigger (and feathered) dragons.
+        this.plumes = new THREE.InstancedMesh(plumeGeometry(), plumeMaterial(), 8000);
+        this.plumes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.plumes.setColorAt(0, _white);
+        this.plumes.frustumCulled = false;
+        this.plumes.count = 0;
+        this.scene.add(this.plumes);
         // Legs with five ivory claws, like an imperial dragon (earned from
         // Drake). Right and left are separate meshes so mirrored triangles
         // still face outward.
@@ -469,7 +477,9 @@ export class Renderer {
         this.bodies.n = 0; this.ownBody.n = 0;
         let nFin = 0;
         const fm = this.fins.instanceMatrix.array, fcol = this.fins.instanceColor.array, finCap = this.fins.instanceMatrix.count;
-        let nLeg = 0;
+        let nLeg = 0, nPlume = 0;
+        const plM = this.plumes.instanceMatrix.array, plC = this.plumes.instanceColor.array, plumeCap = this.plumes.instanceMatrix.count;
+        BODY_TIME.value = time;
         const seen = new Set();
         const cp = this.camera.position;
         const biteFrom = world.rule('tailBite') ? world.rule('biteBeads') : 0;
@@ -497,6 +507,11 @@ export class Renderer {
             // Your own body swims more gently, so the view behind your head stays calm.
             const amp = r * T.swimAmp * (isOther ? 1 : 0.6), kw = 2 * Math.PI / Math.max(1, r * T.swimWave), lift = T.swimLift;
             const legF = Math.max(5, Math.round(nb * 0.12)), legB = Math.round(nb * 0.55);
+            // Bloodline and ornaments: plumes along the flanks from Wyvern
+            // (from Drake, denser and longer, for feathered dragons).
+            const line = bloodline(d), feathered = line === 1;
+            const plumeEvery = d.tier >= 2 || (feathered && d.tier >= 1) ? (feathered ? 3 : 6) : 0;
+            const plumeLen = feathered ? 2.4 : 1.6;
             for (let b = 0; b < nb && tube.n + 1 < tube.cap; b++) {
                 const o = b * 3;
                 let x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
@@ -540,8 +555,31 @@ export class Renderer {
                 D[k] = x; D[k + 1] = y; D[k + 2] = z;
                 D[k + 3] = wR.x; D[k + 4] = wR.y; D[k + 5] = wR.z;
                 D[k + 6] = wU.x; D[k + 7] = wU.y; D[k + 8] = wU.z;
-                D[k + 9] = s; D[k + 10] = b * d.beadSpacing / r; D[k + 11] = d.tier;
+                D[k + 9] = s; D[k + 10] = b * d.beadSpacing / r; D[k + 11] = d.tier + 8 * line;
                 D[k + 15] = r2 * ghost; D[k + 16] = g2 * ghost; D[k + 17] = b2 * ghost;
+                // Plumes: a feather on each flank, swept back, fluttering.
+                if (plumeEvery && b > 6 && b < nb * 0.9 && b % plumeEvery === 0 && nPlume < plumeCap - 2 && s > 0.08) {
+                    let L = s * plumeLen;
+                    const fl = Math.sin(time * 7 + b * 0.7) * 0.18;
+                    if (!isOther) {                                                         // your own fade near the camera
+                        const cx = x - cp.x, cy = y - cp.y, cz = z - cp.z;
+                        L *= Math.max(0, Math.min(1, (Math.sqrt(cx * cx + cy * cy + cz * cz) - 4) / 6));
+                    }
+                    for (let side = -1; side <= 1; side += 2) {
+                        // Feather axis: back along the body, out to the side, a little up.
+                        _a.copy(wT).multiplyScalar(-0.62).addScaledVector(wR, side * 0.72).addScaledVector(wU, 0.32 + fl).normalize();
+                        _bw.copy(wU).addScaledVector(_a, -wU.dot(_a)).normalize();              // broad side faces out
+                        _cn.crossVectors(_bw, _a);
+                        const kk = nPlume * 16;
+                        plM[kk] = _bw.x * L; plM[kk + 1] = _bw.y * L; plM[kk + 2] = _bw.z * L; plM[kk + 3] = 0;
+                        plM[kk + 4] = _a.x * L; plM[kk + 5] = _a.y * L; plM[kk + 6] = _a.z * L; plM[kk + 7] = 0;
+                        plM[kk + 8] = _cn.x * L; plM[kk + 9] = _cn.y * L; plM[kk + 10] = _cn.z * L; plM[kk + 11] = 0;
+                        plM[kk + 12] = x + (wR.x * side * 0.8 + wU.x * 0.3) * s; plM[kk + 13] = y + (wR.y * side * 0.8 + wU.y * 0.3) * s; plM[kk + 14] = z + (wR.z * side * 0.8 + wU.z * 0.3) * s; plM[kk + 15] = 1;
+                        const gold = d.tier >= 3 ? 0.35 : 0;                                      // gilded plumes on Elders
+                        plC[nPlume * 3] = (r2 + (1 - r2) * gold) * ghost; plC[nPlume * 3 + 1] = (g2 + (0.78 - g2) * gold) * ghost; plC[nPlume * 3 + 2] = (b2 + (0.3 - b2) * gold) * ghost;
+                        nPlume++;
+                    }
+                }
                 // Legs: front pair from Drake, back pair from Wyvern, paddling
                 // as the dragon swims.
                 if (d.tier >= 1 && nLeg < MAX_HEADS * 2 && (b === legF || (b === legB && d.tier >= 2)) && s > 0.05) {
@@ -601,6 +639,7 @@ export class Renderer {
         this.fins.instanceMatrix.needsUpdate = true;
         this.fins.instanceColor.needsUpdate = true;
         for (const m of this.legs) { m.count = nLeg; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+        this.plumes.count = nPlume; this.plumes.instanceMatrix.needsUpdate = true; this.plumes.instanceColor.needsUpdate = true;
         this.beadCount = this.bodies.n + this.ownBody.n;
 
         // Heads.
@@ -1399,7 +1438,9 @@ float bodyHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45
 // albedo multiplier, h a height for the bump, rnd a per-scale random.
 // Both sides of every edge fade to the same shadow over ~1.5 px, so the
 // crevices stay clean lines instead of sparkling dots.
-void dragonScales(vec2 q, out float tone, out float h, out float rough, out float rnd) {
+// style 0 = scales, 1 = feathers (long, with a quill and barbs), 2 = armour
+// (broad plates with a strong keel).
+void dragonScales(vec2 q, float style, out float tone, out float h, out float rough, out float rnd, out float lip) {
     const float RAD = 0.74;
     float j1 = ceil(q.y - RAD), dd = 1.0, dPrev = 2.0;
     vec2 cen = vec2(0.0, j1);
@@ -1416,28 +1457,46 @@ void dragonScales(vec2 q, out float tone, out float h, out float rough, out floa
     }
     float aa = min(0.3, 1.5 * fwidth(dd) + 0.02);
     float edge = smoothstep(1.0 - aa, 1.0, dd);
-    float keel = (1.0 - smoothstep(0.0, 0.22, abs(q.x - cen.x))) * smoothstep(-0.2, 0.5, q.y - cen.y);
+    float dx = abs(q.x - cen.x), dy = q.y - cen.y;
+    float keelW = style > 1.5 ? 0.12 : 0.22;
+    float keel = (1.0 - smoothstep(0.0, keelW, dx)) * smoothstep(-0.2, 0.5, dy);
     float under = 1.0 - smoothstep(1.0, 1.32, dPrev);          // in the shadow of the scale above
     float shadow = max(under * under, edge);
-    float lip = smoothstep(0.78, 0.93, dd) * (1.0 - smoothstep(0.95, 1.0, dd));
+    lip = smoothstep(0.78, 0.93, dd) * (1.0 - smoothstep(0.95, 1.0, dd));
     rnd = bodyHash(cen);
-    h = 0.8 * dd * dd + 0.15 * keel - 0.6 * under;
-    tone = mix(1.32, 0.58, dd * dd) * (0.86 + 0.28 * rnd) * mix(1.0, 0.3, shadow) + 0.3 * lip * (1.0 - edge);
+    h = 0.8 * dd * dd + (style > 1.5 ? 0.45 : 0.15) * keel - 0.6 * under;
+    tone = mix(1.32, 0.58, dd * dd) * (0.86 + 0.28 * rnd) * mix(1.0, 0.42, shadow) + 0.3 * lip * (1.0 - edge);
+    if (style > 0.5 && style < 1.5) {
+        // Feather: a bright quill down the middle, fine barbs angled off it.
+        float quill = 1.0 - smoothstep(0.0, 0.05 + aa, dx);
+        float bq = (dy * 1.6 - dx) * 18.0;
+        float barbs = 0.5 + 0.5 * sin(bq) * (1.0 - smoothstep(0.25, 0.6, fwidth(bq)));   // fades before it can moire
+        tone *= mix(1.0, 0.82 + 0.18 * barbs, smoothstep(0.06, 0.12, dx)) * (1.0 + 0.35 * quill);
+        h += 0.08 * barbs - 0.1 * quill;
+    } else if (style > 1.5) {
+        tone += 0.18 * keel;                                     // armour: a bright ridge on every plate
+    }
     rough = mix(0.16, 0.62, dd * dd * 0.8 + shadow * 0.6);
 }
 `;
 const BODY_FRAG = `
 varying vec2 vBody; varying vec3 vC, vC2; varying float vTier, vRad;
-float scaleH = 0.0, scaleRough = 0.45, scaleDetail = 1.0;
+uniform float uTime;
+float scaleH = 0.0, scaleRough = 0.45, scaleDetail = 1.0, qiGlow = 0.0;
 ` + SCALES_GLSL;
+const BODY_TIME = { value: 0 };                                   // shared clock for the qi glow
 const BODY_COLOR = `
 {
     float sn = sin(vBody.x * 6.2831853);                       // +1 along the back, -1 under the belly
     float belly = smoothstep(-0.48, -0.78, sn);
-    vec2 q = vec2(vBody.x * 13.0, vBody.y * 1.9);               // 13 scales around, rows ~0.5 r long
+    // vTier packs tier (0 Hatchling … 4 Ancient) + 8 × bloodline (0 scaled, 1 feathered, 2 armoured).
+    float tier = mod(vTier + 0.01, 8.0), line = floor((vTier + 0.01) / 8.0);
+    vec2 q = line > 1.5 ? vec2(vBody.x * 9.0, vBody.y * 1.3)       // armour: broad plates
+           : line > 0.5 ? vec2(vBody.x * 15.0, vBody.y * 1.15)     // feathers: long and narrow
+           : vec2(vBody.x * 13.0, vBody.y * 1.9);                  // scales: 13 around, rows ~0.5 r long
     scaleDetail = 1.0 - smoothstep(0.3, 0.85, max(fwidth(q.x), fwidth(q.y)));
-    float tone, h, rough, rnd;
-    dragonScales(q, tone, h, rough, rnd);
+    float tone, h, rough, rnd, lip;
+    dragonScales(q, line, tone, h, rough, rnd, lip);
     // Belly plates: wide transverse scutes, a crease at each joint.
     float pv = vBody.y * 1.7, fp = fract(pv);
     float pw = max(0.1, 2.0 * fwidth(pv));
@@ -1451,6 +1510,11 @@ const BODY_COLOR = `
     float dorsal = smoothstep(0.9, 0.985, sn);
     col = mix(col, vC2 * 0.85 * mix(1.0, tone, scaleDetail), dorsal * 0.8);
     col = mix(col, cream, belly);
+    // Elders and Ancients: gilded scale edges.
+    float gild = step(2.5, tier) * (1.0 - belly) * scaleDetail;
+    col = mix(col, vec3(1.0, 0.76, 0.3), gild * lip * 0.85);
+    // Ancients: qi veins of light flowing down the body.
+    qiGlow = step(3.5, tier) * (1.0 - belly) * smoothstep(0.82, 1.0, sin(vBody.y * 0.7 - uTime * 2.2 + 2.5 * sn) * sin(vBody.x * 6.2831853 * 2.0 + vBody.y * 0.23));
     diffuseColor.rgb = col;
     scaleH = mix(h, hb, belly) * scaleDetail;
     scaleRough = mix(rough, 0.45, belly);
@@ -1474,10 +1538,10 @@ function headSkinMaterial(opts) {
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;\nfloat scaleH = 0.0, scaleRough = 0.4;\n' + SCALES_GLSL)
             .replace('#include <color_fragment>', `#include <color_fragment>
             {
-                vec2 q = vec2(atan(vObj.x, vObj.y) / 6.2831853 * 18.0, vObj.z * 3.4);
-                float det = 1.0 - smoothstep(0.3, 0.85, max(fwidth(q.x), fwidth(q.y)));
-                float tone, h, rough, rnd;
-                dragonScales(q, tone, h, rough, rnd);
+                vec2 q = vec2(atan(vObj.x, vObj.y) / 6.2831853 * 14.0, vObj.z * 2.8);
+                float det = 1.0 - smoothstep(0.2, 0.6, max(fwidth(q.x), fwidth(q.y)));
+                float tone, h, rough, rnd, lip;
+                dragonScales(q, 0.0, tone, h, rough, rnd, lip);
                 diffuseColor.rgb *= mix(1.0, tone, 0.85 * det);
                 scaleH = h * det; scaleRough = rough;
             }`)
@@ -1498,7 +1562,8 @@ function bodyMaterial(opts) {
             .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BODY_BUMP)
             .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
                 float rim = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);
-                totalEmissiveRadiance += vC2 * rim * 0.3;`);
+                totalEmissiveRadiance += vC2 * rim * 0.3 + mix(vC2, vec3(1.0, 0.85, 0.5), 0.5) * qiGlow * 1.6;`);
+        sh.uniforms.uTime = BODY_TIME;
     };
     return m;
 }
@@ -1538,6 +1603,50 @@ function merged(parts) {
     out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     return out;
+}
+
+// Each dragon's bloodline, the same on every screen (from its id): about
+// half are scaled, a quarter feathered, a quarter armoured.
+function bloodline(d) {
+    let h = 2166136261;
+    for (const ch of String(d.id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    const u = ((h >>> 0) % 1000) / 1000;
+    return u < 0.5 ? 0 : u < 0.75 ? 1 : 2;
+}
+
+// One feather: base at the origin, quill along +y (length 1), curving back
+// in z toward the tip; uv.x across (−1..1), uv.y along.
+function plumeGeometry() {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0);
+    sh.bezierCurveTo(0.16, 0.12, 0.17, 0.62, 0.0, 1.0);
+    sh.bezierCurveTo(-0.17, 0.62, -0.16, 0.12, 0, 0);
+    const g = new THREE.ShapeGeometry(sh, 10), p = g.attributes.position, uv = g.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i);
+        uv.setXY(i, x / 0.17, y);
+        p.setZ(i, 0.22 * y * y + 0.06 * Math.abs(x) * 6 * y);   // curls back toward the tip, edges lift
+    }
+    g.computeVertexNormals();
+    return g;
+}
+
+// Feather surface: a bright quill, angled barbs, a darker tip band.
+function plumeMaterial() {
+    const m = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15, side: THREE.DoubleSide });
+    m.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vPl;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPl = uv;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vPl;')
+            .replace('#include <color_fragment>', `#include <color_fragment>
+                float ax = abs(vPl.x);
+                float quill = 1.0 - smoothstep(0.03, 0.09, ax);
+                float barbs = 0.5 + 0.5 * sin((vPl.y * 2.2 - ax) * 34.0);
+                float tipBand = smoothstep(0.62, 0.7, vPl.y) * (1.0 - smoothstep(0.82, 0.9, vPl.y));
+                diffuseColor.rgb *= (0.72 + 0.28 * barbs) * (1.0 - 0.45 * tipBand) * (0.85 + 0.3 * vPl.y);
+                diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.95, 0.85), quill * 0.7);`);
+    };
+    return m;
 }
 
 // A dragon leg (right side) in units of the body radius: +x out from the
