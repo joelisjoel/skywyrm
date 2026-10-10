@@ -38,21 +38,16 @@ export class Renderer {
         // Bodies: every segment of every dragon in one instanced mesh. Each
         // segment is an ellipsoid laid along the body (overlapping, like
         // armour plates) with a shader-drawn scale pattern and a cream belly.
-        const segGeo = new THREE.SphereGeometry(1, 14, 8);
-        this.beads = new THREE.InstancedMesh(segGeo, scaleMaterial({ roughness: 0.38, metalness: 0.3 }), MAX_BEADS);
-        this.beads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.beads.setColorAt(0, _white);
-        this.beads.frustumCulled = false;
-        this.scene.add(this.beads);
-        // Your own body: its own translucent mesh so you can see through it.
-        // A depth-only pass draws it first, so the colour pass blends just
-        // the front surface: one see-through body, not a chain of
-        // overlapping bubbles (each plate's outline showed in turns).
-        this.ownBeads = new THREE.InstancedMesh(this.beads.geometry,
-            scaleMaterial({ roughness: 0.38, metalness: 0.3, transparent: true, opacity: 0.5, depthWrite: false }), 1000);
-        this.ownDepth = new THREE.InstancedMesh(this.beads.geometry,
-            new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }), 1000);
-        this.ownDepth.instanceMatrix = this.ownBeads.instanceMatrix;      // same plates, same place
+        // Bodies: one continuous scaled tube per dragon, built on the GPU
+        // from spine frames (see BodyTubes); yours has its own see-through copy.
+        this.bodies = new BodyTubes(MAX_BEADS + MAX_HEADS, bodyMaterial({ roughness: 0.4, metalness: 0.42 }));
+        this.scene.add(this.bodies.mesh);
+        // Your own body: see-through, so it never hides what's behind it. A
+        // depth-only pass draws it first, so only its front surface blends.
+        this.ownBody = new BodyTubes(1000, bodyMaterial({ roughness: 0.4, metalness: 0.32, transparent: true, opacity: 0.5, depthWrite: false }));
+        this.ownBody.mesh.renderOrder = 2;
+        this.scene.add(this.ownBody.mesh);
+        this.ownDepth = new THREE.Mesh(this.ownBody.geo, bodyDepthMaterial());
         this.ownDepth.frustumCulled = false;
         this.ownDepth.renderOrder = 1;                                    // after the other solids
         this.scene.add(this.ownDepth);
@@ -79,11 +74,6 @@ export class Renderer {
             return m;
         });
         this.finM = new THREE.Matrix4();
-        this.ownBeads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.ownBeads.setColorAt(0, _white);
-        this.ownBeads.frustumCulled = false;
-        this.ownBeads.renderOrder = 2;
-        this.scene.add(this.ownBeads);
 
         // Orbs: unlit so they glow.
         this.orbs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
@@ -438,7 +428,7 @@ export class Renderer {
         let h = this.heads.get(d.id);
         if (h) return h;
         const P = this.headParts, g = new THREE.Group();
-        const mat = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.35, metalness: 0.3 });
+        const mat = headSkinMaterial({ color: d.color, roughness: 0.35, metalness: 0.4 });
         const mat2 = new THREE.MeshStandardMaterial({ color: d.color2, roughness: 0.5, metalness: 0.2 });
         const eyes = new THREE.Mesh(P.eyes, this.eyeMat);
         g.add(new THREE.Mesh(P.skin, mat), new THREE.Mesh(P.mouth, this.mouthMat), new THREE.Mesh(P.accent, mat2),
@@ -476,9 +466,8 @@ export class Renderer {
         const player = view.player;
         const ph = player && player.alive ? player.pos : null;
         // Beads.
-        const allM = this.beads.instanceMatrix.array, allC = this.beads.instanceColor.array;
-        const ownM = this.ownBeads.instanceMatrix.array, ownC = this.ownBeads.instanceColor.array;
-        let nAll = 0, nOwn = 0, n = 0, bm, bc, cap, nFin = 0;
+        this.bodies.n = 0; this.ownBody.n = 0;
+        let nFin = 0;
         const fm = this.fins.instanceMatrix.array, fcol = this.fins.instanceColor.array, finCap = this.fins.instanceMatrix.count;
         let nLeg = 0;
         const seen = new Set();
@@ -493,7 +482,8 @@ export class Renderer {
             const c2 = _c.set(d.color2), r2 = c2.r, g2 = c2.g, b2 = c2.b;
             const ghost = d.protect > 0 ? 0.35 + 0.25 * Math.sin(time * 20) : 1;
             const isOther = d !== player;
-            if (isOther) { bm = allM; bc = allC; n = nAll; cap = MAX_BEADS; } else { bm = ownM; bc = ownC; n = nOwn; cap = 1000; }
+            const tube = isOther ? this.bodies : this.ownBody, D = tube.data;
+            if (tube.n + 2 >= tube.cap) continue;
             // Frame carried down the body from the head (rotation-minimising):
             // T points toward the head, U is the back, R = U × T.
             _U.copy(d.up);
@@ -507,7 +497,7 @@ export class Renderer {
             // Your own body swims more gently, so the view behind your head stays calm.
             const amp = r * T.swimAmp * (isOther ? 1 : 0.6), kw = 2 * Math.PI / Math.max(1, r * T.swimWave), lift = T.swimLift;
             const legF = Math.max(5, Math.round(nb * 0.12)), legB = Math.round(nb * 0.55);
-            for (let b = 0; b < nb && n < cap; b++) {
+            for (let b = 0; b < nb && tube.n + 1 < tube.cap; b++) {
                 const o = b * 3;
                 let x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
                 const ia = Math.max(0, b - 1) * 3, ib = Math.min(nb - 1, b + 1) * 3;
@@ -537,6 +527,7 @@ export class Renderer {
                 // Taper the last 15% of the tail, and a slimmer neck so the head stands out.
                 const f = b / d.nBeads;
                 let s = r * (f > 0.85 ? 1 - (f - 0.85) / 0.15 * 0.6 : 1) * (b < 6 ? 0.7 + 0.05 * b : 1);
+                if (b === nb - 1) s *= 0.05;                                   // the tube closes to a point
                 // Your own body shrinks away near the camera so it never
                 // blocks the view in a turn.
                 if (!isOther) {
@@ -544,11 +535,13 @@ export class Renderer {
                     const cd = Math.sqrt(cx * cx + cy * cy + cz * cz) - s;
                     if (cd < 3.5) s *= Math.max(0, (cd - 0.8) / 2.7);
                 }
-                const k = n * 16, sx = s * 1.08, sy = s * 0.94, sz = seg * (s / r);
-                bm[k] = wR.x * sx; bm[k + 1] = wR.y * sx; bm[k + 2] = wR.z * sx; bm[k + 3] = 0;
-                bm[k + 4] = wU.x * sy; bm[k + 5] = wU.y * sy; bm[k + 6] = wU.z * sy; bm[k + 7] = 0;
-                bm[k + 8] = wT.x * sz; bm[k + 9] = wT.y * sz; bm[k + 10] = wT.z * sz; bm[k + 11] = 0;
-                bm[k + 12] = x; bm[k + 13] = y; bm[k + 14] = z; bm[k + 15] = 1;
+                // Spine frame for the tube (colours are filled in below).
+                const k = tube.n * FRAME;
+                D[k] = x; D[k + 1] = y; D[k + 2] = z;
+                D[k + 3] = wR.x; D[k + 4] = wR.y; D[k + 5] = wR.z;
+                D[k + 6] = wU.x; D[k + 7] = wU.y; D[k + 8] = wU.z;
+                D[k + 9] = s; D[k + 10] = b * d.beadSpacing / r; D[k + 11] = d.tier;
+                D[k + 15] = r2 * ghost; D[k + 16] = g2 * ghost; D[k + 17] = b2 * ghost;
                 // Legs: front pair from Drake, back pair from Wyvern, paddling
                 // as the dragon swims.
                 if (d.tier >= 1 && nLeg < MAX_HEADS * 2 && (b === legF || (b === legB && d.tier >= 2)) && s > 0.05) {
@@ -584,8 +577,6 @@ export class Renderer {
                     }
                 }
                 let cr = r1, cg = g1, cb = b1;
-                // A darker band every few plates, like the markings on a koi.
-                if ((b >> 1) % 4 === 0) { cr = cr * 0.55 + r2 * 0.45; cg = cg * 0.55 + g2 * 0.45; cb = cb * 0.55 + b2 * 0.45; }
                 // Edible tail tip: a warm gold shimmer running down it.
                 if (b >= tip && isOther) {
                     const g = 0.45 + 0.3 * Math.sin(time * 9 - b * 0.9);
@@ -600,23 +591,17 @@ export class Renderer {
                         cr += (1 - cr) * g; cg += (1 - cg) * g; cb += (1 - cb) * g;
                     }
                 }
-                const c = n * 3;
-                bc[c] = cr * ghost; bc[c + 1] = cg * ghost; bc[c + 2] = cb * ghost;
-                n++;
+                D[k + 12] = cr * ghost; D[k + 13] = cg * ghost; D[k + 14] = cb * ghost;
+                tube.n++;
             }
-            if (isOther) nAll = n; else nOwn = n;
+            tube.brk();                                                        // no tube between two dragons
         }
-        this.beads.count = nAll;
-        this.beads.instanceMatrix.needsUpdate = true;
-        this.beads.instanceColor.needsUpdate = true;
-        this.ownBeads.count = this.ownDepth.count = nOwn;
-        this.ownBeads.instanceMatrix.needsUpdate = true;
-        this.ownBeads.instanceColor.needsUpdate = true;
+        this.bodies.end(); this.ownBody.end();
         this.fins.count = nFin;
         this.fins.instanceMatrix.needsUpdate = true;
         this.fins.instanceColor.needsUpdate = true;
         for (const m of this.legs) { m.count = nLeg; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
-        this.beadCount = nAll + nOwn;
+        this.beadCount = this.bodies.n + this.ownBody.n;
 
         // Heads.
         let sh = 0;
@@ -1342,24 +1327,187 @@ function nebulaDome() {
 }
 
 // ------------------------------------------------ Chinese-dragon parts
-// Body material: PBR plus, in the segment's own space, a cream belly and
-// overlapping scales (drawn in the shader, no textures).
-function scaleMaterial(opts) {
+// Bodies. Each dragon is a continuous tube: the CPU writes one spine frame
+// per bead (position, side and back axes, radius, distance from the head,
+// tier, two colours), and the GPU sweeps a ring between every pair of
+// neighbouring frames. Both ends of a segment read the same buffer at two
+// offsets, so there are no seams, bulges or gaps however the body bends.
+const FRAME = 18;
+class BodyTubes {
+    constructor(cap, material) {
+        this.cap = cap; this.n = 0;
+        this.data = new Float32Array((cap + 1) * FRAME);
+        this.ib = new THREE.InstancedInterleavedBuffer(this.data, FRAME, 1).setUsage(THREE.DynamicDrawUsage);
+        const g = new THREE.InstancedBufferGeometry(), base = tubeRing(16, 2);
+        g.setIndex(base.index); g.setAttribute('position', base.getAttribute('position'));
+        const A = (name, off) => g.setAttribute(name, new THREE.InterleavedBufferAttribute(this.ib, 3, off));
+        A('aP0', 0); A('aR0', 3); A('aU0', 6); A('aM0', 9); A('aC0', 12); A('aD0', 15);
+        A('aP1', FRAME); A('aR1', FRAME + 3); A('aU1', FRAME + 6); A('aM1', FRAME + 9); A('aC1', FRAME + 12); A('aD1', FRAME + 15);
+        g.instanceCount = 0;
+        this.geo = g;
+        this.mesh = new THREE.Mesh(g, material);
+        this.mesh.frustumCulled = false;
+    }
+    // A break frame (radius < 0) collapses the segments on either side.
+    brk() { if (this.n < this.cap) { this.data[this.n * FRAME + 9] = -1; this.n++; } }
+    end() {
+        this.geo.instanceCount = Math.max(0, this.n - 1);
+        this.ib.clearUpdateRanges(); this.ib.addUpdateRange(0, (this.n + 1) * FRAME);
+        this.ib.needsUpdate = true;
+    }
+}
+
+// One tube segment: `around` × `len` quads; position.x = angle, .y = 0→1 along.
+function tubeRing(around, len) {
+    const pos = [], idx = [];
+    for (let j = 0; j <= len; j++) for (let i = 0; i <= around; i++) pos.push(i / around * Math.PI * 2, j / len, 0);
+    for (let j = 0; j < len; j++) for (let i = 0; i < around; i++) {
+        const a = j * (around + 1) + i, b = a + 1, c = a + around + 1, e = c + 1;
+        idx.push(a, c, b, b, c, e);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    return g;
+}
+
+const BODY_VERT = `
+attribute vec3 aP0, aR0, aU0, aM0, aC0, aD0, aP1, aR1, aU1, aM1, aC1, aD1;
+varying vec2 vBody; varying vec3 vC, vC2; varying float vTier, vRad;
+vec3 bodyPos, bodyNrm;
+void bodySetup() {
+    float tt = position.y, th = position.x;
+    float rad = (aM0.x < 0.0 || aM1.x < 0.0) ? 0.0 : mix(aM0.x, aM1.x, tt);
+    vec3 sR = normalize(mix(aR0, aR1, tt)), sU = normalize(mix(aU0, aU1, tt));
+    float ct = cos(th), st = sin(th);
+    bodyPos = mix(aP0, aP1, tt) + (sR * ct * 1.06 + sU * st * 0.95) * rad;   // a touch wider than tall
+    bodyNrm = normalize(sR * ct / 1.06 + sU * st / 0.95);
+    vBody = vec2(th / 6.2831853, mix(aM0.y, aM1.y, tt));
+    vC = mix(aC0, aC1, tt); vC2 = mix(aD0, aD1, tt); vTier = aM0.z; vRad = rad;
+}
+`;
+
+// Scales, drawn in the fragment shader: overlapping like roof tiles (the
+// scale nearer the head lies on top, its rounded free edge toward the
+// tail), each with a keel, a glossy centre and a shadowed crevice under
+// the edge above it; cream belly plates underneath; a dorsal stripe in
+// the second colour; a faint iridescent rim. Relief comes from a height
+// field turned into a bumped normal, and fades with distance (no shimmer).
+const SCALES_GLSL = `
+float bodyHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+// Overlapping scales on a grid q (x around, y toward the tail): tone is an
+// albedo multiplier, h a height for the bump, rnd a per-scale random.
+// Both sides of every edge fade to the same shadow over ~1.5 px, so the
+// crevices stay clean lines instead of sparkling dots.
+void dragonScales(vec2 q, out float tone, out float h, out float rough, out float rnd) {
+    const float RAD = 0.74;
+    float j1 = ceil(q.y - RAD), dd = 1.0, dPrev = 2.0;
+    vec2 cen = vec2(0.0, j1);
+    for (int k = 0; k < 3; k++) {
+        float j = j1 + float(k), off = 0.5 * mod(j, 2.0);
+        vec2 c = vec2(floor(q.x - off + 0.5) + off, j);
+        float d = length(q - c) / RAD;
+        if (d < 1.0) {
+            dd = d; cen = c;
+            float jp = j - 1.0, offp = 0.5 * mod(jp, 2.0);
+            dPrev = length(q - vec2(floor(q.x - offp + 0.5) + offp, jp)) / RAD;
+            break;
+        }
+    }
+    float aa = min(0.3, 1.5 * fwidth(dd) + 0.02);
+    float edge = smoothstep(1.0 - aa, 1.0, dd);
+    float keel = (1.0 - smoothstep(0.0, 0.22, abs(q.x - cen.x))) * smoothstep(-0.2, 0.5, q.y - cen.y);
+    float under = 1.0 - smoothstep(1.0, 1.32, dPrev);          // in the shadow of the scale above
+    float shadow = max(under * under, edge);
+    float lip = smoothstep(0.78, 0.93, dd) * (1.0 - smoothstep(0.95, 1.0, dd));
+    rnd = bodyHash(cen);
+    h = 0.8 * dd * dd + 0.15 * keel - 0.6 * under;
+    tone = mix(1.32, 0.58, dd * dd) * (0.86 + 0.28 * rnd) * mix(1.0, 0.3, shadow) + 0.3 * lip * (1.0 - edge);
+    rough = mix(0.16, 0.62, dd * dd * 0.8 + shadow * 0.6);
+}
+`;
+const BODY_FRAG = `
+varying vec2 vBody; varying vec3 vC, vC2; varying float vTier, vRad;
+float scaleH = 0.0, scaleRough = 0.45, scaleDetail = 1.0;
+` + SCALES_GLSL;
+const BODY_COLOR = `
+{
+    float sn = sin(vBody.x * 6.2831853);                       // +1 along the back, -1 under the belly
+    float belly = smoothstep(-0.48, -0.78, sn);
+    vec2 q = vec2(vBody.x * 13.0, vBody.y * 1.9);               // 13 scales around, rows ~0.5 r long
+    scaleDetail = 1.0 - smoothstep(0.3, 0.85, max(fwidth(q.x), fwidth(q.y)));
+    float tone, h, rough, rnd;
+    dragonScales(q, tone, h, rough, rnd);
+    // Belly plates: wide transverse scutes, a crease at each joint.
+    float pv = vBody.y * 1.7, fp = fract(pv);
+    float pw = max(0.1, 2.0 * fwidth(pv));
+    float crease = 1.0 - smoothstep(0.0, pw, min(fp, 1.0 - fp));
+    float hb = 0.5 * sin(fp * 3.14159) - 0.3 * crease;
+    vec3 cream = vec3(0.95, 0.84, 0.6) * (0.78 + 0.22 * vC) * (1.0 - 0.38 * crease * scaleDetail);
+    // Back darker, flanks lighter, slow mottling down the body.
+    float shade = mix(1.0, 0.8, smoothstep(0.25, 1.0, sn)) * (0.93 + 0.07 * sin(vBody.y * 0.9 + 2.0 * sin(vBody.y * 0.31)));
+    vec3 scaleCol = mix(vC, vC2, 0.18 * rnd * rnd);                // a few scales lean toward the second colour
+    vec3 col = scaleCol * shade * mix(1.0, tone, scaleDetail);
+    float dorsal = smoothstep(0.9, 0.985, sn);
+    col = mix(col, vC2 * 0.85 * mix(1.0, tone, scaleDetail), dorsal * 0.8);
+    col = mix(col, cream, belly);
+    diffuseColor.rgb = col;
+    scaleH = mix(h, hb, belly) * scaleDetail;
+    scaleRough = mix(rough, 0.45, belly);
+}
+`;
+const BODY_BUMP = `
+{
+    vec3 sX = dFdx(-vViewPosition), sY = dFdy(-vViewPosition);
+    vec3 R1 = cross(sY, normal), R2 = cross(normal, sX);
+    float det = dot(sX, R1) * faceDirection;
+    vec2 dH = clamp(vec2(dFdx(scaleH), dFdy(scaleH)), -0.25, 0.25) * 0.12 * vRad;   // clamped: no sparkle at edges
+    normal = normalize(abs(det) * normal - sign(det) * (dH.x * R1 + dH.y * R2));
+}
+`;
+// Head skin: the same scales, smaller, wrapped around the snout's long axis.
+function headSkinMaterial(opts) {
     const m = new THREE.MeshStandardMaterial(opts);
     m.onBeforeCompile = (sh) => {
-        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vSeg;')
-            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeg = position;');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vSeg;')
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vRad = 0.5 * length(modelMatrix[0].xyz);');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;\nfloat scaleH = 0.0, scaleRough = 0.4;\n' + SCALES_GLSL)
             .replace('#include <color_fragment>', `#include <color_fragment>
-                float belly = smoothstep(0.1, -0.6, vSeg.y);
-                vec2 q = vec2(atan(vSeg.x, vSeg.y) * 1.6, vSeg.z * 2.2);
-                q.x += step(1.0, mod(floor(q.y), 2.0)) * 0.5;
-                vec2 f = fract(q) - vec2(0.5, 0.15);
-                float edge = smoothstep(0.32, 0.5, length(f * vec2(1.0, 0.75)));
-                diffuseColor.rgb *= 1.0 - 0.32 * edge * (1.0 - belly);
-                vec3 cream = vec3(0.93, 0.8, 0.52) * (0.7 + 0.3 * diffuseColor.rgb);
-                diffuseColor.rgb = mix(diffuseColor.rgb, cream, belly * 0.85);
-                diffuseColor.rgb *= 1.0 - 0.2 * belly * smoothstep(0.8, 1.0, fract(vSeg.z * 2.0 + 0.5));`);
+            {
+                vec2 q = vec2(atan(vObj.x, vObj.y) / 6.2831853 * 18.0, vObj.z * 3.4);
+                float det = 1.0 - smoothstep(0.3, 0.85, max(fwidth(q.x), fwidth(q.y)));
+                float tone, h, rough, rnd;
+                dragonScales(q, tone, h, rough, rnd);
+                diffuseColor.rgb *= mix(1.0, tone, 0.85 * det);
+                scaleH = h * det; scaleRough = rough;
+            }`)
+            .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = scaleRough;')
+            .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BODY_BUMP);
+    };
+    return m;
+}
+function bodyMaterial(opts) {
+    const m = new THREE.MeshStandardMaterial(opts);
+    m.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + BODY_VERT)
+            .replace('#include <beginnormal_vertex>', 'bodySetup();\nvec3 objectNormal = bodyNrm;')
+            .replace('#include <begin_vertex>', 'vec3 transformed = bodyPos;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + BODY_FRAG)
+            .replace('#include <color_fragment>', '#include <color_fragment>\n' + BODY_COLOR)
+            .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = scaleRough;')
+            .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BODY_BUMP)
+            .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+                float rim = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);
+                totalEmissiveRadiance += vC2 * rim * 0.3;`);
+    };
+    return m;
+}
+// Depth only, same tube (for your see-through body).
+function bodyDepthMaterial() {
+    const m = new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    m.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + BODY_VERT)
+            .replace('#include <begin_vertex>', 'bodySetup();\nvec3 transformed = bodyPos;');
     };
     return m;
 }
