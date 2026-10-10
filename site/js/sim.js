@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=16';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=17';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -325,9 +325,10 @@ export class World {
     rule(k) { const v = this.rules[k]; return v === undefined ? T[k] : v; }
 
     // Cruise/boost multiplier: heat plus the length reward (rule lengthSpeed).
+    // Kept on the dragon as d.speedX for the HUD ("1.5×").
     speedMult(d) {
-        d.sizeBonus = sizeSpeed(d.mass, this.rule('lengthSpeed'), this.rule('lengthSpeedMass'));
-        return 1 + speedBonus(d.temp) + d.sizeBonus;
+        d.sizeBonus = sizeSpeed(d.mass, this.rule('lengthSpeed'), this.rule('lengthSpeedExp'), this.rule('lengthSpeedMax'));
+        return (d.speedX = 1 + speedBonus(d.temp) + d.sizeBonus);
     }
 
     addDragon(d) { this.dragons.push(d); this.byId.set(d.id, d); return d; }

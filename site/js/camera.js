@@ -2,7 +2,7 @@
 // back as you grow, FOV kick on boost, partial roll with the bank.
 // Also the death-cam orbit and the menu's attract orbit.
 import * as THREE from 'three';
-import { T } from './tunables.js?v=16';
+import { T } from './tunables.js?v=17';
 
 const _v = new THREE.Vector3(), _u = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion();
 

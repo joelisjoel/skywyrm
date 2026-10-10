@@ -91,23 +91,30 @@ function setup(beadFromEnd) {
     w.spawn(d, T.spawnMass);
     check(d.shield === 0 && d.fire === 0, 'rule perks = 0: everyone plays stock');
 }
-// Longer dragons fly faster (rule lengthSpeed), and the server lets them.
+// Longer dragons fly faster (rule lengthSpeed): ×1.5 at 100 m, ×1.8 at
+// 200 m, nothing extra for a newborn, and the server lets them.
 {
-    const cruise = (rules) => {
+    const massFor = (m) => (m - T.lenBase) / T.lenPerMass;              // metres → mass
+    const ratio = (metres, rules = {}) => {
         const w = new World('orb', 'local');
         Object.assign(w.rules, rules);
         const small = new Dragon('S', false), big = new Dragon('B', false);
-        w.spawn(small, T.spawnMass); w.spawn(big, T.lengthSpeedMass);
-        for (let i = 0; i < 120; i++) for (const d of [small, big]) { d.temp = 0; w.move(d, 1 / 40); }
-        return big.speed / small.speed;
+        w.spawn(small, T.spawnMass); w.spawn(big, massFor(metres));
+        for (let i = 0; i < 160; i++) for (const d of [small, big]) { d.temp = 0; w.move(d, 1 / 40); }
+        return { r: big.speed / small.speed, small };
     };
-    const on = cruise({}), off = cruise({ lengthSpeed: 0 });
-    check(on > 1.15, `a full-size dragon cruises ${Math.round((on - 1) * 100)}% faster than a hatchling`);
-    check(Math.abs(off - 1) < 0.01, 'lengthSpeed 0 turns the reward off');
-    const w = new World('orb', 'server');
-    const d = new Dragon('N', true); w.spawn(d, T.lengthSpeedMass); d.temp = 0;
-    const budget = (rules) => { w.rules = rules; d.moveBudget = 0; d.boosting = false; w.applyNet(d, 0.1); return d.moveBudget; };
-    check(budget({}) > budget({ lengthSpeed: 0 }) * 1.1, 'the server allows a long dragon its extra speed');
+    const at100 = ratio(100), at200 = ratio(200);
+    check(Math.abs(at100.r - 1.5) < 0.03, `a 100 m dragon cruises ×${at100.r.toFixed(2)} a hatchling's speed (want ×1.5)`);
+    check(Math.abs(at200.r - 1.8) < 0.03, `a 200 m dragon cruises ×${at200.r.toFixed(2)} (want ×1.8)`);
+    check(at100.small.sizeBonus === 0, 'a newborn dragon gets no length bonus');
+    check(Math.abs(ratio(200, { lengthSpeed: 0 }).r - 1) < 0.01, 'lengthSpeed 0 turns the reward off');
+    const w = new World('orb', 'local');
+    const hot = new Dragon('H', false); w.spawn(hot, massFor(100)); hot.temp = 100;
+    check(Math.abs(w.speedMult(hot) - (1.5 + T.tempSpeed)) < 0.01, `heat adds on top: ×${hot.speedX.toFixed(2)} at 100 m and full heat`);
+    const sv = new World('orb', 'server');
+    const d = new Dragon('N', true); sv.spawn(d, massFor(200)); d.temp = 0;
+    const budget = (rules) => { sv.rules = rules; d.moveBudget = 0; d.boosting = false; sv.applyNet(d, 0.1); return d.moveBudget; };
+    check(budget({}) > budget({ lengthSpeed: 0 }) * 1.5, 'the server allows a long dragon its extra speed');
 }
 
 console.log(`\n${ok} sim checks passed`);

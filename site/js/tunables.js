@@ -101,8 +101,9 @@ export const DEFAULTS = {
     aggrRampMin: 15,        // …rising to full over this many minutes
     botAggrMax: 1,          // cap (beginner rooms use 0.5)
     perks: 1,               // profile perks apply (0 = everyone plays stock)
-    lengthSpeed: 0.2,       // longer = faster: cruise/boost × (1 + lengthSpeed·√(m / lengthSpeedMass)), 0 = off
-    lengthSpeedMass: 800,   // mass that earns the full bonus (Ancient)
+    lengthSpeed: 0.5,       // longer = faster: extra speed at 100 m long (0 = off); see sizeSpeed()
+    lengthSpeedExp: 0.62,   // curve: 0.62 gives +80% at 200 m when it's +50% at 100 m
+    lengthSpeedMax: 1,      // cap on the length bonus (+100% = double speed)
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -196,8 +197,9 @@ export const PANEL = [
     ['aggrRampMin', 1, 60, 1, 'Rules'],
     ['botAggrMax', 0, 1, 0.05, 'Rules'],
     ['perks', 0, 1, 1, 'Rules'],
-    ['lengthSpeed', 0, 0.6, 0.05, 'Rules'],
-    ['lengthSpeedMass', 100, 3000, 50, 'Rules'],
+    ['lengthSpeed', 0, 1.5, 0.05, 'Rules'],
+    ['lengthSpeedExp', 0.2, 1.5, 0.02, 'Rules'],
+    ['lengthSpeedMax', 0, 3, 0.1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over
@@ -232,10 +234,15 @@ export const radiusFor = (m) => T.radiusBase + T.radiusGrow * Math.min(1, m / 20
 // Heat helpers shared by sim and HUD.
 export const thrustCap = (temp) => T.thrustBase * (1 + T.tempThrust * temp / 100);
 export const speedBonus = (temp) => T.tempSpeed * temp / 100;
-// Reward for growing: extra top speed, fast at first and levelling off
-// (√), full at `full` mass. Callers pass the room's rule values.
-export const sizeSpeed = (m, k = T.lengthSpeed, full = T.lengthSpeedMass) =>
-    k > 0 ? k * Math.sqrt(Math.min(1, Math.max(0, m) / Math.max(1, full))) : 0;
+// Reward for growing: extra cruise/boost speed by length in metres (what
+// the HUD shows). Zero for a newborn dragon, `k` at 100 m, rising on a
+// curve (`exp`) and capped at `max`. Defaults: +50% at 100 m, +80% at
+// 200 m, +100% from about 280 m. Callers pass the room's rule values.
+export const sizeSpeed = (m, k = T.lengthSpeed, exp = T.lengthSpeedExp, max = T.lengthSpeedMax) => {
+    if (!(k > 0)) return 0;
+    const L0 = lengthFor(T.spawnMass), x = Math.max(0, lengthFor(m) - L0) / (100 - L0);
+    return Math.min(max, k * Math.pow(x, exp));
+};
 
 export const TIERS = [
     { name: 'Hatchling', mass: 0 },

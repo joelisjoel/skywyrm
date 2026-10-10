@@ -15,8 +15,9 @@ Each newer mechanic is a **rule**: a number in `docs/wyrm/js/tunables.js`
 | `aggrRampMin` | 15 | …rising to full over this many minutes |
 | `botAggrMax` | 1 | Aggression cap (beginner rooms and solo Beginner use 0.5) |
 | `perks` | 1 | Profile perks apply; 0 = everyone plays stock |
-| `lengthSpeed` | 0.2 | Longer dragons fly faster: cruise and boost × (1 + 0.2·√(mass ÷ `lengthSpeedMass`)). That is about +5% at Drake, +10% at Wyvern, +15% at Elder and +20% at Ancient. 0 = off |
-| `lengthSpeedMass` | 800 | Mass that earns the full length bonus |
+| `lengthSpeed` | 0.5 | Longer dragons fly faster. This is the extra cruise and boost speed at 100 m long: ×1.5 at 100 m and ×1.8 at 200 m, with nothing extra for a newborn. Heat adds on top. 0 = off |
+| `lengthSpeedExp` | 0.62 | Shape of the length curve: bonus = `lengthSpeed` × ((length − 12 m) ÷ 88 m)^`lengthSpeedExp` |
+| `lengthSpeedMax` | 1 | Cap on the length bonus (+100% = double speed, reached at about 280 m) |
 
 ## Where to change them
 

@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=16';
-import { MOOD_ICON } from './bots.js?v=16';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=17';
+import { MOOD_ICON } from './bots.js?v=17';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -227,15 +227,15 @@ export class Hud {
             }
             this.el.kills.textContent = p.kills ? '⚔ ' + p.kills : '';
             const t = p.tier, next = TIERS[t + 1];
-            const fast = Math.round((p.sizeBonus || 0) * 100);
-            this.el.tier.textContent = fast >= 1 ? `${TIERS[t].name} · +${fast}% speed` : TIERS[t].name;
+            // Overall speed: length reward and heat together, as a multiple.
+            this.el.tier.textContent = `${TIERS[t].name} · ${(p.speedX || 1).toFixed(1)}× speed`;
             const f = next ? (p.mass - TIERS[t].mass) / (next.mass - TIERS[t].mass) : 1;
             this.el.tierBar.style.width = Math.round(Math.max(0, Math.min(1, f)) * 100) + '%';
             const g = this.g;
             // Body temp: ring fill + colour; faster when warm.
             g.temp.set(p.temp / 100);
             g.temp.el.style.color = tempColour(p.temp);
-            g.temp.el.title = `${Math.round(p.temp)}° · +${Math.round(speedBonus(p.temp) * 100)}% speed`;
+            g.temp.el.title = `${Math.round(p.temp)}° · heat adds ${speedBonus(p.temp).toFixed(2)}× speed`;
             // Thrust tank (red and pulsing while it recharges from empty).
             g.thrust.set(p.thrust / (thrustCap(p.temp) * (p.thrustMult || 1)));
             g.thrust.el.dataset.state = p.thrustLocked ? 'empty' : '';
