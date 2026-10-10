@@ -119,8 +119,8 @@ export const DEFAULTS = {
     wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
 
     // --- Look (drawing only; never changes where a body really is) ---
-    swimAmp: 0.7,           // side-to-side swim wave, × body radius (0 = straight)
-    swimWave: 10,           // wave length, × body radius
+    swimAmp: 1.05,          // side-to-side swim wave, × body radius (0 = straight)
+    swimWave: 14.3,         // wave length, × body radius (longer = slower strokes at the same speed)
     swimLift: 0.35,         // up-and-down share of the wave (Chinese-dragon roll)
 };
 

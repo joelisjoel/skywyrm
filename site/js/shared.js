@@ -1,8 +1,8 @@
 // Entry point for the multiplayer server (wyrm-server/): the exact same
 // simulation modules the browser runs, with the same cache stamps, so both
 // sides share one module instance of the tunables.
-export * from './tunables.js?v=15';
-export * from './sim.js?v=15';
-export * from './bots.js?v=15';
+export * from './tunables.js?v=16';
+export * from './sim.js?v=16';
+export * from './bots.js?v=16';
 export * from './perks.js?v=1';
 export * from './names.js?v=8';
