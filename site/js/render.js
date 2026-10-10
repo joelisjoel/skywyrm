@@ -452,7 +452,19 @@ export class Renderer {
         const wl = new THREE.Mesh(P.whisker, this.whiskerMat), wr = new THREE.Mesh(P.whisker, this.whiskerMat);
         wl.position.set(-0.3, 0.1, -1.85); wr.position.set(0.3, 0.1, -1.85);
         g.add(wl, wr);
-        h = { g, mat, mat2, wl, wr, eyes, buds, antlers, crown, mane, pearl, tier: -1, flap: Math.random() * 6 };
+        // Hinged lower jaw: opens to eat and to breathe fire.
+        const jaw = new THREE.Group(), beard = new THREE.Mesh(P.jawBeard, mat2);
+        jaw.position.copy(P.hinge);
+        jaw.add(new THREE.Mesh(P.jawSkin, mat), new THREE.Mesh(P.jawMouth, this.mouthMat),
+            new THREE.Mesh(P.jawFangs, this.whiskerMat), new THREE.Mesh(P.jawAccent, mat2), beard);
+        g.add(jaw);
+        // The red inside of the open mouth: sits halfway between the jaws
+        // and swells to fill the gap as they part.
+        const gapeG = new THREE.Group(), gape = new THREE.Mesh(this.pearlGeo, this.mouthMat);
+        gapeG.position.copy(P.hinge); gape.position.set(0, -0.14, -0.78);
+        gapeG.add(gape); g.add(gapeG);
+        h = { g, mat, mat2, wl, wr, eyes, buds, antlers, crown, mane, pearl, jaw, beard, gapeG, gape, open: 0, eatT: 0, lastMass: d.mass,
+            tier: -1, flap: Math.random() * 6 };
         this.scene.add(g);
         this.heads.set(d.id, h);
         return h;
@@ -629,7 +641,7 @@ export class Renderer {
                 h.tier = t;
                 h.buds.visible = t === 0;
                 h.antlers.visible = t >= 1;
-                h.mane.visible = t >= 2;
+                h.mane.visible = h.beard.visible = t >= 2;
                 h.crown.visible = t >= 3;
                 h.antlers.material = t >= 3 ? this.goldMat : this.hornMat;
                 h.eyes.material = t >= 3 ? this.eyeGlowMat : this.eyeMat;
@@ -637,6 +649,17 @@ export class Renderer {
                 const wk = 0.6 + 0.2 * t;           // whiskers lengthen with age
                 h.wl.scale.setScalar(wk); h.wr.scale.set(-wk, wk, wk);
             }
+            // Jaw: snaps open when the dragon eats (its mass goes up, which
+            // works for bots and online players too) and gapes wide while
+            // breathing fire; opens fast, closes a little slower.
+            if (d.mass > h.lastMass + 1e-3) h.eatT = 0.3;
+            h.lastMass = d.mass;
+            h.eatT = Math.max(0, h.eatT - dt);
+            const wantOpen = d.breath > 0 ? 1 : h.eatT > 0 ? 0.7 : 0;
+            h.open += (wantOpen - h.open) * (1 - Math.exp(-dt / (wantOpen > h.open ? 0.04 : 0.13)));
+            h.jaw.rotation.x = -0.55 * h.open;
+            h.gapeG.rotation.x = -0.27 * h.open;
+            h.gape.scale.set(0.27, 0.04 + 0.28 * h.open, 0.8);
             // The pearl floats ahead of the nose, bobbing and circling.
             if (h.pearl.visible) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
@@ -810,9 +833,11 @@ export class Renderer {
             const cone = this.fireCones[fc++];
             cone.visible = true;
             const rad = T.fireRange * Math.tan(T.fireAngle * Math.PI / 180);
-            cone.position.copy(d.pos).addScaledVector(d.fwd, d.r);
+            // From the open mouth; the far end stays at the real fire range.
+            const mouth = d.r * (1.45 + 0.05 * d.tier) * 1.6;
+            cone.position.copy(d.pos).addScaledVector(d.fwd, mouth);
             cone.quaternion.copy(d.quat);
-            cone.scale.set(rad, rad, T.fireRange);
+            cone.scale.set(rad, rad, Math.max(1, T.fireRange - mouth + d.r));
             cone.material.opacity = 0.12 + 0.06 * Math.sin(time * 30);
             const spd = T.fireRange / 0.45;
             for (let i = 0; i < 26; i++) {
@@ -1437,13 +1462,15 @@ function dragonHeadParts() {
         blob(0, 0.3, -0.38, 0.5, 0.28, 0.55),                     // forehead rising to the brows
         blob(0, 0.06, -1.0, 0.44, 0.3, 0.95, -0.05),              // long snout
         blob(0, 0.2, -1.78, 0.42, 0.26, 0.3),                     // lion nose, turned up
-        blob(0, -0.36, -0.8, 0.36, 0.13, 0.82, 0.36),             // lower jaw, open
         ...both((s) => blob(0.28 * s, -0.04, -1.38, 0.2, 0.19, 0.45)),     // muzzle corners
         ...both((s) => blob(0.45 * s, 0.0, -0.1, 0.26, 0.26, 0.42)),       // cheeks
         ...both((s) => blob(0.31 * s, 0.37, -0.56, 0.23, 0.11, 0.3)),      // brow overhang
         ...both((s) => blob(0.2 * s, 0.31, -1.93, 0.09, 0.08, 0.07, 0, lo)),   // nostrils
     ]);
-    const mouth = merged([blob(0, -0.18, -0.95, 0.32, 0.1, 0.75, 0.17)]);   // red inside the open jaws
+    const mouth = merged([
+        blob(0, -0.18, -0.95, 0.32, 0.1, 0.75, 0.17),               // red inside the open jaws
+        blob(0, -0.24, -0.45, 0.28, 0.18, 0.55),                    // throat: fills the gap when the jaw drops
+    ]);
     // The flame ruff: licks fanned around the back of the head, pointing
     // outward and back, so it frames the face and reads from behind.
     const ruff = (n, len, w, back, z = 0.42) => {
@@ -1460,20 +1487,27 @@ function dragonHeadParts() {
         ...both((s) => lick(V3(0.42 * s, 0.4, -0.48), V3(0.65 * s, 0.45, 0.62), 0.55, 0.075, 0.6)),
         ...both((s) => lick(V3(0.58 * s, -0.08, -0.08), V3(0.85 * s, -0.2, 0.5), 0.55, 0.16, 0.35)), // cheek frills
         ...ruff(7, 0.62, 0.17, 0.55),
-        lick(V3(0, -0.45, -0.62), V3(0, -0.7, 0.7), 0.45, 0.07),                                   // goatee
         blob(0, 0.21, -2.04, 0.09, 0.07, 0.05),                                                     // nose tip
     ]);
     // Long, flowing mane and beard (Wyvern and up).
     const maneLong = merged([
         ...ruff(11, 1.25, 0.2, 0.85, 0.5),
-        ...[-0.18, 0, 0.18].map((x) => lick(V3(x, -0.44, -0.66), V3(x, -0.75, 0.66), 0.95, 0.075)),  // beard
     ]);
+    // The lower jaw hangs from a hinge under the cheeks and swings open to
+    // eat and breathe fire (Renderer.update). Its parts are built relative
+    // to the hinge.
+    const hinge = V3(0, -0.12, 0.2);                                  // tucked under the cheeks
+    const atHinge = (g) => g.translate(-hinge.x, -hinge.y, -hinge.z);
+    const jawSkin = atHinge(merged([blob(0, -0.36, -0.72, 0.36, 0.13, 0.95, 0.3)]));
+    const jawMouth = atHinge(merged([blob(0, -0.28, -0.8, 0.24, 0.06, 0.66, 0.3)]));          // tongue
+    const jawFangs = atHinge(merged(both((s) => lick(V3(0.2 * s, -0.38, -1.3), V3(0, 1, -0.2), 0.22, 0.045))));
+    const jawAccent = atHinge(merged([lick(V3(0, -0.45, -0.62), V3(0, -0.7, 0.7), 0.45, 0.07)]));   // goatee
+    const jawBeard = atHinge(merged([-0.18, 0, 0.18].map((x) => lick(V3(x, -0.44, -0.66), V3(x, -0.75, 0.66), 0.95, 0.075))));
     const eyes = merged(both((s) => blob(0.36 * s, 0.25, -0.58, 0.17, 0.15, 0.18)));
     const pupils = merged(both((s) => blob(0.465 * s, 0.25, -0.715, 0.03, 0.11, 0.04, 0, lo)));
     const fangs = merged([
         ...both((s) => lick(V3(0.24 * s, -0.08, -1.55), V3(0, -1, 0.05), 0.3, 0.06)),       // upper fangs
         ...both((s) => lick(V3(0.15 * s, -0.08, -1.76), V3(0, -1, 0), 0.16, 0.035)),
-        ...both((s) => lick(V3(0.2 * s, -0.38, -1.3), V3(0, 1, -0.2), 0.22, 0.045)),        // lower fangs
     ]);
     const buds = merged(both((s) => lick(V3(0.24 * s, 0.48, -0.08), V3(0.25 * s, 0.85, 0.5), 0.34, 0.08)));
     // Deer antlers: a beam rising up and back, with two tines.
@@ -1496,7 +1530,8 @@ function dragonHeadParts() {
     const curve = new THREE.CatmullRomCurve3([V3(0, 0, 0), V3(-0.4, -0.02, 0.25),
         V3(-0.85, -0.2, 0.95), V3(-1.1, -0.5, 1.8), V3(-1.15, -0.85, 2.7)]);
     const whisker = new THREE.TubeGeometry(curve, 20, 0.035, 5, false);
-    return { skin, mouth, accent, maneLong, eyes, pupils, fangs, buds, antlers, crown, whisker };
+    return { skin, mouth, accent, maneLong, eyes, pupils, fangs, buds, antlers, crown, whisker,
+        hinge, jawSkin, jawMouth, jawFangs, jawAccent, jawBeard };
 }
 
 function disposeTree(o) {
