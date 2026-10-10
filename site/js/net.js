@@ -4,9 +4,9 @@
 // server. Other dragons are drawn ~120 ms in the past so their motion is
 // smooth between snapshots.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=17';
-import { World, Dragon } from './sim.js?v=17';
-import { MOODS } from './bots.js?v=17';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=18';
+import { World, Dragon } from './sim.js?v=18';
+import { MOODS } from './bots.js?v=18';
 
 const INTERP = 0.12;
 const _qa = new Quaternion(), _qb = new Quaternion();

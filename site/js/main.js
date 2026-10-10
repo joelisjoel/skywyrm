@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=17';
-import { World, Dragon, hazardDist } from './sim.js?v=17';
-import { managePopulation, targetBots } from './bots.js?v=17';
-import { Renderer } from './render.js?v=26';
-import { ChaseCam } from './camera.js?v=17';
-import { Input } from './input.js?v=19';
-import { Hud } from './hud.js?v=18';
+import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=18';
+import { World, Dragon, hazardDist } from './sim.js?v=18';
+import { managePopulation, targetBots } from './bots.js?v=18';
+import { Renderer } from './render.js?v=27';
+import { ChaseCam } from './camera.js?v=18';
+import { Input } from './input.js?v=20';
+import { Hud } from './hud.js?v=19';
 import { Audio } from './audio.js?v=10';
-import { TunePanel } from './tune-panel.js?v=17';
+import { TunePanel } from './tune-panel.js?v=18';
 import { checkName } from './names.js?v=8';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=17';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=1';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';

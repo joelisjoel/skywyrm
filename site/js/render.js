@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=17';
+import { T, TIERS } from './tunables.js?v=18';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -12,6 +12,7 @@ const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THR
 const LODE = 0x3D8BFF;           // lodestone blue
 const MAX_BEAMS = 240;
 const Zaxis = new THREE.Vector3(0, 0, 1);
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
 const _T2 = new THREE.Vector3(), _U2 = new THREE.Vector3(), _R2 = new THREE.Vector3();
 
@@ -624,15 +625,36 @@ export class Renderer {
             if (!d.alive) continue;
             const h = this.headFor(d);
             h.g.visible = true;
-            h.g.position.copy(d.pos);
-            h.g.quaternion.copy(d.quat);
-            _q.setFromAxisAngle(Zaxis, -d.bank);
-            h.g.quaternion.multiply(_q);
             const t = d.tier;
             // Heads read bigger than the neck, and grow a little more with each
             // tier. Your own is drawn a little smaller so it never hides the way ahead.
             const hs = d.r * (1.45 + 0.05 * t) * (d === player ? 0.85 : 1);
             h.g.scale.setScalar(hs);
+            // Look into turns: the head leads the body, yawing and pitching
+            // toward where it's turning, so you see its side, top or belly.
+            // Turn rate comes from how the dragon's orientation changed since
+            // last frame (works for bots and online players too).
+            if (!h.prevQ) h.prevQ = d.quat.clone();
+            let wy = 0, wx = 0;
+            if (dt > 1e-4) {
+                _q.copy(h.prevQ).invert().multiply(d.quat);             // this frame's turn, in the dragon's own frame
+                if (_q.w < 0) { _q.x = -_q.x; _q.y = -_q.y; _q.z = -_q.z; _q.w = -_q.w; }
+                wy = 2 * _q.y / dt; wx = 2 * _q.x / dt;                 // rad/s about its up and right axes
+            }
+            h.prevQ.copy(d.quat);
+            const lim = (v, m) => Math.max(-m, Math.min(m, v));
+            const kt = 1 - Math.exp(-dt / 0.12);
+            h.yaw = (h.yaw || 0) + (lim(wy * T.headLook, 0.8) - (h.yaw || 0)) * kt;
+            h.pitch = (h.pitch || 0) + (lim(wx * T.headLook, 0.6) - (h.pitch || 0)) * kt;
+            // Pose: body frame, cosmetic bank, then the look, pivoting about
+            // the back of the skull so the head stays on its neck.
+            _q.setFromAxisAngle(Zaxis, -d.bank);
+            _qa.copy(d.quat).multiply(_q);                               // body + bank
+            _e.set(h.pitch, h.yaw, 0, 'YXZ');
+            _qb.setFromEuler(_e);
+            h.g.quaternion.copy(_qa).multiply(_qb);
+            _p.set(0, 0, 0.7 * hs);                                      // pivot, behind the eyes
+            h.g.position.copy(d.pos).add(_s.copy(_p).applyQuaternion(_qa)).sub(_p.applyQuaternion(h.g.quaternion));
             h.flap += dt * (d.boosting ? 9 : 4);
             const sway = Math.sin(h.flap) * 0.25, trail = d.boosting ? 0.35 : 0;
             h.wl.rotation.set(sway * 0.5 + trail, -0.25 - sway * 0.4, 0); h.wr.rotation.set(-sway * 0.5 + trail, 0.25 + sway * 0.4, 0);

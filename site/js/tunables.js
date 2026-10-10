@@ -123,6 +123,7 @@ export const DEFAULTS = {
     swimAmp: 1.05,          // side-to-side swim wave, × body radius (0 = straight)
     swimWave: 14.3,         // wave length, × body radius (longer = slower strokes at the same speed)
     swimLift: 0.35,         // up-and-down share of the wave (Chinese-dragon roll)
+    headLook: 0.3,          // head turns into a turn: s of turn rate (≈ 45° at full cruise turn), 0 = off
 };
 
 // Slider metadata for the dev panel: [key, min, max, step, group, restart?]
@@ -184,6 +185,7 @@ export const PANEL = [
     ['swimAmp', 0, 1.5, 0.05, 'Look'],
     ['swimWave', 4, 30, 0.5, 'Look'],
     ['swimLift', 0, 1, 0.05, 'Look'],
+    ['headLook', 0, 0.6, 0.02, 'Look'],
     ['fireRange', 5, 60, 1, 'Growth & combat'],
     ['fireAngle', 5, 60, 1, 'Growth & combat'],
     ['fireTime', 0.2, 4, 0.1, 'Growth & combat'],
