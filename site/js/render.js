@@ -44,8 +44,17 @@ export class Renderer {
         this.beads.frustumCulled = false;
         this.scene.add(this.beads);
         // Your own body: its own translucent mesh so you can see through it.
+        // A depth-only pass draws it first, so the colour pass blends just
+        // the front surface: one see-through body, not a chain of
+        // overlapping bubbles (each plate's outline showed in turns).
         this.ownBeads = new THREE.InstancedMesh(this.beads.geometry,
-            scaleMaterial({ roughness: 0.38, metalness: 0.3, transparent: true, opacity: 0.45, depthWrite: false }), 1000);
+            scaleMaterial({ roughness: 0.38, metalness: 0.3, transparent: true, opacity: 0.5, depthWrite: false }), 1000);
+        this.ownDepth = new THREE.InstancedMesh(this.beads.geometry,
+            new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }), 1000);
+        this.ownDepth.instanceMatrix = this.ownBeads.instanceMatrix;      // same plates, same place
+        this.ownDepth.frustumCulled = false;
+        this.ownDepth.renderOrder = 1;                                    // after the other solids
+        this.scene.add(this.ownDepth);
         // Dorsal crest: a flame-like fin on the back of every other segment
         // (and a fan at the tail tip), in each dragon's second colour.
         this.fins = new THREE.InstancedMesh(finGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2,
@@ -475,7 +484,7 @@ export class Renderer {
             // Frame carried down the body from the head (rotation-minimising):
             // T points toward the head, U is the back, R = U × T.
             _U.copy(d.up);
-            const nb = d.nBeads, seg = Math.max(d.beadSpacing * 1.3, r * 0.8);
+            const nb = d.nBeads, seg = Math.max(d.beadSpacing * 1.75, r);
             // Swimming: a wave fixed in space that the body slides through,
             // like a snake following its own S-curve. Its phase is the
             // distance flown, so faster = quicker strokes. Drawing only: the
@@ -587,7 +596,7 @@ export class Renderer {
         this.beads.count = nAll;
         this.beads.instanceMatrix.needsUpdate = true;
         this.beads.instanceColor.needsUpdate = true;
-        this.ownBeads.count = nOwn;
+        this.ownBeads.count = this.ownDepth.count = nOwn;
         this.ownBeads.instanceMatrix.needsUpdate = true;
         this.ownBeads.instanceColor.needsUpdate = true;
         this.fins.count = nFin;
