@@ -149,6 +149,8 @@ button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
 .err { color: #FF7A6A; font-size: 12px; min-height: 0; margin-top: 4px; text-align: left; }
 .err:empty { display: none; }
 #pause .note { text-align: center; font-size: 13px; max-width: 300px; margin: 0 auto 10px; }
+#privacy-link { display: inline-block; margin-top: 2px; padding: 8px 12px; color: var(--dim); font-size: 12px; text-decoration: none; }
+#privacy-link:hover { color: var(--gold-hi); text-decoration: underline; }
 
 /* ---------------- Status (bottom left): understated, icons over words ---------------- */
 #hud-stats { position: absolute; left: 22px; bottom: 20px; font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif; }

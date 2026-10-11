@@ -3,7 +3,7 @@
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
 import { randomBytes } from 'node:crypto';
-import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../site/js/shared.js';
+import { World, Dragon, T, lengthFor, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../site/js/shared.js';
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [
@@ -58,6 +58,10 @@ function dragonMeta(d) {
         s: stateOf(d), path: pathOf(d),
     };
 }
+
+// How a life ended, in stats.js's words. No killer means the arena's edge
+// (storm wall, glass shell or cloud sea).
+const endCause = (e) => (e.killer ? (e.cause === 'head' ? 'headon' : 'body') : 'wall');
 
 function stateOf(d) {
     return [d.id, r2(d.pos.x), r2(d.pos.y), r2(d.pos.z), r3(d.quat.x), r3(d.quat.y), r3(d.quat.z), r3(d.quat.w),
@@ -126,6 +130,8 @@ export class Room {
         client.dragon = d;
         client.room = this;
         this.clients.add(client);
+        this.startLife(client);
+        this.registry.countHumans();
         const w = this.world;
         const orbs = [];
         for (let i = 0; i < w.oHigh; i++) {
@@ -142,8 +148,10 @@ export class Room {
         return { ok: true };
     }
 
-    leave(client) {
+    // cause: 'quit' (the browser closed the socket) or 'disconnect'.
+    leave(client, cause = 'quit') {
         if (!this.clients.delete(client)) return;
+        this.endLife(client, cause);
         const d = client.dragon;
         if (d && this.world) {
             if (d.alive) this.world.dropLoot(d, T.lootShare);
@@ -172,7 +180,29 @@ export class Room {
         if (this.world.time - d.diedAt < 1) return;       // no instant respawn spam
         this.world.spawn(d, T.spawnMass);
         d.net = null; d.moveBudget = 0;
+        this.startLife(client);
         this.broadcast({ t: 'dn', d: dragonMeta(d) });
+    }
+
+    // Anonymous play totals (stats.js): each human life is counted once, as
+    // it ends: a death, or leaving while flying or parked. Time parked
+    // doesn't count as time played, and the peak survives a park.
+    startLife(c) {
+        c.life = { t0: this.world.time, secs: 0, peak: c.dragon.mass };
+    }
+
+    endLife(c, cause) {
+        const life = c.life, d = c.dragon;
+        if (!life || !d || !this.world) return;
+        c.life = null;
+        const secs = life.secs + (c.parked ? 0 : this.world.time - life.t0);
+        this.registry.stats.run('room', { arena: this.meta.arena, len: Math.round(lengthFor(Math.max(life.peak, d.peakMass))),
+            secs: Math.round(secs), kills: d.kills, cause });
+    }
+
+    clientOf(d) {
+        for (const c of this.clients) if (c.dragon === d) return c;
+        return null;
     }
 
     // Esc online folds your wings: a room can't pause, so after a short
@@ -200,6 +230,7 @@ export class Room {
                 else if (w.time >= c.parkAt) {
                     c.parkAt = 0;
                     c.parked = { mass: d.mass, kills: d.kills, since: w.time, resume: false };
+                    if (c.life) { c.life.secs += w.time - c.life.t0; c.life.peak = Math.max(c.life.peak, d.peakMass); }
                     d.alive = false;
                     w.removeDragon(d);
                     pub.push({ k: 'land', id: d.id });
@@ -211,6 +242,7 @@ export class Room {
                 w.spawn(d, p.mass);
                 d.kills = p.kills;
                 d.net = null; d.moveBudget = 0;
+                if (c.life) c.life.t0 = w.time;
             }
         }
     }
@@ -237,6 +269,7 @@ export class Room {
             switch (e.type) {
                 case 'death':
                     pub.push({ k: 'death', id: e.d.id, by: e.killer ? e.killer.id : 0, cause: e.killer ? e.cause : String(e.cause).slice(0, 40) });
+                    if (e.d.human) { const c = this.clientOf(e.d); if (c) this.endLife(c, endCause(e)); }
                     break;
                 case 'sever': pub.push({ k: 'sever', id: e.d.id, o: e.o.id, burn: e.burn.map(r2).slice(0, 600) }); break;
                 case 'fireStart': pub.push({ k: 'fire', id: e.d.id }); break;
@@ -279,10 +312,13 @@ export class Room {
     }
 }
 
+const NO_STATS = { run() {}, humans() {}, roomCreated() {} };
+
 export class Registry {
-    constructor(store, log = () => {}) {
+    constructor(store, log = () => {}, stats = NO_STATS) {
         this.store = store;
         this.log = log;
+        this.stats = stats;             // anonymous daily totals (stats.js)
         this.rooms = new Map();
         this.createdByIp = new Map();   // ip → [timestamps]
     }
@@ -329,6 +365,7 @@ export class Registry {
         recent.push(now);
         this.createdByIp.set(ip, recent);
         this.store.save(meta);
+        this.stats.roomCreated();
         this.log(`room created ${meta.id} "${meta.name}" (${meta.arena}${meta.beginner ? ', beginner' : ''})`);
         return { room: room.summary() };
     }
@@ -350,6 +387,18 @@ export class Registry {
         for (const r of this.rooms.values()) r.tick();
     }
 
+    // Humans in every room now, for the day's peak.
+    countHumans() {
+        let n = 0;
+        for (const r of this.rooms.values()) n += r.humans;
+        this.stats.humans(n);
+    }
+
+    // Shutting down: everyone in a room is about to be cut off.
+    endLives(cause) {
+        for (const r of this.rooms.values()) for (const c of r.clients) r.endLife(c, cause);
+    }
+
     // Every minute: delete expired rooms, free idle worlds, forget old rate-limit entries.
     sweep() {
         const now = Date.now();
@@ -362,5 +411,6 @@ export class Registry {
             }
         }
         for (const [ip, ts] of this.createdByIp) if (!ts.some((t) => now - t < 3600 * 1000)) this.createdByIp.delete(ip);
+        this.countHumans();             // so a new day's peak counts players already in
     }
 }

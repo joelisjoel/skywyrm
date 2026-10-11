@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skywyrm · Privacy</title>
+    <meta name="description" content="What Skywyrm knows about you: no accounts, no ads, no cookies, no tracking. Only anonymous game totals.">
+    <link rel="icon" href="data:,">
+    <!-- Self-contained on purpose: no fonts, scripts or images from anywhere else. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+    <style>
+        :root {
+            --ink: #0d0b09;
+            --gold: #D9B56C;
+            --gold-hi: #F3DDA4;
+            --gold-line: rgba(217, 181, 108, 0.26);
+            --cinnabar: #B3322A;
+            --jade: #86D9B0;
+            --text: #EDE3D1;
+            --dim: #A99F8E;
+        }
+        * { box-sizing: border-box; }
+        html { background: var(--ink); -webkit-text-size-adjust: 100%; }
+        body {
+            margin: 0; color: var(--text);
+            font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
+            background: radial-gradient(ellipse 90% 60% at 50% 0%, #211b13, var(--ink) 70%) no-repeat, var(--ink);
+        }
+        main { max-width: 680px; margin: 0 auto; padding: 24px 16px 40px; }
+        .panel {
+            position: relative; padding: 32px 24px 22px;
+            background: linear-gradient(180deg, rgba(24, 20, 16, 0.9), rgba(12, 10, 8, 0.92));
+            border: 1px solid var(--gold-line); border-radius: 18px;
+            box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 236, 200, 0.05);
+        }
+        /* Lattice-window corner brackets, as on the game's menus. */
+        .panel::before, .panel::after {
+            content: ''; position: absolute; width: 18px; height: 18px; pointer-events: none;
+            border: 1.5px solid var(--gold); opacity: 0.55;
+        }
+        .panel::before { top: 9px; left: 9px; border-right: none; border-bottom: none; border-top-left-radius: 6px; }
+        .panel::after { bottom: 9px; right: 9px; border-left: none; border-top: none; border-bottom-right-radius: 6px; }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .seal {
+            width: 38px; height: 38px; flex: none; display: grid; place-items: center;
+            font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-size: 28px; line-height: 1; color: #F7E8CC;
+            background: radial-gradient(circle at 30% 25%, #C8453B, var(--cinnabar) 60%, #8E2620);
+            border-radius: 6px; transform: rotate(-5deg);
+            box-shadow: inset 0 0 0 2px rgba(247, 232, 204, 0.75), inset 0 0 0 4px var(--cinnabar);
+        }
+        .brand span {
+            font-family: 'Cinzel', 'Trajan Pro', Georgia, serif; font-weight: 700; font-size: 20px; letter-spacing: 0.2em;
+            color: var(--gold);
+        }
+        h1, h2 { font-family: 'Cinzel', Georgia, serif; font-weight: 600; color: var(--gold-hi); }
+        h1 { font-size: 30px; letter-spacing: 0.12em; margin: 22px 0 6px; }
+        h2 { font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; margin: 30px 0 6px; }
+        p, ul { margin: 8px 0; }
+        ul { padding-left: 22px; }
+        li { margin: 4px 0; }
+        li::marker { color: var(--gold); }
+        .lede { color: var(--dim); }
+        .short { list-style: none; padding: 12px 16px; margin: 18px 0 4px; border: 1px solid var(--gold-line); border-radius: 12px; background: rgba(255, 240, 210, 0.03); }
+        .short li { padding-left: 26px; position: relative; }
+        .short li::before { content: '✓'; position: absolute; left: 2px; color: var(--jade); font-weight: 700; }
+        a { color: var(--gold-hi); text-underline-offset: 3px; overflow-wrap: anywhere; }
+        a:hover { color: #fff; }
+        b { color: #F1E6D2; }
+        .ask { margin-top: 12px; padding: 12px 16px; border-left: 3px solid var(--cinnabar); background: rgba(179, 50, 42, 0.08); border-radius: 0 10px 10px 0; }
+        footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--gold-line); font-size: 14px; color: var(--dim); }
+        @media (max-width: 480px) {
+            body { font-size: 15.5px; }
+            .panel { padding: 32px 20px 18px; }
+            h1 { font-size: 26px; }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <div class="panel">
+            <a class="brand" href="./"><span class="seal" aria-hidden="true">龍</span><span>SKYWYRM</span></a>
+            <h1>Privacy</h1>
+            <p class="lede">Skywyrm is a free dragon game, made for kids and their families. Here is everything it knows about you, which is almost nothing.</p>
+
+            <ul class="short">
+                <li>No accounts, no passwords, no chat.</li>
+                <li>No ads and nothing to buy.</li>
+                <li>No cookies and no tracking or analytics companies.</li>
+                <li>We count a few game numbers that can't tell players apart, so we can make the game better.</li>
+            </ul>
+
+            <h2>What we count</h2>
+            <p>When a dragon's life ends in a <b>solo game</b>, your browser sends our game server one short note with just these numbers:</p>
+            <ul>
+                <li>which world you flew in (Skyhold or The Orb)</li>
+                <li>how long your dragon grew, in metres</li>
+                <li>how long you flew, in seconds</li>
+                <li>how many dragons you beat</li>
+                <li>how it ended: the edge of the world, a tail, a head-on bump or leaving to the menu</li>
+            </ul>
+            <p>When you play <b>online</b>, the game server counts the same numbers itself when a life ends in a room (or you leave), plus how many players were online at once and how many servers were made each day.</p>
+            <p>The note has no name, no ID and no cookie, so nobody can tell who sent it, or that two notes came from the same person. The server adds the numbers into totals for each day, keeps them for 30 days and then deletes them. Anyone can look at the totals: <a href="https://wyrm-server-420365023329.us-west1.run.app/api/stats">here they are</a> (they look like computer code, which is normal).</p>
+            <p>We use them to make the game more fun, for example to see whether new dragons crash too soon or a world is too hard.</p>
+
+            <h2>What stays on your device</h2>
+            <p>Your dragon's name, rank, jade, perks, colours and settings are saved in this browser on your device and are never sent to us. Clearing this site's data in your browser wipes them.</p>
+            <p>The one exception is playing online: the other players in that room see your dragon's name, after it passes our name filter (no rude words, links or email addresses). The server forgets it when you leave. If you create a server, its name shows in the server list until 12 hours after the last player leaves.</p>
+
+            <h2>Internet addresses</h2>
+            <p>Every website your device visits can see its internet address (its IP address). That's simply how the internet works. Our game server uses it for a moment to stop spam, for example to limit how many servers one home or school can create in an hour. It keeps it only in memory, for an hour at most, and never saves it or adds it to the totals.</p>
+            <p>The companies that host Skywyrm keep their own standard security logs, which include IP addresses: Google Cloud keeps its request logs for 30 days, and GitHub logs visits to the website too.</p>
+
+            <h2>Who runs what</h2>
+            <ul>
+                <li>The game itself, this website, is hosted by <b>GitHub Pages</b>.</li>
+                <li>The online servers run on <b>Google Cloud</b>.</li>
+                <li>Everything the game needs (its code, fonts and sounds) comes from this website, so playing doesn't send anything to any other company.</li>
+            </ul>
+
+            <h2>For grown-ups</h2>
+            <p>The totals can't tell players apart, so there is nothing in them to look up or delete for one person.</p>
+            <p class="ask">Grown-ups: questions or requests → <a href="https://github.com/joelisjoel/skywyrm/issues">https://github.com/joelisjoel/skywyrm/issues</a><br>
+                That page is public, so please don't include personal details.</p>
+
+            <footer>
+                <span>Updated October 11, 2026</span>
+                <a href="./">← Back to the game</a>
+            </footer>
+        </div>
+    </main>
+</body>
+
+</html>
