@@ -858,9 +858,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **`sever` removes too much from long dragons.** The new mass comes from the
   cut length, so above the 400 m length cap a tip burn strips far more than the
   tip (`sim.js:904`). Fix: subtract the burned share of the current mass.
-- **Quitting a solo life earns no jade.** `world.kill(...,'the menu')` emits its
-  event outside `step()`, and the next `step()` clears it before `bankLife` runs
-  (`main.js:404`, `sim.js:939`).
 - **Keen Pull's "40% farther" only scales the 2 m base,** not the whole pickup
   radius. Lodestone overrides it.
 - **Mutual head-on:** only one of the two dragons gets the kill.

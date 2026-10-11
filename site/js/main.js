@@ -13,7 +13,7 @@ import { TunePanel } from './tune-panel.js?v=19';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
 import { serverUrl } from './net-config.js?v=8';
-import { Profile } from './profile.js?v=1';
+import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
 
 // Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
@@ -239,16 +239,16 @@ function handleEvents() {
     }
 }
 
+// e.left: you chose 'Leave to menu' (solo), which ends the game.
 function onPlayerDeath(e) {
-    audio.death();
-    speak('death');
+    if (!e.left) { audio.death(); speak('death'); }
     if (!game) newGame();
     const at = performance.now() / 1000;
     deathInfo = {
         at,
         pos: player.pos.clone(),
         killer: e.killer,
-        text: e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
+        text: e.left ? 'You left the sky' : e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
     };
     // This life's numbers roll into the game's.
     game.deaths++;
@@ -256,7 +256,7 @@ function onPlayerDeath(e) {
     game.peak = Math.max(game.peak, Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass)));
     game.time += online ? at - (player.bornWall || at) : world.time - player.bornAt;
     game.rank = Math.min(game.rank, player.bestRank);
-    deathInfo.final = livesLeft() <= 0;
+    deathInfo.final = e.left || livesLeft() <= 0;
     bankLife(online ? at - (player.bornWall || at) : world.time - player.bornAt);
     reportLife(endCause(e));
     deathInfo.respawnAt = at + world.rule('respawnDelay');
@@ -273,6 +273,7 @@ function onPlayerDeath(e) {
         const t = Math.round(game.time);
         $('card-time').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
         $('card-rank').textContent = game.rank < 99 ? '#' + game.rank : '—';
+        if (e.left) document.body.dataset.card = '1';              // straight to the card: no crash to watch
     } else {
         $('respawn-text').textContent = deathInfo.text;
         pearls($('respawn-lives'), livesTotal(), livesLeft());
@@ -428,7 +429,14 @@ input.holdButton($('t-fire'), 'fire');
 $('t-pause').addEventListener('pointerdown', (e) => { e.preventDefault(); pause(); });
 $('quit').onclick = () => {
     if (online) leaveOnline();
-    else if (player && player.alive) { world.kill(player, null, 'the menu'); reportLife('quit'); }
+    else if (player && player.alive) {
+        // Leaving ends the game, and the life is banked like any death: the
+        // run card shows the game's jade, and its Menu button goes on. (The
+        // death event from kill() here, outside step(), is cleared unseen.)
+        world.kill(player, null, 'the menu');
+        onPlayerDeath({ killer: null, cause: 'the menu', left: true });
+        return;
+    }
     setState('menu');
     refreshLobby();
 };
@@ -605,11 +613,15 @@ for (const [id, key] of SERVER) {
 }
 syncServer();
 
-input.onKey = (code) => {
+// Enter on a focused button, link or other control is that control's own
+// click, so it mustn't also start a game or close a screen. (Space can't
+// click one: Input cancels it for boosting.)
+const onControl = (e) => !!(e && e.target && e.target.closest && e.target.closest('button, a[href], input, select, textarea, summary, [tabindex], [contenteditable]'));
+input.onKey = (code, e) => {
     if (code === 'Backquote') { if (DEV) tune.toggle(); }
     else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
     else if (code === 'KeyN') { settings.music = !settings.music; audio.setMusic(settings.music); $('opt-music').checked = settings.music; saveSettings(); hud.toast(settings.music ? '♪ Music on' : 'Music off', 'hint'); }
-    else if (overlay && (code === 'Escape' || code === 'Enter')) closeOverlay();
+    else if (overlay && (code === 'Escape' || (code === 'Enter' && !onControl(e)))) closeOverlay();
     else if (overlay) return;
     else if ((code === 'KeyE' || code === 'KeyF') && state === 'play' && player && player.alive && !player.fire && !(player.breath > 0)) {
         hud.toast('No dragonfire — grab a red crystal first', 'hint');
@@ -619,8 +631,8 @@ input.onKey = (code) => {
         // Leaving pointer lock with Esc can deliver both the lock change and
         // the key; ignore a second Esc that arrives right after pausing.
         else if (state === 'pause' && performance.now() - pausedAt > 400) resume();
-    } else if ((code === 'Space' || code === 'Enter') && state === 'dead' && deathInfo.final && performance.now() / 1000 - deathInfo.at > 0.9) playAgain();
-    else if (code === 'Enter' && state === 'menu') startPlay();
+    } else if ((code === 'Space' || (code === 'Enter' && !onControl(e))) && state === 'dead' && deathInfo.final && performance.now() / 1000 - deathInfo.at > 0.9) playAgain();
+    else if (code === 'Enter' && state === 'menu' && !onControl(e)) startPlay();
 };
 // Clicking back into the game re-grabs the pointer in lock mode.
 canvas.addEventListener('click', () => { if (state === 'play') input.requestLock(); });

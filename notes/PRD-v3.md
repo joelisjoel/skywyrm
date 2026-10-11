@@ -113,6 +113,8 @@ while the kid-safety rules stand. Reopening them is a decision for Joel (§14).
   - best rank
   - jade earned
 - Space starts the next game.
+- **Leave to menu** (pause, solo) ends the game the same way: that life's jade
+  is banked and the run card shows.
 
 ---
 
@@ -487,13 +489,14 @@ These are listed roughly by how much a player would notice.
 2. **Dragonfire takes too much from very long dragons.** Above the 400 m length
    cap, burning just the tip removes far more than the tip. A 1,500-mass dragon
    can lose about 540 mass.
-3. **Quitting a solo life from the pause menu earns no jade** for that life.
+3. ✅ **Fixed:** quitting a solo life from the pause menu now banks its jade
+   and shows the run card.
 4. ✅ **Fixed:** the dev tuning panel, its ⚙ button and the FPS counter show
    only with `?dev=1` or on localhost, and can't change a room. Settings opens
    on the Player tab; the Server tab is for solo and read-only online.
-5. **7 of the 10 rank seals render in a fallback font.** Those characters
-   (石玉珠云雷山日) are missing from the font subset. The body font Nunito is never
-   loaded either.
+5. ✅ **Fixed:** all 10 rank seals render in the brush font (the self-hosted
+   subset covers every Chinese character the site uses). The body font Nunito
+   is still never loaded.
 6. **The shield is narrower than it looks.** It doesn't stop head-ons, walls or
    dragonfire.
 7. Saved profile stats (best length, best kills, games played) are never shown.
