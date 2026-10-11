@@ -771,6 +771,7 @@ at dendroslabs.com/wyrm has been removed.
 |---|---|
 | `server/test/sim.test.mjs` (19 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
+| `server/test/names.test.mjs` (13 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback |
 | `server/test/rooms.test.mjs` (33 checks) | Starts the real server with the memory store. Covers: default rooms, reserved names, links and foreign origins refused, name cleaning, duplicate (409) and rate limit (429), forced beginner, `POST /api/run` (accepted with CORS, clamped, refused 400 / 413 / 403, 21st in an hour 429), `GET /api/stats` (shows the runs, cached 60 s, CORS only for allowed origins), two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark, both players' lives counted under `room` on leaving |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
@@ -808,7 +809,15 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   privacy page (`site/privacy.html`) says exactly this.
 - Production Firestore rules deny all browsers.
 - Names are filtered on both the client and the server, and shown only with
-  `textContent` or `fillText`.
+  `textContent` or `fillText`. The filter (`names.js`):
+  - folds accents to ASCII (José → Jose) and refuses any other letter, so a
+    Cyrillic look-alike can't sneak a word past it
+  - reads leetspeak, ph/ck/v sound-alikes, repeated letters and spaced-out
+    letters
+  - checks short words inside each word of a name, excusing innocent words
+    they hide in (Grape, Peacock); `kys` and a few abbreviations only match
+    as whole words
+  - matches reserved words as whole words (Admin is taken, Systemic isn't)
 - The origin allowlist, rate limits and frame limits in §4.6.
 
 **Risks**
