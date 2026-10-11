@@ -207,7 +207,7 @@ button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
 
 .brand { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
 h1 {
-    font-family: 'Cinzel', 'Trajan Pro', Georgia, serif; font-weight: 700; font-size: 52px; letter-spacing: 0.3em; margin-right: -0.3em;
+    font-family: 'Cinzel', 'Trajan Pro', Georgia, serif; font-weight: 700; font-size: clamp(28px, 8.4vw, 44px); letter-spacing: 0.2em; margin-right: -0.2em;
     background: linear-gradient(180deg, var(--gold-hi) 10%, var(--gold) 55%, #9C7A3C 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
     text-shadow: none; filter: drop-shadow(0 2px 14px rgba(217, 181, 108, 0.25));
