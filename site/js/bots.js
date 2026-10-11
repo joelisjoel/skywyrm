@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=18';
-import { Dragon, hazardDist } from './sim.js?v=18';
+import { T } from './tunables.js?v=19';
+import { Dragon, hazardDist } from './sim.js?v=19';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -85,7 +85,18 @@ class Brain {
         d.input.sx = sx; d.input.sy = sy; d.input.roll = 0;
         d.input.boost = this.boost; d.input.brake = this.brake;
         d.input.fire = false;
-        if (d.fire && world.fireTarget(d)) d.input.fire = true;
+        if (d.fire && this.fireReady(world, d) && world.fireTarget(d)) d.input.fire = true;
+    }
+
+    // Dragonfire charges stack (rule fireCharge): bold bots (hunters,
+    // kingslayers, big or fierce ones) save up for a bigger breath before
+    // they attack; the rest breathe as soon as they hold one. A full stack
+    // is always ready.
+    fireReady(world, d) {
+        if (!world.rule('fireCharge')) return true;
+        const max = world.rule('fireChargeMax');
+        const bold = (this.mood === 'hunter' || this.mood === 'kingslayer' ? 1 : 0) + (d.mass > 150 ? 1 : 0) + (this.aggr > 0.6 ? 1 : 0);
+        return d.fire >= Math.min(max, 1 + bold);
     }
 
     // Clear distance along a straight probe in `dir` before the first

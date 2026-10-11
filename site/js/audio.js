@@ -168,7 +168,13 @@ export class Audio {
     bite() { this.whoosh(0.12, 2500, 400, 0.35); this.tone(392, 0.12, 'square', 0.06, 0, 784); this.tone(1174.66, 0.15, 'sine', 0.06, 0.06); }
     bitten() { this.whoosh(0.2, 800, 150, 0.3); this.tone(293.66, 0.25, 'sawtooth', 0.05, 0, 146.83); }
     shieldPop() { this.whoosh(0.25, 2000, 200, 0.4); this.tone(880, 0.3, 'triangle', 0.15, 0, 293.66); }
-    fire() { this.whoosh(0.5, 200, 1200, 0.5); this.tone(110, 0.4, 'sawtooth', 0.08, 0, 55); }
+    // A bigger breath (more charges) roars longer and deeper.
+    fire(lv = 1) {
+        const k = Math.max(0, Math.min(8, (lv | 0) - 1));
+        this.whoosh(0.5 + 0.15 * k, 200, 1200 + 200 * k, 0.5);
+        this.tone(110, 0.4 + 0.12 * k, 'sawtooth', 0.08, 0, 55);
+        if (k >= 2) this.tone(55, 0.5 + 0.15 * k, 'sawtooth', 0.05 + 0.01 * k, 0.05, 30);
+    }
     thrustEmpty() { this.sting('empty'); }
     death() { this.whoosh(0.8, 1500, 80, 0.6); this.tone(220, 0.8, 'sawtooth', 0.1, 0, 40); this.hum(false); this.sting('death'); }
 }

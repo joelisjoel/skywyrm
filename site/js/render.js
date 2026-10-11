@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=18';
+import { T, TIERS } from './tunables.js?v=19';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -880,23 +880,25 @@ export class Renderer {
             }
         }
 
-        // Dragonfire: a translucent cone + a thick stream of flame while breathing.
+        // Dragonfire: a translucent cone + a thick stream of flame while
+        // breathing, sized for the charges spent (longer, wider, denser).
         let fc = 0;
         for (const d of world.dragons) {
             if (!d.alive || !(d.breath > 0)) continue;
             if (!this.fireCones[fc]) { this.fireCones[fc] = this.fireCone.clone(); this.scene.add(this.fireCones[fc]); }
             const cone = this.fireCones[fc++];
             cone.visible = true;
-            const rad = T.fireRange * Math.tan(T.fireAngle * Math.PI / 180);
+            const st = world.breathStats(d.breathLevel || 1), tan = Math.tan(st.angle * Math.PI / 180);
+            const rad = st.range * tan;
             // From the open mouth; the far end stays at the real fire range.
             const mouth = d.r * (1.45 + 0.05 * d.tier) * 1.6;
             cone.position.copy(d.pos).addScaledVector(d.fwd, mouth);
             cone.quaternion.copy(d.quat);
-            cone.scale.set(rad, rad, Math.max(1, T.fireRange - mouth + d.r));
+            cone.scale.set(rad, rad, Math.max(1, st.range - mouth + d.r));
             cone.material.opacity = 0.12 + 0.06 * Math.sin(time * 30);
-            const spd = T.fireRange / 0.45;
-            for (let i = 0; i < 26; i++) {
-                const a = Math.random() * Math.PI * 2, s = Math.tan(T.fireAngle * Math.PI / 180) * Math.sqrt(Math.random());
+            const spd = st.range / 0.45;
+            for (let i = 0; i < 26 + 12 * st.k; i++) {
+                const a = Math.random() * Math.PI * 2, s = tan * Math.sqrt(Math.random());
                 _s.set(Math.cos(a) * s, Math.sin(a) * s, -1).normalize().applyQuaternion(d.quat);
                 const sp = spd * (0.8 + Math.random() * 0.4);
                 this.emit(cone.position.x, cone.position.y, cone.position.z,

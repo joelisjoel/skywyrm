@@ -182,6 +182,11 @@ button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
 .g-fire[data-state=breathing] { color: #FFD60A; filter: drop-shadow(0 0 8px rgba(255,190,40,0.9)); }
 .g-fire kbd { position: absolute; right: -4px; bottom: -4px; font: 700 9px/1 -apple-system, system-ui, sans-serif; padding: 2px 4px; border-radius: 4px; background: rgba(255,255,255,0.9); color: #111; display: none; }
 .g-fire[data-state=ready] kbd { display: block; }
+/* Stacked dragonfire: one lit arc per charge; the gauge grows and glows with each. */
+.g-fire { --ch: 0; scale: calc(1 + 0.06 * max(0, var(--ch) - 1)); }
+.g-fire[data-state=ready] { filter: drop-shadow(0 0 calc(4px + 2.5px * var(--ch)) rgba(255,107,53,0.9)); }
+.g-fire .ring .track { stroke: rgba(255,255,255,0.3); }
+.g-fire .ring circle { stroke-width: 3.2; }
 .g-shield { color: #FF9F0A; }
 .g-magnet { color: #3D8BFF; filter: drop-shadow(0 0 5px rgba(61,139,255,0.8)); }
 @keyframes gPulse { from { opacity: 0.7; } to { opacity: 1; transform: scale(1.06); } }
@@ -332,6 +337,9 @@ body[data-touch="1"][data-state=play] #touch-ui { display: block; }
 #t-fire { right: calc(max(18px, env(safe-area-inset-right)) + 10px); bottom: calc(112px + env(safe-area-inset-bottom)); width: 56px; height: 56px; color: #FF6B35; }
 #t-brake { right: calc(max(18px, env(safe-area-inset-right)) + 78px); bottom: calc(112px + env(safe-area-inset-bottom)); width: 56px; height: 56px; }
 body:not([data-fire="1"]) #t-fire { opacity: 0.3; }
+/* Stored dragonfire charges, readable at a glance on a phone. */
+#t-fire[data-charge]:not([data-charge=""])::after { content: attr(data-charge); position: absolute; top: -5px; right: -5px; min-width: 21px; height: 21px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 11px; background: #FF6B35; color: #1a0c00; box-shadow: 0 0 10px rgba(255,107,53,0.9); font: 800 13px/21px -apple-system, system-ui, sans-serif; text-align: center; }
 #t-pause { left: 14px; top: calc(12px + env(safe-area-inset-top)); width: 40px; height: 40px; }
 body[data-touch="1"] #tune-btn, body[data-touch="1"] #hud-fps { display: none; }
 body[data-touch="1"][data-state=play] #feed { top: 60px; }

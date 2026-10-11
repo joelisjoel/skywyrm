@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=18';
-import { World, Dragon, hazardDist } from './sim.js?v=18';
-import { managePopulation, targetBots } from './bots.js?v=18';
-import { Renderer } from './render.js?v=30';
-import { ChaseCam } from './camera.js?v=18';
-import { Input } from './input.js?v=21';
-import { Hud } from './hud.js?v=19';
-import { Audio } from './audio.js?v=11';
-import { TunePanel } from './tune-panel.js?v=19';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=19';
+import { World, Dragon, hazardDist } from './sim.js?v=19';
+import { managePopulation, targetBots } from './bots.js?v=19';
+import { Renderer } from './render.js?v=31';
+import { ChaseCam } from './camera.js?v=19';
+import { Input } from './input.js?v=22';
+import { Hud } from './hud.js?v=20';
+import { Audio } from './audio.js?v=12';
+import { TunePanel } from './tune-panel.js?v=20';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=20';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=21';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -198,7 +198,7 @@ function handleEvents() {
             case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); hype(); break;
             case 'powerup':
                 if (mine) {
-                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: 'DRAGONFIRE — press E' }[e.kind]); audio.powerup(e.kind); hype(); speak(e.kind);
+                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: fireToast(e.charge) }[e.kind]); audio.powerup(e.kind); hype(); speak(e.kind);
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
@@ -213,10 +213,10 @@ function handleEvents() {
             case 'land': hud.feed(`🪽 ${e.d.name} folded their wings`); break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
             case 'fireStart':
-                if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.fire();
+                if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.fire(e.lv);
                 break;
             case 'fireMiss':
-                if (mine) hud.toast(`Missed — dragonfire reaches ${Math.round(T.fireRange)} m ahead`, 'bad');
+                if (mine) hud.toast(`Missed — dragonfire reaches ${Math.round(world.breathStats(player.breathLevel || 1).range)} m ahead`, 'bad');
                 break;
             case 'sever':
                 renderer.burnSegment(e.burn);
@@ -237,6 +237,13 @@ function handleEvents() {
             }
         }
     }
+}
+
+// Dragonfire charges stack (rule fireCharge): say how many you hold.
+function fireToast(n) {
+    const max = world.rule('fireCharge') ? world.rule('fireChargeMax') : 1, key = input.isTouch ? 'tap 🔥' : 'press E';
+    if (!(max > 1) || !(n > 1)) return 'DRAGONFIRE — ' + key;
+    return n >= max ? `DRAGONFIRE ×${n} — FULL POWER!` : `DRAGONFIRE ×${n} — save up or ${key}`;
 }
 
 // e.left: you chose 'Leave to menu' (solo), which ends the game.
