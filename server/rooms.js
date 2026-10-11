@@ -348,6 +348,22 @@ export class Room {
         const s = JSON.stringify(msg);
         for (const c of this.clients) if (c !== except) c.sendRaw(s);
     }
+
+    // After an error in this room (Registry.guard): everyone in it is
+    // dropped with close code 1011 and the world is freed, so the next join
+    // starts clean. Other rooms are untouched.
+    reset() {
+        const clients = [...this.clients];
+        for (const c of clients) { try { this.endLife(c, 'disconnect'); } catch { /* the world may be what broke */ } }
+        this.clients.clear();
+        this.world = null;
+        this.emptySince = Date.now();
+        for (const c of clients) {
+            c.dragon = null; c.room = null; c.parkAt = 0; c.parked = null;
+            c.close(1011, 'room error');
+        }
+        this.registry.emptied(this);
+    }
 }
 
 const NO_STATS = { run() {}, humans() {}, roomCreated() {} };
@@ -359,6 +375,7 @@ export class Registry {
         this.stats = stats;             // anonymous daily totals (stats.js)
         this.rooms = new Map();
         this.createdByIp = new Map();   // ip → [timestamps]
+        this.errors = new Map();        // error key → { at, n } (see logError)
     }
 
     async init() {
@@ -424,7 +441,7 @@ export class Registry {
     }
 
     tick() {
-        for (const r of this.rooms.values()) r.tick();
+        for (const r of this.rooms.values()) this.guard(r, 'tick', () => r.tick());
     }
 
     // Humans in every room now, for the day's peak.
@@ -439,18 +456,51 @@ export class Registry {
         for (const r of this.rooms.values()) for (const c of r.clients) r.endLife(c, cause);
     }
 
-    // Every minute: delete expired rooms, free idle worlds, forget old rate-limit entries.
+    // Runs fn for one room. If it throws, the error is logged and only that
+    // room is reset (Room.reset), so one room's bug can't take the process
+    // and every other room down with it. Returns false if it threw.
+    guard(room, where, fn) {
+        try { fn(); return true; } catch (e) {
+            this.logError(`room ${room.meta.id} ${where}`, e);
+            try { room.reset(); } catch (e2) { this.logError(`room ${room.meta.id} reset`, e2); }
+            return false;
+        }
+    }
+
+    // Logs an error with its stack, but the same error at most once a
+    // minute (then with a count), so one that repeats every tick can't
+    // flood the logs.
+    logError(where, e) {
+        const msg = String((e && e.message) || e).slice(0, 200);
+        const key = where + ': ' + msg;
+        const now = Date.now();
+        const seen = this.errors.get(key);
+        if (seen && now - seen.at < 60 * 1000) { seen.n++; return; }
+        if (this.errors.size >= 200) this.errors.clear();
+        this.errors.set(key, { at: now, n: 0 });
+        this.log(`error in ${where}${seen && seen.n ? ` (${seen.n} more since last logged)` : ''}:`, (e && e.stack) || msg);
+    }
+
+    // Every minute: delete expired rooms, free idle worlds, forget old
+    // rate-limit entries, and report how often a quietened error repeated.
     sweep() {
         const now = Date.now();
         for (const [id, r] of this.rooms) {
-            if (r.humans === 0 && r.world && now - r.emptySince > LIMITS.worldIdleMs) r.world = null;
-            if (!r.meta.permanent && r.humans === 0 && r.meta.expireAt && r.meta.expireAt < now) {
-                this.rooms.delete(id);
-                this.store.remove(id);
-                this.log(`room expired ${id} "${r.meta.name}"`);
-            }
+            this.guard(r, 'sweep', () => {
+                if (r.humans === 0 && r.world && now - r.emptySince > LIMITS.worldIdleMs) r.world = null;
+                if (!r.meta.permanent && r.humans === 0 && r.meta.expireAt && r.meta.expireAt < now) {
+                    this.rooms.delete(id);
+                    this.store.remove(id);
+                    this.log(`room expired ${id} "${r.meta.name}"`);
+                }
+            });
         }
         for (const [ip, ts] of this.createdByIp) if (!ts.some((t) => now - t < 3600 * 1000)) this.createdByIp.delete(ip);
-        this.countHumans();             // so a new day's peak counts players already in
+        for (const [k, v] of this.errors) {
+            if (now - v.at < 60 * 1000) continue;
+            if (v.n) this.log(`error in ${k} (repeated ${v.n} more times)`);
+            this.errors.delete(k);
+        }
+        try { this.countHumans(); } catch (e) { this.logError('sweep', e); }   // so a new day's peak counts players already in
     }
 }

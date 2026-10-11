@@ -417,6 +417,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 | Code | Reason |
 |---|---|
+| 1011 | room error: the room hit an exception and was reset, or this socket's message threw (§4.4) |
 | 4000 | no hello within 5 s |
 | 4002 | more than 5 bad messages |
 | 4003 | room full |
@@ -490,6 +491,16 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     protection.
 - **Per-room `meta.rules`:** merged in at `rooms.js:100` but never set. The
   hook exists for future modes.
+- **Errors:** each room's tick and sweep run in a try/catch
+  (`Registry.guard`), and so does every WebSocket message and leave.
+  - An exception is logged with its stack. The same error is logged at most
+    once a minute, and the sweep reports how often it repeated.
+  - In a tick or sweep, only that room is reset (`Room.reset`): its lives are
+    counted as disconnects, its sockets close with 1011 and its world is
+    freed. The other rooms carry on.
+  - In a message (or a leave), only the socket that sent it is closed (1011);
+    its room carries on, so one crafted message can't throw everyone out.
+  - An unhandled promise rejection is logged the same way, not fatal.
 
 ### 4.5 Persistence (`server/store.js`)
 - **Which store:**
@@ -953,6 +964,7 @@ at dendroslabs.com/wyrm has been removed.
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (37 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
+| `server/test/crash.test.mjs` (15 checks) | The crash guard: a `Registry` with fake clients, then the real server with bugs planted by `poison-room.mjs` (`node --import`). A throwing tick or sweep resets only its room (1011) and other rooms keep snapshotting; a throwing message closes only its sender (1011) while the rest of its room plays on; a reset counts the lives it cut off; a repeated error is logged once, an unhandled rejection is not fatal |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
@@ -1001,6 +1013,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - Room names are generated from word lists, never typed, so nothing a
   player writes is shown in every lobby (§4.4).
 - The origin allowlist, rate limits and frame limits in §4.6.
+- An exception in a room's tick resets that room only, and one in a message
+  closes only its sender, never the process (§4.4).
 
 **Risks**
 

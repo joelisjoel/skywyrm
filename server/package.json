@@ -6,7 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/sim.test.mjs && node test/names.test.mjs && node test/stats.test.mjs && node test/rooms.test.mjs"
+    "test": "node test/sim.test.mjs && node test/names.test.mjs && node test/stats.test.mjs && node test/rooms.test.mjs && node test/crash.test.mjs"
   },
   "dependencies": {
     "@google-cloud/firestore": "9.3.1",
