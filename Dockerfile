@@ -5,8 +5,8 @@
 FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY server/package.json ./package.json
-RUN npm install --omit=dev --no-audit --no-fund
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
 COPY site/js ./site/js
 COPY server ./server
 USER node

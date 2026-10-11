@@ -698,7 +698,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 **The image:**
 - `node:22-slim`.
-- `npm install --omit=dev` with no lockfile.
+- `npm ci --omit=dev` from `server/package-lock.json`.
 - Copies `site/js` and `server`.
 - Runs as `USER node`.
 - `CMD node server/server.js`.
@@ -728,11 +728,14 @@ at dendroslabs.com/wyrm has been removed.
 **CI** (`ci.yml`):
 1. Checkout and Node 22.
 2. Stamp check (PRs only).
-3. `npm install` and Playwright Chromium.
+3. `npm ci` (from the committed lockfile) and Playwright Chromium.
 4. Smoke test.
-5. Server tests.
-6. Upload screenshots.
-7. Deploy to Pages (`main` only).
+5. Server tests (`npm ci` in `server/`).
+6. Build the server's Docker image, start it and check `/healthz`.
+7. Upload screenshots.
+8. Deploy to Pages (`main` only).
+
+Actions are pinned to commit SHAs (with the tag in a comment).
 
 **Not tested:**
 - **Server limits:** rate limit, per-IP cap, hello timeout, room expiry and
@@ -765,7 +768,7 @@ at dendroslabs.com/wyrm has been removed.
 | 6 | Capacity | One thread runs every room, with no tick-overrun metric. A room waking runs a synchronous 300-tick warm-up that stalls the other rooms |
 | 7 | Hourly disconnect | The 3600 s timeout ends every socket, with no reconnect |
 | 8 | Third-party code | No CSP. three.js comes from esm.sh without SRI, and Google Fonts load from Google. Players' IPs reach both |
-| 9 | Unpinned builds | No lockfile. The Docker base image and GitHub Actions are pinned by tag, not by digest or SHA |
+| 9 | Unpinned builds | Lockfiles are committed and the image installs with `npm ci`; GitHub Actions are pinned by SHA. The Docker base image (`node:22-slim`) is still a tag, so it picks up Node security patches |
 
 ---
 
