@@ -151,13 +151,13 @@ server.on('upgrade', (req, socket, head) => {
     if (url.pathname !== '/ws') return reject(404, 'Not Found');
     if (!originOk(req.headers.origin)) return reject(403, 'Forbidden');
     if (!room) return reject(404, 'Not Found');
-    if ((conns.get(ip) || 0) >= MAX_CONN_PER_IP) return reject(429, 'Too Many Requests');
+    if ((conns.get(ip) || 0) + registry.heldBy(ip) >= MAX_CONN_PER_IP) return reject(429, 'Too Many Requests');   // held seats count (rooms.js)
     wss.handleUpgrade(req, socket, head, (ws) => onConnect(ws, room, ip));
 });
 
 function onConnect(ws, room, ip) {
     conns.set(ip, (conns.get(ip) || 0) + 1);
-    const client = new Client(ws);
+    const client = new Client(ws, ip);
     let joined = false, strikes = 0;
     let tokens = 90, last = Date.now();      // rate limit: 60 msg/s sustained, 90 burst
     const helloTimer = setTimeout(() => { if (!joined) ws.close(4000, 'hello timeout'); }, 5000);
@@ -178,7 +178,8 @@ function onConnect(ws, room, ip) {
     function handle(m) {
         if (!joined) {
             if (m.t !== 'hello') return;
-            const r = room.join(client, typeof m.name === 'string' ? m.name.slice(0, 64) : '', { perks: m.perks, skin: typeof m.skin === 'string' ? m.skin.slice(0, 16) : '', caps: m.caps });
+            const r = room.join(client, typeof m.name === 'string' ? m.name.slice(0, 64) : '', { perks: m.perks, skin: typeof m.skin === 'string' ? m.skin.slice(0, 16) : '', caps: m.caps,
+                resume: typeof m.resume === 'string' && m.resume.length <= 64 ? m.resume : '' });
             if (r.error) { client.send({ t: 'full', error: r.error }); ws.close(4003, 'full'); return; }
             joined = true; clearTimeout(helloTimer);
             return;
@@ -193,9 +194,12 @@ function onConnect(ws, room, ip) {
         clearTimeout(helloTimer);
         // 1000/1005: the game closed the socket (back to the menu); 1001: the
         // tab closed. Anything else (1006, our 40xx) is a dropped connection.
+        // Unless the player left on purpose (1000, 1005) or was sent away
+        // (4002, 4008), their seat is held for a reconnect (rooms.js leave).
         // (client.room is set even if a hello failed halfway through join.)
         const cause = code === 1000 || code === 1001 || code === 1005 ? 'quit' : 'disconnect';
-        if (client.room) { try { room.leave(client, cause); } catch (e) { registry.logError(`room ${room.meta.id} leave`, e); } }
+        const hold = ![1000, 1005, 4002, 4008].includes(code);
+        if (client.room) { try { room.leave(client, cause, { hold }); } catch (e) { registry.logError(`room ${room.meta.id} leave`, e); } }
         const n = (conns.get(ip) || 1) - 1;
         if (n <= 0) conns.delete(ip); else conns.set(ip, n);
     });
@@ -219,12 +223,15 @@ setInterval(() => {
 
 server.listen(PORT, '0.0.0.0', () => log(`skywyrm server listening on :${PORT} (${PROD ? 'cloud run' : 'dev'})`));
 
-// Count the lives a shutdown cuts off and save the totals before exiting
-// (Cloud Run allows 10 s; never wait more than 5).
+// A deploy or a scale-down: count the lives it cuts off (held seats too),
+// tell every browser (4010) so it reconnects to the new server at once, and
+// save the totals before exiting (Cloud Run allows 10 s; never wait more
+// than 5). Dragons can't survive the restart.
 process.on('SIGTERM', () => {
     log('SIGTERM: shutting down');
     server.close();
     registry.endLives('disconnect');
+    for (const ws of wss.clients) ws.close(4010, 'server restarting');
     const bye = () => process.exit(0);
     stats.flush().then(() => setTimeout(bye, 500), bye);
     setTimeout(bye, 5000);

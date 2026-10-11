@@ -11,7 +11,7 @@ import { Hud } from './hud.js?v=24';
 import { Audio } from './audio.js?v=14';
 import { TunePanel } from './tune-panel.js?v=24';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=25';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=26';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -114,6 +114,18 @@ function reportLife(cause) {
         fetch(SERVER_BASE + '/api/run', { method: 'POST', mode: 'cors', keepalive: true, headers: { 'content-type': 'text/plain' }, body: JSON.stringify(run) }).catch(() => {});
     } catch { /* ignore */ }
 }
+// An online dragon can also end without dying: you leave the room, or the
+// server lost it while you were away. Its life still counts (jade and the
+// game's totals) without using up one of your lives.
+function endLife() {
+    if (!game) newGame();
+    const now = performance.now() / 1000, t = now - (player.bornWall || now);
+    game.kills += player.kills;
+    game.peak = Math.max(game.peak, Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * player.peakMass)));
+    game.time += t;
+    game.rank = Math.min(game.rank, player.bestRank);
+    bankLife(t);
+}
 const livesTotal = () => (world ? world.rule('lives') : T.lives);
 const livesLeft = () => (livesTotal() > 0 ? livesTotal() - game.deaths : Infinity);
 function pearls(el, total, left) {
@@ -215,7 +227,7 @@ function handleEvents() {
                 break;
             case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
             case 'unparked': parkEndsAt = 0; break;
-            case 'parked': parkEndsAt = 0; setPauseNote('Wings folded — you\'re out of the sky and safe. Your length is kept.'); break;
+            case 'parked': parkEndsAt = 0; setPauseNote(PARKED_NOTE); break;
             case 'land': hud.feed(`🪽 ${e.d.name} folded their wings`); break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
             case 'fireStart':
@@ -325,7 +337,7 @@ function onPlayerDeath(e) {
 
 // Next life: same game, fresh dragon at a safe spot.
 function nextLife() {
-    if (online) { online.respawn(); return; }         // the server respawns you (onRespawn → play)
+    if (online) { respawnOnline(); return; }
     const ramp = world.rampStart;                   // the bot population keeps building across lives
     world.spawn(player, T.spawnMass);
     world.rampStart = ramp;
@@ -372,6 +384,38 @@ function joinRoom(id) {
             input.zero();
             if (state === 'dead' || state === 'pause') { setState('play'); input.requestLock(); }
         },
+        // The connection dropped mid-game. With a dragon to keep, reconnect
+        // at once: the server holds it for us. While dead, wait for the next
+        // life (respawnOnline wakes it).
+        onDrop() {
+            lifeAtDrop = !!(player && (player.alive || online.parked));
+            if (lifeAtDrop) setNet('reconnecting');
+            return lifeAtDrop;
+        },
+        // Back in the same room, the world rebuilt from the new welcome.
+        onRejoin(w, p, info) {
+            const lost = !info.resumed;                   // a new dragon: the server restarted or forgot ours
+            if (lost && lifeAtDrop) endLife();
+            world = w; player = p;
+            w.assist = settings.assist;
+            renderer.clearHeads();
+            renderer.buildArena(w.arena);
+            view.player = p;
+            cam.snap(p);
+            input.zero();
+            syncServer();                                   // the room's numbers again (maybe a new server's)
+            setNet('');
+            if (lost) {
+                p.bornWall = performance.now() / 1000; p.peakMass = p.mass; p.kills = 0; p.bestRank = 99; lifeBites = 0;
+                if (lifeAtDrop) hud.toast(info.restarted ? 'Server updated — new life' : 'Reconnected — new life', 'hint');
+            }
+            lifeAtDrop = false;
+            // Tell the room what we're doing now: flying, or wings folded.
+            if (state === 'dead') { setState('play'); input.requestLock(); }    // this is the next life
+            else if (state === 'pause' && online.parked) { parkEndsAt = 0; setPauseNote(PARKED_NOTE); }
+            else if (state === 'pause') online.park();
+            else online.unpark();
+        },
         onClose(reason) {
             const wasIn = !!online;
             leaveOnline();
@@ -382,10 +426,26 @@ function joinRoom(id) {
     syncServer();
 }
 
+// Online, the server respawns you (onRespawn → play). If the connection
+// dropped while you were dead, reconnecting is the respawn (onRejoin).
+function respawnOnline() {
+    if (online.dormant) { setNet('reconnecting'); online.wake(); }
+    else online.respawn();
+}
+
+let lifeAtDrop = false;         // a reconnect began with a dragon (flying or folded) to keep
+const setNet = (s) => { if (s) document.body.dataset.net = s; else delete document.body.dataset.net; };
+
 function leaveOnline() {
     const g = online;
     online = null;
-    if (g) g.close();
+    if (g) {
+        g.close();
+        // Leaving a room (or losing it for good) ends the dragon you had
+        // there: bank its life, as a death would.
+        if (g.player && g.player === player && (player.alive || g.parked)) endLife();
+    }
+    setNet('');
     // Back to your own tunables and a local world for the menu / solo.
     Object.assign(T, soloTune || DEFAULTS);
     soloTune = null;
@@ -506,6 +566,7 @@ $('quit').onclick = () => {
 // your wings: after a 3 s countdown (still flying) your dragon leaves the
 // sky with its length kept, and Resume brings it back at a safe spot.
 let pausedAt = 0, parkEndsAt = 0;
+const PARKED_NOTE = 'Wings folded — you\'re out of the sky and safe. Your length is kept.';
 function setPauseNote(t) { $('pause-note').textContent = t; }
 function pause() {
     if (state !== 'play') return;
@@ -540,7 +601,7 @@ function resume() {
 }
 
 function playAgain() {
-    if (online) { newGame(); online.respawn(); return; }       // the server respawns you
+    if (online) { newGame(); respawnOnline(); return; }
     startPlay();
 }
 for (const r of document.querySelectorAll('input[name=arena]')) {
@@ -764,7 +825,9 @@ function tick(nowMs) {
     fpsN++; fpsT += dt;
     if (fpsT >= 0.5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
 
-    if (online && online.world) {
+    if (online && online.reconnecting) {
+        // The connection dropped: the picture holds still until it's back.
+    } else if (online && online.world) {
         // In a room: fly yourself locally, everything else from the server
         // (a room never pauses — Esc only opens the menu).
         const t0 = performance.now();
@@ -854,7 +917,8 @@ function tick(nowMs) {
     }
     audio.mood(level, state === 'pause');
     audio.hum(state === 'play' && !!player && player.alive && player.magnet > 0);
-    if (state === 'pause' && online && parkEndsAt) {
+    if (state === 'pause' && online && online.reconnecting) setPauseNote('Reconnecting…');
+    else if (state === 'pause' && online && parkEndsAt) {
         const left = Math.max(0, Math.ceil(parkEndsAt - now));
         setPauseNote(left > 0 ? `Leaving the sky in ${left}… you keep flying (and can still be hit) until then.` : 'Folding…');
     }

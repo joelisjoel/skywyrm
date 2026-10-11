@@ -5,7 +5,7 @@ export const SNAP_BUFFER = 512 * 1024;          // skip snapshots with this much
 export const MAX_BUFFER = 4 * 1024 * 1024;      // close a socket this far behind (4009)
 
 export class Client {
-    constructor(ws) { this.ws = ws; this.dragon = null; this.room = null; this.parkAt = 0; this.parked = null; this.life = null; this.unsentOrbs = null; }
+    constructor(ws, ip = '') { this.ws = ws; this.ip = ip; this.dragon = null; this.room = null; this.token = null; this.parkAt = 0; this.parked = null; this.life = null; this.unsentOrbs = null; }
 
     // Returns whether the frame went out. Under backpressure only snapshots
     // ('s') are skipped: the next one replaces them, and rooms.js carries

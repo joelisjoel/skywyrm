@@ -381,8 +381,18 @@ device.
   same way, and solo pauses. Coming back shows the pause screen; tap Resume.
 - **If the server is down:** the lobby says "servers offline — play solo". Solo
   always works.
-- **Known limit:** Cloud Run ends every connection after 60 minutes, and there is
-  no automatic reconnect, so you land back on the menu (§14).
+- **If the connection drops** (Cloud Run's 60-minute cut, a deploy, a phone
+  asleep, a network blip), the game says "Reconnecting…" and gets you back
+  into the same room:
+  1. Back within 3 s, your dragon never left the sky.
+  2. Within 30 s more, it flies back in with its length and kills (or stays
+     folded, if you had paused).
+  3. After a server restart, or later than that, you start a new life, and a
+     toast says so. That life's jade is still banked.
+  4. After 30 s of trying, you're back at the menu.
+- **No dodging:** a dragon whose player disconnects or leaves stays in the sky
+  for 3 s, still hittable, like folding your wings.
+- **Leaving a room** banks that life's jade, as a death would.
 
 ---
 
@@ -565,8 +575,8 @@ device.
 ### 13.2 Issues found while writing v3
 These are listed roughly by how much a player would notice.
 
-1. **No reconnect** after the 60-minute Cloud Run cut. Players drop to the menu
-   mid-game.
+1. ✅ **Reconnect** (was: no reconnect after the 60-minute Cloud Run cut).
+   Fixed: the game reconnects and keeps your dragon (§8).
 2. **Dragonfire takes too much from very long dragons.** Above the 400 m length
    cap, burning just the tip removes far more than the tip. A 1,500-mass dragon
    can lose about 540 mass.
@@ -593,8 +603,9 @@ These are listed roughly by how much a player would notice.
 
 Each decision has a recommended default, so work can start on that default.
 
-1. **Reconnect after 60 minutes.** Recommend an automatic rejoin of the same
-   room that keeps your length. It's a small client change.
+1. ✅ **Reconnect after 60 minutes.** Built as recommended: an automatic rejoin
+   of the same room that keeps your length (§8). It took a server change
+   too: the server holds a dropped player's dragon for 30 s.
 2. **Sharing.** Recommend a kid-safe screenshot card (a picture only, with no
    link back to the player) before replays. Or leave sharing out entirely.
 3. **Portals, ads and revenue.** Recommend staying out while the game is

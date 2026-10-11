@@ -1,6 +1,6 @@
-// Server limits: sockets per IP (MAX_CONN_PER_IP). Boots the real server
-// with different settings and opens raw WebSocket upgrades to read the
-// HTTP status of a refusal.
+// Server limits: sockets per IP (MAX_CONN_PER_IP), held seats included.
+// Boots the real server with different settings and opens raw WebSocket
+// upgrades to read the HTTP status of a refusal.
 // Run: cd server && npm test
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
@@ -8,6 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { WebSocket } from 'ws';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ORIGIN = 'http://localhost:5173';
@@ -39,8 +40,17 @@ const upgrade = (s) => new Promise((resolve) => {
 });
 const open = async (s, n) => { const codes = []; for (let i = 0; i < n; i++) codes.push(await upgrade(s)); return codes; };
 
+// Joins as a player, then drops the connection without a close frame (as a
+// phone losing signal does), which leaves a seat held for a reconnect.
+const joinAndDrop = (s) => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws?room=skyhold`, { headers: { origin: ORIGIN } });
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', name: 'Dropper' })));
+    ws.on('message', (data) => { if (JSON.parse(data).t === 'welcome') { ws._socket.destroy(); resolve(); } });
+    ws.on('error', reject);
+});
+
 try {
-    const [def, three, junk] = await Promise.all([boot(), boot({ MAX_CONN_PER_IP: '3' }), boot({ MAX_CONN_PER_IP: '-2' })]);
+    const [def, three, junk, held] = await Promise.all([boot(), boot({ MAX_CONN_PER_IP: '3' }), boot({ MAX_CONN_PER_IP: '-2' }), boot({ MAX_CONN_PER_IP: '3' })]);
     let codes = await open(def, 17);
     check(codes.slice(0, 16).every((c) => c === 101) && codes[16] === 429, 'default: 16 sockets per IP, the 17th refused (429)');
     codes = await open(three, 4);
@@ -50,6 +60,9 @@ try {
     three.sockets.pop().destroy();
     await sleep(200);
     check(await upgrade(three) === 101, 'a closed socket frees its slot');
+    for (let i = 0; i < 3; i++) await joinAndDrop(held);
+    await sleep(200);
+    check(await upgrade(held) === 429, 'seats held for dropped players count toward the limit: 3 drops fill MAX_CONN_PER_IP=3');
     console.log(`\n${ok} checks passed`);
 } catch (e) {
     console.error('FAILED:', e.message, '\n--- server logs ---\n' + servers.map((s) => s.out).join('\n'));

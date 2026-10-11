@@ -288,6 +288,13 @@ body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
 #respawn-text { font-size: 18px; font-weight: 600; color: rgba(245, 238, 225, 0.85); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7); }
 #respawn-count { font-family: 'Cinzel', Georgia, serif; font-size: 72px; font-weight: 700; line-height: 1; color: #F3DDA4; text-shadow: 0 0 30px rgba(217, 181, 108, 0.45); }
 #respawn .pearls span { width: 12px; height: 12px; }
+/* Online: shown while the connection is being made again (net.js), below the
+   rear-view mirror (on phones, below the leaderboard). Paused, the pause
+   panel says it instead. */
+#net-note { position: fixed; z-index: 5; top: calc(20% + 26px + env(safe-area-inset-top)); left: 0; right: 0; margin: 0 auto; width: max-content;
+    display: none; pointer-events: none; animation: gPulse 0.9s ease-in-out infinite alternate; }
+body[data-net=reconnecting]:not([data-state=pause]) #net-note { display: block; }
+@media (max-width: 640px) { #net-note { top: calc(168px + env(safe-area-inset-top)); } }
 #card-sub { color: var(--dim); font-size: 13px; margin: -6px 0 14px; }
 
 /* ---------------- Dragon voice caption (Mandarin + pinyin + English) ---------------- */
