@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=19';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=20';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -12,6 +12,8 @@ const MAX_BEADS = 900;          // per dragon
 const CELL = 4;                 // spatial hash cell (m)
 const HASH_SIZE = 16384;        // buckets (power of two)
 const MAX_ORBS = 6000;
+const MAX_CLOUDS = 12;          // acid clouds alive at once (oldest goes first)
+const NET_GRACE = 0.25;         // s before the server enforces a fresh chill or stun on a browser (the news is still in flight)
 
 const _v1 = new Vector3(), _v2 = new Vector3(), _v3 = new Vector3();
 const _q1 = new Quaternion(), _m = new Matrix4();
@@ -77,6 +79,10 @@ function referenceUp(arena, p, out) {
     return l < 1e-3 ? null : out.multiplyScalar(1 / l);
 }
 
+// Breath elements (rule elements): what a breath crystal makes you breathe.
+// fire burns tails off, ice chills, lightning ('bolt') stuns, acid melts.
+export const ELEMENTS = ['fire', 'ice', 'bolt', 'acid'];
+
 // ---------------------------------------------------------------- dragons
 export const PALETTE = [0xFF4D4D, 0xFF9A3C, 0xFFD93D, 0x7CFF4F, 0x3DFFB5, 0x3DE0FF,
     0x4D7CFF, 0xA45CFF, 0xFF4DD8, 0xF2F4FF];
@@ -103,7 +109,10 @@ export class Dragon {
         this.alive = true;
         this.protect = 0;
         this.shield = 0; this.magnet = 0; this.fire = 0; this.breath = 0; this.breathHit = false;
-        this.breathLevel = 0; this.breathHits = [];   // charges spent on the breath in progress, ids it has cut
+        this.breathLevel = 0; this.breathHits = [];   // charges spent on the breath in progress, ids it has hit
+        this.element = 'fire'; this.breathEl = 'fire';  // what the stored charges breathe; the breath in progress
+        this.chill = 0; this.stun = 0;                  // s left: slowed by ice, can't steer after lightning
+        this.chillAt = 0; this.stunAt = 0; this.acidAcc = 0; this.lastAcid = -9;
         this.kills = 0; this.bornAt = 0; this.peakMass = this.mass; this.bestRank = 99;
         this.tier = 0;
         this.boosting = false; this.braking = false; this.boostAcc = 0;
@@ -206,6 +215,7 @@ export class World {
         this.orbCount = 0; this.ambientCount = 0; this.oHigh = 0;
         this.powerups = [];
         this.nextPowerup = 10;
+        this.clouds = []; this.cloudSeq = 0;      // acid clouds (rule elements)
         // Spatial hash over all beads.
         this.hStart = new Int32Array(HASH_SIZE + 1);
         this.hCount = new Int32Array(HASH_SIZE);
@@ -373,6 +383,7 @@ export class World {
         d.protect = T.spawnProtect;
         d.shield = 0; d.magnet = 0; d.fire = 0; d.breath = 0; d.breathHit = false;
         d.breathLevel = 0; d.breathHits.length = 0;
+        d.element = d.breathEl = 'fire'; d.chill = d.stun = 0; d.acidAcc = 0;
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
@@ -454,8 +465,13 @@ export class World {
 
     move(d, dt) {
         const inp = d.input, a = this.arena;
-        if (d.wallAssist) this.wallAssist(d);
-        d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
+        // Struck by lightning: the stick goes dead and you fly straight;
+        // only the wall assist (for everyone while stunned) may steer.
+        // Chilled by ice: slow, no boost, stiff turns.
+        const stunned = d.stun > 0, chilled = d.chill > 0;
+        if (stunned) { inp.sx = inp.sy = inp.roll = 0; inp.boost = inp.brake = false; }
+        if (d.wallAssist || stunned) this.wallAssist(d);
+        d.boosting = inp.boost && !inp.brake && !chilled && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
         d.braking = inp.brake;
         const mode = d.braking ? 'Brake' : d.boosting ? 'Boost' : 'Cruise';
         // Smooth the stick a touch so turns have weight.
@@ -465,7 +481,7 @@ export class World {
         let sx = d.steer.x, sy = d.steer.y;
         const mag = Math.hypot(sx, sy);
         if (mag > 1) { sx /= mag; sy /= mag; }
-        const omega = T['turn' + mode] * DEG * (1 - T.sizeTurnPenalty * Math.min(1, d.mass / 2000));
+        const omega = T['turn' + mode] * DEG * (1 - T.sizeTurnPenalty * Math.min(1, d.mass / 2000)) * (chilled ? T.chillTurn : 1);
         // One rotation about the local axis perpendicular to the stick.
         const m2 = Math.hypot(sx, sy);
         if (m2 > 1e-5) {
@@ -499,7 +515,9 @@ export class World {
         // Speed.
         let target = T['speed' + mode] * (mode === 'Brake' ? 1 : this.speedMult(d));
         if (a.gravity) target = Math.max(T.speedBrake, target + T.diveBoost * -d.fwd.y);
+        if (chilled) target *= T.chillSpeed;
         d.speed += (target - d.speed) * (T.speedTau > 0 ? 1 - Math.exp(-dt / T.speedTau) : 1);
+        if (chilled && d.speed > target) d.speed = target;          // the frost bites at once
 
         // Velocity direction trails the nose → carved turns.
         const kc = T.carveTau > 0 ? 1 - Math.exp(-dt / T.carveTau) : 1;
@@ -511,6 +529,19 @@ export class World {
         // Cosmetic bank into turns.
         const bt = sx * T.visualBank * DEG;
         d.bank += (bt - d.bank) * (1 - Math.exp(-dt / 0.15));
+    }
+
+    // Would flying straight on hit a wall or the cloud sea within the wall
+    // assist's look-ahead? (The safe space is convex, so the far end decides.)
+    wallAhead(d) {
+        _a3.copy(d.pos).addScaledVector(d.vdir, Math.max(20, d.speed * T.assistLook));
+        return hazardDist(this.arena, _a3)[0] < d.r + 8;
+    }
+
+    // Chill and stun wear off.
+    status(d, dt) {
+        if (d.chill > 0) d.chill = Math.max(0, d.chill - dt);
+        if (d.stun > 0) d.stun = Math.max(0, d.stun - dt);
     }
 
     // Record a path point every PATH_STEP metres of travel (the tail).
@@ -531,15 +562,27 @@ export class World {
     // move faster than they're allowed to fly (a rolling speed budget that
     // tolerates network bunching). Anything clamped is flagged so the
     // server can correct that player's browser.
+    // A chill or stun is enforced here too, so a browser can't ignore it:
+    // chilled, the budget is the slowed, boostless one; stunned, only
+    // progress along the heading counts and turns are refused (unless a
+    // wall is ahead, where the browser's wall assist may steer).
     applyNet(d, dt) {
         const inp = d.input, n = d.net;
-        d.boosting = inp.boost && !inp.brake && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
-        d.braking = inp.brake;
-        const top = (d.boosting ? T.speedBoost : T.speedCruise) * this.speedMult(d) + T.diveBoost + 1;
+        const chilled = d.chill > 0 && this.time - d.chillAt > NET_GRACE;
+        const stunned = d.stun > 0 && this.time - d.stunAt > NET_GRACE && !this.wallAhead(d);
+        d.boosting = inp.boost && !inp.brake && !chilled && !stunned && d.mass >= T.boostMinMass && d.thrust > 0 && !d.thrustLocked;
+        d.braking = inp.brake && !stunned;
+        const top = ((d.boosting ? T.speedBoost : T.speedCruise) * this.speedMult(d) + T.diveBoost + 1) * (chilled ? T.chillSpeed : 1);
         d.moveBudget = Math.min(top * 0.5, d.moveBudget + top * dt * 1.15);
         if (n && n.fresh) {
             n.fresh = false;
             const want = _a1.set(n.x, n.y, n.z);
+            if (stunned) {
+                const along = Math.max(0, _a2.subVectors(want, d.pos).dot(d.vdir));
+                _a3.copy(d.pos).addScaledVector(d.vdir, along);
+                if (want.distanceTo(_a3) > 1) d.corrected = true;
+                want.copy(_a3);
+            }
             let dist = want.distanceTo(d.pos);
             if (dist > d.moveBudget) {
                 want.sub(d.pos).multiplyScalar(d.moveBudget / dist).add(d.pos);
@@ -547,10 +590,10 @@ export class World {
                 d.corrected = true;
             }
             d.moveBudget -= dist;
-            if (dist > 1e-4) d.vdir.subVectors(want, d.pos).normalize();
+            if (dist > 1e-4 && !stunned) d.vdir.subVectors(want, d.pos).normalize();
             d.pos.copy(want);
             _q1.set(n.qx, n.qy, n.qz, n.qw);
-            if (_q1.lengthSq() > 0.5) d.quat.copy(_q1).normalize();
+            if (_q1.lengthSq() > 0.5 && !stunned) d.quat.copy(_q1).normalize();
             d.updateFrame();
             d.bank = Math.max(-1.2, Math.min(1.2, n.bank || 0));
         }
@@ -670,7 +713,9 @@ export class World {
             // Walls and obstacles.
             const [hd, surface] = hazardDist(this.arena, d.pos);
             if (hd < rh) { deaths.push({ d, killer: null, cause: surface }); continue; }
-            if (d.protect > 0) continue;
+            // Protected, or stunned by lightning: it can't steer, so a body it's
+            // carried into doesn't count (an element never kills on its own).
+            if (d.protect > 0 || d.stun > 0) continue;
             // Head → other tails. The closest bead touched decides: a tail tip
             // (last biteBeads) is a bite when tailBite is on; anything else kills.
             let killer = null, hitD = Infinity, hitIdx = -1;
@@ -721,10 +766,10 @@ export class World {
         const ds = this.dragons;
         for (let i = 0; i < ds.length; i++) {
             const a = ds[i];
-            if (!a.alive || a.protect > 0) continue;
+            if (!a.alive || a.protect > 0 || a.stun > 0) continue;
             for (let j = i + 1; j < ds.length; j++) {
                 const b = ds[j];
-                if (!b.alive || b.protect > 0) continue;
+                if (!b.alive || b.protect > 0 || b.stun > 0) continue;
                 const rr = (a.r + b.r) * T.headColScale;
                 if (a.pos.distanceToSquared(b.pos) < rr * rr) {
                     const ratio = a.mass / b.mass;
@@ -838,7 +883,7 @@ export class World {
             this.nextPowerup = this.time + T.powerupEvery * (0.75 + Math.random() * 0.5);
             if (this.powerups.length < T.powerupMax) {
                 const types = ['shield', 'magnet'];
-                if (T.dragonfire) types.push('fire', 'fire');
+                if (T.dragonfire) types.push(this.breathCrystal(), this.breathCrystal());
                 const p = new Vector3();
                 this.foodPoint(12, p);   // hotspots where the food is
                 const type = types[Math.floor(Math.random() * types.length)];
@@ -855,8 +900,13 @@ export class World {
                 if (d.pos.distanceToSquared(pu.pos) < rr * rr) {
                     if (pu.type === 'shield') d.shield = T.shieldTime;
                     else if (pu.type === 'magnet') d.magnet = T.magnetTime;
-                    // Dragonfire charges stack (rule fireCharge), up to fireChargeMax.
-                    else d.fire = this.rule('fireCharge') ? Math.min(Math.max(1, this.rule('fireChargeMax')), d.fire + 1) : 1;
+                    else {
+                        // Breath charges stack (rule fireCharge), up to fireChargeMax,
+                        // and the last crystal's element (rule elements) is what they
+                        // breathe. Browsers that only know fire always breathe fire.
+                        d.fire = this.rule('fireCharge') ? Math.min(Math.max(1, this.rule('fireChargeMax')), d.fire + 1) : 1;
+                        d.element = this.rule('elements') && !d.fireOnly && ELEMENTS.includes(pu.type) ? pu.type : 'fire';
+                    }
                     this.emit({ type: 'powerup', d, kind: pu.type, charge: d.fire });
                     this.powerups.splice(k, 1);
                     break;
@@ -865,17 +915,26 @@ export class World {
         }
     }
 
+    // A breath crystal: fire, or (rule elements) for a share of them ice,
+    // lightning or acid.
+    breathCrystal() {
+        if (!this.rule('elements') || !(Math.random() < T.elementShare)) return 'fire';
+        return ELEMENTS[1 + Math.floor(Math.random() * 3)];
+    }
+
     // How big a breath of `lv` stored charges is (rule fireCharge). One
     // charge is the classic dragonfire; each extra charge adds a share of
     // its range, cone half-angle and time, and (every other charge) one
     // more tail it can cut. With the rule off every breath is level 1.
+    // rs and ts are the range and time scales the other elements use.
     breathStats(lv) {
         const k = this.rule('fireCharge') ? Math.max(0, Math.min(this.rule('fireChargeMax'), lv) - 1) : 0;
+        const rs = 1 + T.fireChargeRange * k, ts = 1 + T.fireChargeTime * k;
         return {
-            k,
-            range: T.fireRange * (1 + T.fireChargeRange * k),
+            k, rs, ts,
+            range: T.fireRange * rs,
             angle: Math.min(80, T.fireAngle * (1 + T.fireChargeAngle * k)),
-            time: T.fireTime * (1 + T.fireChargeTime * k),
+            time: T.fireTime * ts,
             cuts: 1 + Math.floor(T.fireChargeCuts * k + 1e-6),
         };
     }
@@ -907,26 +966,180 @@ export class World {
     // (breathStats). Each enemy tail that enters the cone is cut once, up
     // to the breath's cut count, then the flame dies down; everything past
     // a cut burns into loot. Heads can't be hit.
+    // With rule elements the charges breathe the last crystal's element:
+    // ice chills everyone in the cone, lightning strikes the first dragon
+    // in line (crackling for half the time until something is in reach)
+    // and acid spits a cloud. None of them kills; spawn protection blocks
+    // them all and, as with fire, the Ember Shield doesn't.
     updateBreath(d, dt) {
-        if (d.input.fire && d.fire && d.breath <= 0) {
-            d.breathLevel = d.fire; d.fire = 0;
-            d.breath = this.breathStats(d.breathLevel).time;
+        if (d.input.fire && d.fire && d.breath <= 0 && !(d.stun > 0)) {
+            const el = this.rule('elements') && ELEMENTS.includes(d.element) ? d.element : 'fire';
+            d.breathLevel = d.fire; d.fire = 0; d.breathEl = el;
+            const st = this.breathStats(d.breathLevel);
+            d.breath = el === 'bolt' ? st.time / 2 : el === 'acid' ? 0.4 : st.time;
             d.breathHit = false; d.breathHits.length = 0;
-            this.emit({ type: 'fireStart', d, lv: d.breathLevel });
+            this.emit({ type: 'fireStart', d, lv: d.breathLevel, el });
+            if (el === 'acid') { this.spitAcid(d, st); d.breathHit = true; }
         }
         if (d.breath <= 0) return;
         d.breath -= dt;
-        const cuts = this.breathStats(d.breathLevel).cuts;
-        const t = d.breathHits.length < cuts ? this.fireTarget(d, d.breathLevel, d.breathHits) : null;
-        if (t) {
-            this.sever(d, t);
-            d.breathHits.push(t.o.id); d.breathHit = true;
-            if (d.breathHits.length >= cuts) d.breath = Math.min(d.breath, 0.25);
+        const st = this.breathStats(d.breathLevel);
+        if (d.breathEl === 'ice') this.frost(d, st);
+        else if (d.breathEl === 'bolt') { if (!d.breathHit && this.strike(d, st)) { d.breathHit = true; d.breath = Math.min(d.breath, 0.15); } }
+        else if (d.breathEl === 'fire') {
+            const t = d.breathHits.length < st.cuts ? this.fireTarget(d, d.breathLevel, d.breathHits) : null;
+            if (t) {
+                this.sever(d, t);
+                d.breathHits.push(t.o.id); d.breathHit = true;
+                if (d.breathHits.length >= st.cuts) d.breath = Math.min(d.breath, 0.25);
+            }
         }
         if (d.breath <= 0) {
-            if (!d.breathHit) this.emit({ type: 'fireMiss', d });
+            if (!d.breathHit) this.emit({ type: 'fireMiss', d, el: d.breathEl });
             d.breathHit = false; d.breath = 0;
         }
+    }
+
+    // The nearest point (head or body) of another dragon within `range` of
+    // p, inside d's forward cone of half-angle `angle` (deg; 0 = any
+    // direction), skipping protected dragons and those in `skip`. Returns
+    // { o, x, y, z } or null.
+    nearestPart(d, p, range, angle, skip) {
+        const cosA = angle ? Math.cos(angle * DEG) : -2, f = d.fwd;
+        let best = null, bd = range;
+        for (const o of this.dragons) {
+            if (o === d || !o.alive || o.protect > 0 || skip.includes(o)) continue;
+            if (o.pos.distanceTo(p) > bd + o.len + o.r) continue;              // none of it can be that close
+            for (let b = -1; b < o.nBeads; b++) {
+                const x = b < 0 ? o.pos.x : o.beads[b * 3], y = b < 0 ? o.pos.y : o.beads[b * 3 + 1], z = b < 0 ? o.pos.z : o.beads[b * 3 + 2];
+                const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist - o.r > bd) continue;
+                if (angle && (dx * f.x + dy * f.y + dz * f.z) / (dist || 1) < cosA) continue;
+                best = { o, x, y, z }; bd = Math.max(0, dist - o.r);
+            }
+        }
+        return best;
+    }
+
+    // Ice: every dragon with any part in the frost cone is chilled (slow,
+    // no boost, stiff turns) for chillTime × the breath's time scale.
+    frost(d, st) {
+        const t = T.chillTime * st.ts, cosA = Math.cos(st.angle * DEG), f = d.fwd;
+        for (const o of this.dragons) {
+            if (o === d || !o.alive || o.protect > 0 || o.pos.distanceTo(d.pos) > st.range + o.len + o.r) continue;
+            for (let b = -1; b < o.nBeads; b += 2) {
+                const x = b < 0 ? o.pos.x : o.beads[b * 3], y = b < 0 ? o.pos.y : o.beads[b * 3 + 1], z = b < 0 ? o.pos.z : o.beads[b * 3 + 2];
+                const dx = x - d.pos.x, dy = y - d.pos.y, dz = z - d.pos.z;
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist > st.range + o.r || (dx * f.x + dy * f.y + dz * f.z) / (dist || 1) < cosA) continue;
+                if (!(o.chill > 0)) o.chillAt = this.time;
+                o.chill = Math.max(o.chill, t);
+                if (!d.breathHits.includes(o.id)) { d.breathHits.push(o.id); d.breathHit = true; this.emit({ type: 'chill', d, o, t }); }
+                break;
+            }
+        }
+    }
+
+    // Lightning: a long, narrow bolt (boltRange × the breath's range)
+    // strikes the first dragon in line, then jumps to the nearest
+    // unstruck dragon within boltChain m, 1 + one per two extra charges
+    // times (at most boltChainMax). Each is stunned for stunTime × the
+    // time scale and sheds boltShed × that of its mass as food.
+    // Returns the dragons struck, or null.
+    strike(d, st) {
+        const first = this.nearestPart(d, d.pos, st.range * T.boltRange, T.boltAngle * st.angle / T.fireAngle, []);
+        if (!first) return null;
+        const hits = [first], struck = [first.o];
+        const chains = Math.min(T.boltChainMax, 1 + Math.floor(st.k / 2));
+        for (let c = 0; c < chains; c++) {
+            const next = this.nearestPart(d, hits[hits.length - 1], T.boltChain, 0, struck);
+            if (!next) break;
+            hits.push(next); struck.push(next.o);
+        }
+        const stun = T.stunTime * st.ts, m = d.r * 2;
+        const pts = [d.pos.x + d.fwd.x * m, d.pos.y + d.fwd.y * m, d.pos.z + d.fwd.z * m];
+        for (const h of hits) {
+            const o = h.o;
+            if (!(o.stun > 0)) o.stunAt = this.time;
+            o.stun = Math.max(o.stun, stun);
+            const shed = Math.min(Math.max(0, o.mass - T.spawnMass), Math.max(2, o.mass * T.boltShed * st.ts));
+            if (shed > 0.5) { o.mass -= shed; this.scatter(h.x, h.y, h.z, shed * T.lootShare, o.color, 0xD9C2FF); }
+            d.breathHits.push(o.id);
+            pts.push(h.x, h.y, h.z);
+        }
+        this.emit({ type: 'bolt', d, hits: struck, pts, stun });
+        return struck;
+    }
+
+    // Food in a little burst around a point: `total` mass in orbs of about 3.
+    scatter(x, y, z, total, c1, c2) {
+        const n = Math.max(1, Math.ceil(total / 3)), val = total / n;
+        for (let k = 0; k < n; k++) {
+            this.addOrb(x + (Math.random() - 0.5) * 3, y + (Math.random() - 0.5) * 3, z + (Math.random() - 0.5) * 3, val, k % 2 ? c1 : c2, T.lootTtl);
+        }
+    }
+
+    // Acid: spit a cloud ahead (acidRadius × the range scale, lingering
+    // acidTime × the time scale). It sails on a little, then hangs there.
+    spitAcid(d, st) {
+        const r = T.acidRadius * st.rs, life = T.acidTime * st.ts, ahead = d.r * 2 + r, v = d.speed + 10;
+        this.clouds.push({ id: ++this.cloudSeq, x: d.pos.x + d.fwd.x * ahead, y: d.pos.y + d.fwd.y * ahead, z: d.pos.z + d.fwd.z * ahead,
+            vx: d.fwd.x * v, vy: d.fwd.y * v, vz: d.fwd.z * v, r, ttl: life, life, owner: d.id, rate: T.acidRate * st.ts });
+        if (this.clouds.length > MAX_CLOUDS) this.clouds.shift();
+    }
+
+    // Acid clouds drift to a stop and fade. Any dragon but the spitter with
+    // its head or body inside melts `rate` mass/s off its tail, which drops
+    // as food where the acid touches it. Never below spawn size.
+    updateClouds(dt) {
+        const k = Math.exp(-dt / 0.5);
+        for (let i = this.clouds.length - 1; i >= 0; i--) {
+            const c = this.clouds[i];
+            c.ttl -= dt;
+            if (c.ttl <= 0) { this.clouds.splice(i, 1); continue; }
+            c.vx *= k; c.vy *= k; c.vz *= k;
+            _v1.set(c.x + c.vx * dt, c.y + c.vy * dt, c.z + c.vz * dt);
+            if (hazardDist(this.arena, _v1)[0] > c.r * 0.5) { c.x = _v1.x; c.y = _v1.y; c.z = _v1.z; } else c.vx = c.vy = c.vz = 0;
+            for (const o of this.dragons) {
+                if (!o.alive || o.id === c.owner || o.protect > 0) continue;
+                const touch = this.acidTouch(c, o);
+                if (touch < -1) continue;
+                const lost = Math.min(c.rate * dt, Math.max(0, o.mass - T.spawnMass));
+                if (lost <= 0) continue;
+                o.mass -= lost;
+                o.acidAcc += lost * T.lootShare;
+                const x = touch < 0 ? o.pos.x : o.beads[touch * 3], y = touch < 0 ? o.pos.y : o.beads[touch * 3 + 1], z = touch < 0 ? o.pos.z : o.beads[touch * 3 + 2];
+                while (o.acidAcc >= 1.5) {
+                    o.acidAcc -= 1.5;
+                    this.addOrb(x + (Math.random() - 0.5) * 2, y + (Math.random() - 0.5) * 2, z + (Math.random() - 0.5) * 2, 1.5, o.color, T.lootTtl);
+                }
+                if (this.time - o.lastAcid > 1.5) { o.lastAcid = this.time; this.emit({ type: 'acid', d: this.byId.get(c.owner) || null, o }); }
+            }
+        }
+    }
+
+    // Which part of o is inside cloud c: −1 the head, a bead index, or −2 none.
+    acidTouch(c, o) {
+        const dx0 = o.pos.x - c.x, dy0 = o.pos.y - c.y, dz0 = o.pos.z - c.z, rr = c.r + o.r * 0.5;
+        const d0 = dx0 * dx0 + dy0 * dy0 + dz0 * dz0;
+        if (d0 > (rr + o.len) ** 2) return -2;
+        if (d0 < rr * rr) return -1;
+        for (let b = 0; b < o.nBeads; b += 2) {
+            const dx = o.beads[b * 3] - c.x, dy = o.beads[b * 3 + 1] - c.y, dz = o.beads[b * 3 + 2] - c.z;
+            if (dx * dx + dy * dy + dz * dz < rr * rr) return b;
+        }
+        return -2;
+    }
+
+    // Is p in (or within pad of) an acid cloud that would hurt dragon `selfId`? Bots steer clear.
+    inAcid(p, selfId, pad = 0) {
+        for (const c of this.clouds) {
+            if (c.owner === selfId) continue;
+            const dx = c.x - p.x, dy = c.y - p.y, dz = c.z - p.z, rr = c.r + pad;
+            if (dx * dx + dy * dy + dz * dz < rr * rr) return true;
+        }
+        return false;
     }
 
     sever(d, t) {
@@ -971,12 +1184,13 @@ export class World {
         const client = this.mode === 'client';
         for (const d of this.dragons) {
             if (!d.alive) continue;
-            if (client) { if (d === this.player) this.fly(d, dt); continue; }   // the rest arrive in snapshots
+            if (client) { if (d === this.player) { this.fly(d, dt); this.status(d, dt); } continue; }   // the rest arrive in snapshots
             if (d.brain) d.brain.think(this, d, dt);
             this.updateHeat(d, dt);
             if (d.remote) { this.applyNet(d, dt); this.upkeep(d, dt); }
             else this.fly(d, dt);
             this.updateBreath(d, dt);
+            this.status(d, dt);
         }
         for (const d of this.dragons) if (d.alive) d.rebuildBeads();
         if (client) return;
@@ -984,6 +1198,7 @@ export class World {
         this.collide();
         this.updateOrbs(dt);
         this.updatePowerups(dt);
+        if (this.clouds.length) this.updateClouds(dt);
         // Stats bucket (1 s).
         const b = this._bucket;
         for (const d of this.dragons) if (d.alive) { b.ds += dt; if (d === this.player) b.pds += dt; }

@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=19';
-import { World, Dragon, hazardDist } from './sim.js?v=19';
-import { managePopulation, targetBots } from './bots.js?v=19';
-import { Renderer } from './render.js?v=31';
-import { ChaseCam } from './camera.js?v=19';
-import { Input } from './input.js?v=22';
-import { Hud } from './hud.js?v=20';
-import { Audio } from './audio.js?v=12';
-import { TunePanel } from './tune-panel.js?v=20';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=20';
+import { World, Dragon, hazardDist } from './sim.js?v=20';
+import { managePopulation, targetBots } from './bots.js?v=20';
+import { Renderer } from './render.js?v=32';
+import { ChaseCam } from './camera.js?v=20';
+import { Input } from './input.js?v=23';
+import { Hud } from './hud.js?v=21';
+import { Audio } from './audio.js?v=13';
+import { TunePanel } from './tune-panel.js?v=21';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=21';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=22';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -198,7 +198,8 @@ function handleEvents() {
             case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); hype(); break;
             case 'powerup':
                 if (mine) {
-                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', fire: fireToast(e.charge) }[e.kind]); audio.powerup(e.kind); hype(); speak(e.kind);
+                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food' }[e.kind] || fireToast(e.kind, e.charge)); audio.powerup(e.kind); hype(); speak(e.kind);
+                    if (ELEMENT_HINT[e.kind] && !hinted.has(e.kind)) { hinted.add(e.kind); setTimeout(() => hud.toast(ELEMENT_HINT[e.kind], 'hint'), 1200); }
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
@@ -213,10 +214,30 @@ function handleEvents() {
             case 'land': hud.feed(`🪽 ${e.d.name} folded their wings`); break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
             case 'fireStart':
-                if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.fire(e.lv);
+                if (mine || e.d.pos.distanceTo(cam.pos) < 60) audio.breath(e.el, e.lv);
                 break;
             case 'fireMiss':
-                if (mine) hud.toast(`Missed — dragonfire reaches ${Math.round(world.breathStats(player.breathLevel || 1).range)} m ahead`, 'bad');
+                if (mine) {
+                    const st = world.breathStats(player.breathLevel || 1);
+                    hud.toast(`Missed — ${{ ice: 'frost', bolt: 'lightning' }[e.el] || 'dragonfire'} reaches ${Math.round(e.el === 'bolt' ? st.range * T.boltRange : st.range)} m ahead`, 'bad');
+                }
+                break;
+            // Breath elements: frozen, zapped, melted (none of them kills).
+            case 'chill':
+                if (e.o === player) { hud.toast(`FROZEN by ${e.d.name} — slow for a moment`, 'bad'); audio.chilled(); }
+                else if (mine) { hud.toast(`FROZE ${e.o.name}!`, 'nm'); hype(6); }
+                hud.feed(`❄ ${e.d.name} froze ${e.o.name}`);
+                break;
+            case 'bolt':
+                renderer.zap(e.pts, e.d, e.hits);
+                if (mine || e.d.pos.distanceTo(cam.pos) < 80) audio.zap();
+                if (e.hits.includes(player)) { hud.toast(`ZAPPED by ${e.d.name}!`, 'bad'); audio.stunned(); }
+                else if (mine && e.hits.length) { hud.toast(`ZAPPED ${e.hits.length > 1 ? e.hits.length + ' DRAGONS' : e.hits[0].name}!`, 'big'); hype(8); }
+                if (e.hits.length) hud.feed(`⚡ ${e.d.name} zapped ${e.hits.map((o) => o.name).join(', ')}`);
+                break;
+            case 'acid':
+                if (e.o === player) { hud.toast('ACID! Fly out of the cloud', 'bad'); audio.sizzle(); }
+                else if (mine) hud.toast(`Your acid is melting ${e.o.name}`, 'nm');
                 break;
             case 'sever':
                 renderer.burnSegment(e.burn);
@@ -239,11 +260,21 @@ function handleEvents() {
     }
 }
 
-// Dragonfire charges stack (rule fireCharge): say how many you hold.
-function fireToast(n) {
+// Breath charges stack (rule fireCharge): say what you'll breathe and how
+// many charges you hold. The first time you meet each new element, a hint
+// says what it does.
+const BREATH_NAME = { fire: 'DRAGONFIRE', ice: 'FROST BREATH ❄', bolt: 'LIGHTNING ⚡', acid: 'ACID SPIT' };
+const ELEMENT_HINT = {
+    ice: 'Frost slows every dragon in the cone: no boost, stiff turns',
+    bolt: 'Lightning stuns the first dragon in line, then jumps to its neighbours',
+    acid: 'Spit acid in a dragon\'s path: the cloud melts tails (never yours)',
+};
+const hinted = new Set();
+function fireToast(kind, n) {
     const max = world.rule('fireCharge') ? world.rule('fireChargeMax') : 1, key = input.isTouch ? 'tap 🔥' : 'press E';
-    if (!(max > 1) || !(n > 1)) return 'DRAGONFIRE — ' + key;
-    return n >= max ? `DRAGONFIRE ×${n} — FULL POWER!` : `DRAGONFIRE ×${n} — save up or ${key}`;
+    const name = BREATH_NAME[kind] || BREATH_NAME.fire;
+    if (!(max > 1) || !(n > 1)) return `${name} — ${key}`;
+    return n >= max ? `${name} ×${n} — FULL POWER!` : `${name} ×${n} — save up or ${key}`;
 }
 
 // e.left: you chose 'Leave to menu' (solo), which ends the game.
@@ -657,7 +688,7 @@ input.onKey = (code, e) => {
     else if (overlay && (code === 'Escape' || (code === 'Enter' && !onControl(e)))) closeOverlay();
     else if (overlay) return;
     else if ((code === 'KeyE' || code === 'KeyF') && state === 'play' && player && player.alive && !player.fire && !(player.breath > 0)) {
-        hud.toast('No dragonfire — grab a red crystal first', 'hint');
+        hud.toast(world.rule('elements') ? 'Nothing to breathe — grab a fire, ice, lightning or acid crystal' : 'No dragonfire — grab a red crystal first', 'hint');
     }
     else if (code === 'Escape' || code === 'KeyP') {
         if (state === 'play') pause();

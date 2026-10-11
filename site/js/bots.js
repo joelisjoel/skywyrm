@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=19';
-import { Dragon, hazardDist } from './sim.js?v=19';
+import { T } from './tunables.js?v=20';
+import { Dragon, hazardDist } from './sim.js?v=20';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -53,6 +53,7 @@ for (const ring of [30, 65]) {
     }
 }
 const _dir = new Vector3();
+const ACID_LOOK = [0.3, 0.6, 1, 1.5];       // s ahead a bot checks whether a dragon will meet its acid cloud
 
 class Brain {
     constructor(mood = 'sunbather') {
@@ -85,7 +86,38 @@ class Brain {
         d.input.sx = sx; d.input.sy = sy; d.input.roll = 0;
         d.input.boost = this.boost; d.input.brake = this.brake;
         d.input.fire = false;
-        if (d.fire && this.fireReady(world, d) && world.fireTarget(d)) d.input.fire = true;
+        if (d.fire && this.fireReady(world, d) && this.breathTarget(world, d)) d.input.fire = true;
+    }
+
+    // Is now a good moment to breathe what we hold (rule elements)? Fire:
+    // a tail in the cone. Ice and lightning: our prey, a bigger dragon or
+    // one coming at us is in reach (slow it, stop it). Acid: a dragon is
+    // about to fly into where the cloud will hang, or one is close on our
+    // tail (it will follow us through it).
+    breathTarget(world, d) {
+        const el = world.rule('elements') ? d.element : 'fire';
+        if (el !== 'ice' && el !== 'bolt' && el !== 'acid') return !!world.fireTarget(d);
+        const st = world.breathStats(d.fire);
+        if (el !== 'acid') {
+            const t = el === 'bolt' ? world.nearestPart(d, d.pos, st.range * T.boltRange, T.boltAngle * st.angle / T.fireAngle, [])
+                : world.nearestPart(d, d.pos, st.range * 0.8, st.angle, []);
+            if (!t) return false;
+            const o = t.o;
+            return (this.goal && this.goal.kind === 'prey' && this.goal.o === o) || o.mass > d.mass || _v.subVectors(d.pos, o.pos).dot(o.vdir) > 0;
+        }
+        const r = T.acidRadius * st.rs, v = d.speed + 10;
+        for (const o of world.dragons) {
+            if (o === d || !o.alive || o.protect > 0 || o.pos.distanceToSquared(d.pos) > 3600) continue;
+            // Will it meet the cloud (which sails on about v/2 m, then hangs) soon?
+            for (const t of ACID_LOOK) {
+                _p.copy(d.pos).addScaledVector(d.fwd, d.r * 2 + r + v * 0.5 * (1 - Math.exp(-t / 0.5)));
+                if (_v.copy(o.pos).addScaledVector(o.vdir, o.speed * t).distanceTo(_p) < r + o.r + 1) return true;
+            }
+            _v.subVectors(d.pos, o.pos);
+            const dist = _v.length();
+            if (dist < 25 && _v.dot(d.fwd) > 0 && _v.dot(o.vdir) > dist * 0.8) return true;   // on our tail: it will follow us through
+        }
+        return false;
     }
 
     // Dragonfire charges stack (rule fireCharge): bold bots (hunters,
@@ -108,6 +140,7 @@ class Brain {
             _p.copy(d.pos).addScaledVector(dir, s);
             if (hazardDist(world.arena, _p)[0] < 2 + d.r) return s;
             if (world.tailDanger(_p, d.id, pad, tip)) return s;
+            if (world.clouds.length && world.inAcid(_p, d.id, pad)) return s;    // someone's acid
             const t = s / Math.max(6, d.speed);
             for (const o of near) {
                 const rr = o.r + pad + 0.8;

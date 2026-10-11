@@ -193,13 +193,18 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**.
 
 ### 5.8 Power-ups ✅
 
-Crystals appear about every 20 s, with up to 5 in the sky at once. Half of them are fire.
+Crystals appear about every 20 s, with up to 5 in the sky at once. Half of
+them are breath crystals: fire, or (rule `elements`) half the time ice,
+lightning or acid.
 
 | Crystal | Effect |
 |---|---|
-| **Ember Shield** (orange) | Lasts 12 s and survives one body hit. It does *not* stop head-ons, walls or fire |
+| **Ember Shield** (orange) | Lasts 12 s and survives one body hit. It does *not* stop head-ons, walls or any breath |
 | **Lodestone** (blue) | Lasts 10 s and pulls food within 18 m with tractor beams |
 | **Dragonfire** (red) | A breath (1.2 s, a 24 m, 30° cone for one crystal) that burns through the nearest tail and cuts it off there. 80% of the lost part drops as food. It never kills. Red crystals stack (below). Bots use it too |
+| **Frost** (ice-blue shard) | The same cone, in frost. Every dragon it touches is chilled for 2.5 s: half speed, no boost, turns 40% slower |
+| **Lightning** (violet star) | A long, narrow bolt (36 m) strikes the first dragon in line and jumps to the nearest one within 14 m. Each is stunned for 0.6 s (it can't steer and flies straight) and sheds 4% of its mass as food |
+| **Acid** (green bubble) | Spits a cloud (6 m radius) ahead that hangs for 6 s. Any other dragon with its body in it melts 4 mass a second into food while it stays inside. Your own acid never hurts you |
 
 **Stacking dragonfire** (rule `fireCharge`) ✅
 - Each red crystal adds one charge, up to 5 (`fireChargeMax`). Pressing fire
@@ -223,6 +228,33 @@ Crystals appear about every 20 s, with up to 5 in the sky at once. Half of them 
   one, and a full stack is always used.
 - With the rule off, crystals don't stack and every breath is the one-charge
   breath.
+
+**Breath elements** (rule `elements`) ✅
+- Ice, lightning and acid charges are the same charges as fire. The last
+  crystal you eat decides what they breathe; the fire gauge and the phone fire
+  button take its icon and colour.
+- Every element grows with the charges spent, like dragonfire. At 5 charges:
+  frost chills for 5 s; lightning reaches 72 m, jumps up to 3 times, stuns for
+  1.2 s and sheds 8%; acid clouds have a 12 m radius, last 12 s and melt 8
+  mass a second.
+- **Kid-safe by design.** Nothing here kills on its own:
+  - a stunned dragon can't die on a body it's carried into, and the wall
+    assist steers anyone stunned clear of walls
+  - acid stops at the spawn size
+  - spawn protection blocks every breath
+  - the Ember Shield blocks none of them, the same as dragonfire (§14)
+- **Readable:** toasts ("FROZEN by …", "ZAPPED …", "ACID! Fly out of the
+  cloud"), feed lines, and a one-line hint the first time you hold each
+  element. Chilled dragons turn frost-white and shed snow; stunned ones
+  flicker violet and crackle. Your own chill and stun show as gauges, and
+  acid clouds show on the radar as green rings.
+- **Bots** use ice and lightning on their prey, on bigger dragons and on
+  dragons coming at them. They spit acid where a dragon is about to fly, or
+  at one close on their tail, and steer around other dragons' acid.
+- **Online** the server decides every hit. Your browser applies a chill or
+  stun to your own flight at once, and the server enforces it too (a slower
+  speed budget while chilled, no turning while stunned) after a 0.25 s grace.
+- With the rule off, only fire crystals spawn and every crystal breathes fire.
 
 ### 5.9 Bots ✅
 - **Numbers:** 3 at the start, then one more every 20 s, up to 30. Online, the
@@ -398,10 +430,11 @@ device.
 
 ### 10.3 HUD
 - **Bottom-left:** length, kills, lives (pearls), tier with speed, and gauges
-  for heat, thrust and fire (with a lit arc per stored charge). Shield and
-  magnet gauges appear only while active.
+  for heat, thrust and fire (with a lit arc per stored charge, in the colour
+  of its element). Shield, magnet, chilled and stunned gauges appear only
+  while active; on phones they stack above the others, clear of the radar.
 - **Radar** at the bottom centre, with a 60 m range. It shows above and below,
-  power-ups, the centre and the leader.
+  power-ups, acid clouds, the centre and the leader.
 - **Top:** leaderboard, kill feed, and toasts.
 - **Over the world:**
   - names over dragons within 50 m
@@ -410,7 +443,9 @@ device.
 
 ### 10.4 Sound
 - **Effects:** all synthesised live, with no sound files. Wind, a rising chime
-  for eating, whooshes, power-up sounds and dragonfire.
+  for eating, whooshes, power-up sounds, and a sound for each breath (fire,
+  frost, lightning, acid) and for being frozen, zapped or caught in acid. The
+  new elements have no voice lines.
 - **Music:** generated live in D minor at 118 BPM. It has three intensity levels
   (menu, flying, action), and it muffles when paused.
 - **Background:** all sound stops while the tab is hidden and comes back
@@ -527,7 +562,7 @@ These are listed roughly by how much a player would notice.
    subset covers every Chinese character the site uses). The body font Nunito
    is still never loaded.
 6. **The shield is narrower than it looks.** It doesn't stop head-ons, walls or
-   dragonfire.
+   any breath (fire, ice, lightning or acid).
 7. Saved profile stats (best length, best kills, games played) are never shown.
 8. Auto graphics re-tests on every visit instead of remembering that it dropped
    to Low.
@@ -551,3 +586,7 @@ Each decision has a recommended default, so work can start on that default.
    counter unless `?dev=1` is in the URL. ✅ Done (localhost pages count too).
 6. **Hardcore mode.** Beginner is the only mode now. Recommend adding a
    non-beginner mode later, as a per-room rule, only if the kids ask for it.
+7. **Should the Ember Shield block breath?** Today it blocks none: not fire,
+   ice, lightning or acid. That keeps one simple rule (it saves you from one
+   body hit) and no breath kills anyway. Recommend leaving it; the alternative
+   is to let it absorb one breath hit and pop, like a body hit.

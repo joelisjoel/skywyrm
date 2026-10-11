@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=19';
-import { World, Dragon } from './sim.js?v=19';
-import { MOODS } from './bots.js?v=19';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=20';
+import { World, Dragon, ELEMENTS } from './sim.js?v=20';
+import { MOODS } from './bots.js?v=20';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -97,7 +97,8 @@ export class NetGame {
         this.parked = false;            // wings folded (Esc): out of the sky, length kept
         this.clock = new ServerClock();
         this.ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId));
-        this.ws.onopen = () => this.send({ t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '' });
+        // caps: what this browser understands beyond the original protocol ('el': breath elements).
+        this.ws.onopen = () => this.send({ t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '', caps: ['el'] });
         this.ws.onmessage = (e) => { try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); } };
         this.ws.onclose = (e) => { if (!this.closing) hooks.onClose(this.fullError || (this.world ? 'Disconnected from the server' : 'Could not reach the server')); };
     }
@@ -135,7 +136,8 @@ export class NetGame {
         for (const k of Object.keys(DEFAULTS)) if (typeof m.tune[k] === 'number' && Number.isFinite(m.tune[k])) T[k] = m.tune[k];
         const w = new World(m.room.arena, 'client');
         if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
-        if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time
+        if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time…
+        if (!('elements' in m.tune)) w.rules.elements = 0;         // …and only fire
         this.world = w; this.room = m.room; this.you = m.you;
         for (const d of m.dragons) this.dragonNew(d);
         const o = m.orbs;
@@ -197,7 +199,7 @@ export class NetGame {
         const f = s[10];
         d.alive = !!(f & 1); d.boosting = !!(f & 2); d.braking = !!(f & 4);
         d.protect = f & 8 ? 1 : 0; d.shield = f & 16 ? Math.max(d.shield, 1) : 0;
-        if (d !== this.player) { d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; }
+        if (d !== this.player) { d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; d.chill = f & 512 ? 1 : 0; d.stun = f & 1024 ? 1 : 0; }
     }
 
     snapshot(m) {
@@ -229,12 +231,14 @@ export class NetGame {
             else this.setOrb(op[1], op[2], op[3], op[4], op[5], op[6], op[7]);
         }
         this.setPowerups(m.pu);
+        w.clouds = Array.isArray(m.ac) ? m.ac.map((c) => ({ id: c[0], x: c[1], y: c[2], z: c[3], r: c[4], ttl: c[5], life: c[6] || 1, owner: c[7] })) : [];
         this.humans = m.h;
         const me = m.me, p = this.player;
         if (me && p) {
             p.temp = me.temp; p.thrust = me.thrust; p.thrustLocked = !!me.lock;
             p.fire = me.fire; p.breath = me.breath; p.breathLevel = me.bl || 1; p.shield = me.shield; p.magnet = me.magnet;
             p.kills = me.kills; p.protect = me.protect; p.thrustMult = me.tm || 1;
+            p.element = ELEMENTS.includes(me.el) ? me.el : 'fire'; p.chill = +me.ch || 0; p.stun = +me.st || 0;
             if (me.c) p.pos.set(me.c[0], me.c[1], me.c[2]);    // server clamped us: snap back
         }
     }
@@ -251,7 +255,30 @@ export class NetGame {
                     break;
                 }
                 case 'sever': { const d = this.dragon(e.id), o = this.dragon(e.o); if (d && o) this.queue({ type: 'sever', d, o, burn: e.burn || [] }); break; }
-                case 'fire': { const d = this.dragon(e.id); if (d) { d.breathLevel = e.lv > 0 ? e.lv | 0 : 1; this.queue({ type: 'fireStart', d, lv: d.breathLevel }); } break; }
+                case 'fire': {
+                    const d = this.dragon(e.id);
+                    if (d) {
+                        d.breathLevel = e.lv > 0 ? e.lv | 0 : 1; d.breathEl = ELEMENTS.includes(e.el) ? e.el : 'fire';
+                        this.queue({ type: 'fireStart', d, lv: d.breathLevel, el: d.breathEl });
+                    }
+                    break;
+                }
+                // Ice and lightning take hold at once (the snapshot confirms it).
+                case 'chill': {
+                    const d = this.dragon(e.id), o = this.dragon(e.o);
+                    if (!d || !o) break;
+                    o.chill = Math.max(o.chill, o === p ? +e.t || 0 : 1);
+                    this.queue({ type: 'chill', d, o, t: +e.t || 0 });
+                    break;
+                }
+                case 'bolt': {
+                    const d = this.dragon(e.id), hits = (Array.isArray(e.o) ? e.o : []).map((id) => this.dragon(id)).filter(Boolean);
+                    if (!d) break;
+                    for (const o of hits) o.stun = Math.max(o.stun, o === p ? +e.s || 0 : 1);
+                    this.queue({ type: 'bolt', d, hits, pts: (Array.isArray(e.p) ? e.p : []).map(Number) });
+                    break;
+                }
+                case 'acid': { const o = this.dragon(e.o); if (o) this.queue({ type: 'acid', d: this.dragon(e.id), o }); break; }
                 case 'bite': {
                     const d = this.dragon(e.id), o = this.dragon(e.o);
                     if (d && o) this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
@@ -262,7 +289,7 @@ export class NetGame {
                 case 'nm': this.queue({ type: 'nearMiss', d: p }); break;
                 case 'pu': this.queue({ type: 'powerup', d: p, kind: e.kind, charge: e.n | 0 }); break;
                 case 'shield': this.queue({ type: 'shieldPop', d: p }); break;
-                case 'miss': this.queue({ type: 'fireMiss', d: p }); break;
+                case 'miss': this.queue({ type: 'fireMiss', d: p, el: ELEMENTS.includes(e.el) ? e.el : 'fire' }); break;
                 case 'empty': this.queue({ type: 'thrustEmpty', d: p }); break;
                 case 'parking': this.queue({ type: 'parking', in: +e.in || 3 }); break;
                 case 'unparked': this.queue({ type: 'unparked' }); break;

@@ -162,6 +162,9 @@ export class Audio {
         if (kind === 'shield') { this.whoosh(0.5, 200, 2400, 0.3); this.tone(1174.66, 0.5, 'sine', 0.06, 0.05); }
         else if (kind === 'magnet') { this.tone(1760, 0.08, 'square', 0.04); this.tone(2349.3, 0.12, 'square', 0.035, 0.06); }
         else if (kind === 'fire') { this.whoosh(0.6, 120, 900, 0.45); }
+        else if (kind === 'ice') { [2349.3, 2793.8, 3520].forEach((f, i) => this.tone(f, 0.4, 'sine', 0.05, i * 0.06)); }
+        else if (kind === 'bolt') { this.tone(880, 0.12, 'square', 0.05, 0, 1760); this.tone(1760, 0.15, 'square', 0.04, 0.08, 3520); }
+        else if (kind === 'acid') { for (let i = 0; i < 4; i++) this.tone(350 + i * 120, 0.09, 'sine', 0.06, i * 0.05, 800 + i * 150); }
         this.sting(kind);
     }
     // Chomp: a short crunch and a rising blip.
@@ -175,6 +178,20 @@ export class Audio {
         this.tone(110, 0.4 + 0.12 * k, 'sawtooth', 0.08, 0, 55);
         if (k >= 2) this.tone(55, 0.5 + 0.15 * k, 'sawtooth', 0.05 + 0.01 * k, 0.05, 30);
     }
+    // Breath elements: each breath, strike and hit has its own sound.
+    breath(el, lv) {
+        if (el === 'ice') this.frost(lv);
+        else if (el === 'bolt') this.whoosh(0.3, 3000, 6000, 0.2);            // lightning gathers at the mouth
+        else if (el === 'acid') this.spit(lv);
+        else this.fire(lv);
+    }
+    frost(lv = 1) { this.whoosh(0.6 + 0.12 * Math.max(0, lv - 1), 2500, 7000, 0.35); [1760, 2349.3, 2793.8].forEach((f, i) => this.tone(f, 0.5, 'sine', 0.04, i * 0.07)); }
+    zap() { this.whoosh(0.18, 6000, 800, 0.5); this.tone(1400, 0.25, 'square', 0.06, 0, 90); this.tone(70, 0.4, 'sawtooth', 0.08, 0.02, 40); }
+    spit(lv = 1) { this.whoosh(0.3, 400, 1600, 0.4); for (let i = 0; i < 3 + Math.min(5, lv | 0); i++) this.tone(300 + Math.random() * 500, 0.08, 'sine', 0.05, 0.1 + i * 0.06, 700 + Math.random() * 400); }
+    // Hit yourself: frozen (a falling glassy note), zapped (a buzz), in acid (a sizzle).
+    chilled() { this.tone(2093, 0.6, 'triangle', 0.08, 0, 523.25); this.whoosh(0.5, 5000, 1500, 0.25); }
+    stunned() { this.tone(110, 0.5, 'square', 0.07, 0, 80); this.tone(116, 0.5, 'square', 0.05); }
+    sizzle() { this.whoosh(0.35, 3500, 5000, 0.3); }
     thrustEmpty() { this.sting('empty'); }
     death() { this.whoosh(0.8, 1500, 80, 0.6); this.tone(220, 0.8, 'sawtooth', 0.1, 0, 40); this.hum(false); this.sting('death'); }
 }

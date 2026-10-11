@@ -170,7 +170,7 @@ function onConnect(ws, room, ip) {
         if (!m || typeof m !== 'object' || typeof m.t !== 'string') { if (++strikes > 5) ws.close(4002, 'bad messages'); return; }
         if (!joined) {
             if (m.t !== 'hello') return;
-            const r = room.join(client, typeof m.name === 'string' ? m.name.slice(0, 64) : '', { perks: m.perks, skin: typeof m.skin === 'string' ? m.skin.slice(0, 16) : '' });
+            const r = room.join(client, typeof m.name === 'string' ? m.name.slice(0, 64) : '', { perks: m.perks, skin: typeof m.skin === 'string' ? m.skin.slice(0, 16) : '', caps: m.caps });
             if (r.error) { client.send({ t: 'full', error: r.error }); ws.close(4003, 'full'); return; }
             joined = true; clearTimeout(helloTimer);
             return;

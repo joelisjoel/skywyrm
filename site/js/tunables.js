@@ -83,6 +83,21 @@ export const DEFAULTS = {
     fireChargeAngle: 0.15,  // …+15% cone half-angle…
     fireChargeTime: 0.25,   // …+25% breath time…
     fireChargeCuts: 0.5,    // …and half a tail more it can cut (levels 3 and 5 each cut one more)
+    // Breath elements (rule elements). Each scales with the charges spent,
+    // like dragonfire: times by its time scale (×2 at 5 charges), sizes by its range scale.
+    elementShare: 0.5,      // share of breath crystals that are ice, lightning or acid instead of fire
+    chillTime: 2.5,         // s an ice breath chills a dragon for…
+    chillSpeed: 0.5,        // …flying at this × its top speed, with no boost…
+    chillTurn: 0.6,         // …and turning this × as fast
+    boltRange: 1.5,         // lightning reaches this × the breath's fire range…
+    boltAngle: 7,           // …in a narrow cone (deg half-angle at one charge)
+    boltChain: 14,          // m it jumps from one dragon to the next…
+    boltChainMax: 3,        // …to at most this many more (1 at one charge, +1 every two charges)
+    stunTime: 0.6,          // s a struck dragon can't steer (flies straight)…
+    boltShed: 0.04,         // …and the share of its mass it sheds as food
+    acidRadius: 6,          // m, the acid cloud spat ahead…
+    acidTime: 6,            // …how long it lingers (s)…
+    acidRate: 4,            // …and the mass/s it melts off any other dragon inside it
 
     // --- Arena & population (spec §4, §9, §14) ---
     popStart: 3,            // other dragons when you spawn…
@@ -110,6 +125,7 @@ export const DEFAULTS = {
     lengthSpeedMax: 1,      // cap on the length bonus (+100% = double speed)
     fireCharge: 1,          // fire crystals stack and one breath spends them all, bigger per charge (0 = one charge, classic)
     fireChargeMax: 5,       // most charges a dragon can store
+    elements: 1,            // ice, lightning and acid crystals join fire; the last one eaten sets your breath (0 = only fire)
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -199,6 +215,19 @@ export const PANEL = [
     ['fireChargeAngle', 0, 0.5, 0.05, 'Growth & combat'],
     ['fireChargeTime', 0, 1, 0.05, 'Growth & combat'],
     ['fireChargeCuts', 0, 1, 0.25, 'Growth & combat'],
+    ['elementShare', 0, 1, 0.05, 'Growth & combat'],
+    ['chillTime', 0.5, 8, 0.1, 'Growth & combat'],
+    ['chillSpeed', 0.2, 1, 0.05, 'Growth & combat'],
+    ['chillTurn', 0.2, 1, 0.05, 'Growth & combat'],
+    ['boltRange', 0.5, 3, 0.1, 'Growth & combat'],
+    ['boltAngle', 2, 20, 1, 'Growth & combat'],
+    ['boltChain', 4, 40, 1, 'Growth & combat'],
+    ['boltChainMax', 0, 6, 1, 'Growth & combat'],
+    ['stunTime', 0.2, 3, 0.1, 'Growth & combat'],
+    ['boltShed', 0, 0.2, 0.01, 'Growth & combat'],
+    ['acidRadius', 2, 20, 0.5, 'Growth & combat'],
+    ['acidTime', 1, 20, 0.5, 'Growth & combat'],
+    ['acidRate', 0, 20, 0.5, 'Growth & combat'],
     ['tailBite', 0, 1, 1, 'Rules'],
     ['biteBeads', 1, 15, 1, 'Rules'],
     ['biteMult', 1, 15, 1, 'Rules'],
@@ -214,6 +243,7 @@ export const PANEL = [
     ['lengthSpeedMax', 0, 3, 0.1, 'Rules'],
     ['fireCharge', 0, 1, 1, 'Rules'],
     ['fireChargeMax', 1, 9, 1, 'Rules'],
+    ['elements', 0, 1, 1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

@@ -44,12 +44,21 @@ function freeRoomName(taken) {
     return all[Math.floor(Math.random() * all.length)];
 }
 
-// Flags packed into one number per dragon in snapshots.
+// Flags packed into one number per dragon in snapshots (older clients
+// ignore the bits they don't know: 512 chilled, 1024 stunned).
 function flags(d) {
     return (d.alive ? 1 : 0) | (d.boosting ? 2 : 0) | (d.braking ? 4 : 0) | (d.protect > 0 ? 8 : 0)
         | (d.shield > 0 ? 16 : 0) | (d.breath > 0 ? 32 : 0) | (d.human ? 64 : 0) | (d.isBot ? 128 : 0)
-        | (d.magnet > 0 ? 256 : 0);
+        | (d.magnet > 0 ? 256 : 0) | (d.chill > 0 ? 512 : 0) | (d.stun > 0 ? 1024 : 0);
 }
+
+// Browsers list what they understand in hello's `caps`. One without 'el'
+// predates breath elements: it is shown ice, lightning and acid crystals
+// as fire ones (its renderer knows no others), and its dragon always
+// breathes fire (World: d.fireOnly).
+const OLD_KIND = { ice: 'fire', bolt: 'fire', acid: 'fire' };
+const forOld = (e) => (e.k === 'pu' && OLD_KIND[e.kind] ? { ...e, kind: 'fire' } : e);
+const cleanCaps = (list) => (Array.isArray(list) ? list.filter((s) => typeof s === 'string' && s.length <= 16).slice(0, 8) : []);
 
 function pathOf(d) {
     // Oldest → newest, every other point (1 m apart), 1 cm precision.
@@ -136,6 +145,8 @@ export class Room {
         d.perks = cleanPerks(extras.perks);
         const skin = skinById(extras.skin);
         if (skin) { d.color = skin.c1; d.color2 = skin.c2; }
+        client.el = cleanCaps(extras.caps).includes('el');
+        d.fireOnly = !client.el;
         this.world.spawn(d, T.spawnMass);
         client.dragon = d;
         client.room = this;
@@ -152,7 +163,7 @@ export class Room {
             room: { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner },
             tune: { ...T }, rules: w.rules, time: r2(w.time),
             dragons: w.dragons.filter((x) => x.alive || x.human).map(dragonMeta),
-            orbs, pu: this.powerups(),
+            orbs, pu: this.powerups(!client.el),
         });
         this.broadcast({ t: 'dn', d: dragonMeta(d) }, client);
         return { ok: true };
@@ -257,8 +268,8 @@ export class Room {
         }
     }
 
-    powerups() {
-        return this.world ? this.world.powerups.map((p) => [p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)]) : [];
+    powerups(old = false) {
+        return this.world ? this.world.powerups.map((p) => [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)]) : [];
     }
 
     tick() {
@@ -282,19 +293,22 @@ export class Room {
                     if (e.d.human) { const c = this.clientOf(e.d); if (c) this.endLife(c, endCause(e)); }
                     break;
                 case 'sever': pub.push({ k: 'sever', id: e.d.id, o: e.o.id, burn: e.burn.map(r2).slice(0, 600) }); break;
-                case 'fireStart': pub.push({ k: 'fire', id: e.d.id, lv: e.lv }); break;   // lv: charges spent (older clients ignore it)
+                case 'fireStart': pub.push({ k: 'fire', id: e.d.id, lv: e.lv, el: e.el }); break;   // charges spent, element (older clients draw fire)
+                case 'chill': pub.push({ k: 'chill', id: e.d.id, o: e.o.id, t: r2(e.t) }); break;   // new kinds: older clients skip them
+                case 'bolt': pub.push({ k: 'bolt', id: e.d.id, o: e.hits.map((x) => x.id), p: e.pts.map(r2), s: r2(e.stun) }); break;
+                case 'acid': pub.push({ k: 'acid', id: e.d ? e.d.id : 0, o: e.o.id }); break;
                 case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'eat': to(e.d, { k: 'eat' }); break;
                 case 'tier': to(e.d, { k: 'tier', tier: e.tier }); break;
                 case 'nearMiss': to(e.d, { k: 'nm' }); break;
                 case 'powerup': to(e.d, { k: 'pu', kind: e.kind, n: e.charge }); break;            // n: dragonfire charges now held
                 case 'shieldPop': to(e.d, { k: 'shield' }); break;
-                case 'fireMiss': to(e.d, { k: 'miss' }); break;
+                case 'fireMiss': to(e.d, { k: 'miss', el: e.el }); break;
                 case 'thrustEmpty': to(e.d, { k: 'empty' }); break;
             }
         }
         if (pub.length) this.broadcast({ t: 'e', ev: pub });
-        for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev }); }
+        for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev: c.el ? ev : ev.map(forOld) }); }
         for (const c of landed) { c.send({ t: 'e', ev: [{ k: 'parked' }] }); this.broadcast({ t: 'dx', id: c.dragon.id }); }
 
         // Then new and removed dragons (bots spawning / dying) — after the
@@ -307,13 +321,20 @@ export class Room {
         const board = w.leaderboard().slice(0, 10).map((d) => [d.id, d.name, Math.round(d.shownLen || d.len)]);
         const o = w.orbLog.splice(0).map((op) => (op[0] === 'd' ? [0, op[1]] : [1, op[1], r2(op[2]), r2(op[3]), r2(op[4]), r2(op[5]), op[6], Math.round(op[7])]));
         const base = { t: 's', tm: r2(w.time), d: states, o, pu: this.powerups(), lb: board, n: w.dragons.filter((d) => d.alive).length, h: this.humans };
+        // Acid clouds: [id, x, y, z, radius, s left, lifetime, spitter] (older clients ignore them).
+        if (w.clouds.length) base.ac = w.clouds.map((c) => [c.id, r2(c.x), r2(c.y), r2(c.z), r2(c.r), r2(c.ttl), r2(c.life), c.owner]);
+        const puOld = this.powerups(true);
         for (const c of this.clients) {
             const d = c.dragon;
-            // fire: stored charges (older clients only test it for truthiness); bl: the breath's level.
+            // fire: stored charges (older clients only test it for truthiness); bl: the breath's level;
+            // el: their element when not fire; ch, st: s left chilled / stunned.
             const me = { temp: r2(d.temp), thrust: r2(d.thrust), lock: d.thrustLocked ? 1 : 0, fire: d.fire, breath: r2(d.breath), bl: d.breathLevel,
                 shield: r2(d.shield), magnet: r2(d.magnet), kills: d.kills, protect: r2(d.protect), tm: d.thrustMult || 1 };
+            if (d.element !== 'fire') me.el = d.element;
+            if (d.chill > 0) me.ch = r2(d.chill);
+            if (d.stun > 0) me.st = r2(d.stun);
             if (d.corrected) { me.c = [r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]; d.corrected = false; }
-            c.send({ ...base, me });
+            c.send(c.el ? { ...base, me } : { ...base, pu: puOld, me });
         }
     }
 
