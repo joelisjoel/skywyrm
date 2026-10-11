@@ -5,6 +5,7 @@ import { T, DEFAULTS, PANEL, saveTune, resetTune } from './tunables.js?v=18';
 export class TunePanel {
     constructor(onRestart) {
         this.onRestart = onRestart;
+        this.locked = false;               // online: the room's numbers rule
         this.el = document.getElementById('tune');
         this.stats = document.createElement('div');
         this.stats.className = 'tune-stats';
@@ -23,14 +24,15 @@ export class TunePanel {
         const btns = document.createElement('div');
         btns.className = 'tune-btns';
         const mk = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; btns.appendChild(b); return b; };
-        mk('Restart world', () => this.onRestart());
+        mk('Restart world', () => { if (!this.locked) this.onRestart(); });
         const copy = mk('Copy JSON', async () => {
+            if (this.locked) return;
             const json = JSON.stringify(saveTune(), null, 1);
             try { await navigator.clipboard.writeText(json); copy.textContent = 'Copied!'; }
             catch { prompt('Copy your tuning:', json); }
             setTimeout(() => (copy.textContent = 'Copy JSON'), 1200);
         });
-        mk('Reset all', () => { resetTune(); this.sync(); this.onRestart(); });
+        mk('Reset all', () => { if (this.locked) return; resetTune(); this.sync(); this.onRestart(); });
         el.appendChild(btns);
         let group = null, box = null;
         for (const [key, min, max, step, g, restart] of PANEL) {
@@ -51,6 +53,7 @@ export class TunePanel {
             input.type = 'range'; input.min = min; input.max = max; input.step = step;
             const val = document.createElement('span'); val.className = 'tune-val';
             input.oninput = () => {
+                if (this.locked) { this.sync(); return; }
                 T[key] = parseFloat(input.value);
                 val.textContent = fmt(T[key]);
                 row.classList.toggle('changed', T[key] !== DEFAULTS[key]);
@@ -70,7 +73,9 @@ export class TunePanel {
         }
     }
 
-    toggle() { this.el.classList.toggle('open'); }
+    toggle() { if (!this.locked) this.el.classList.toggle('open'); }
+    // In a room: close, and don't open or change anything until you leave.
+    lock(on) { this.locked = on; if (on) this.el.classList.remove('open'); }
     get open() { return this.el.classList.contains('open'); }
 
     update(world, renderer, simMs, fps) {
