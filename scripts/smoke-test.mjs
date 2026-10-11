@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // Smoke test: the game page loads in headless Chromium, the 3D scene and
-// the simulation start, solo play begins, and nothing throws. three.js is
-// served from node_modules instead of esm.sh so CI needs no network.
+// the simulation start, solo play begins, and nothing throws. Everything is
+// self-hosted, so the only other host the page may contact is the game
+// server (blocked here); a request anywhere else, or a Content-Security-
+// Policy violation, fails the test.
 // Run: npm install && npx playwright install chromium && npm run smoke
-import { readFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { serve } from './serve.mjs';
 import { launchChromium } from './browser.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const THREE = readFileSync(path.join(root, 'node_modules/three/build/three.module.js'));
 const shots = path.join(root, 'smoke-shots');
 mkdirSync(shots, { recursive: true });
 
@@ -22,8 +23,12 @@ let ok = false;
 try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.route(/esm\.sh\/three@0\.163\.0/, (r) => r.fulfill({ body: THREE, contentType: 'text/javascript' }));
-    await page.route(/run\.app|fonts\.googleapis|fonts\.gstatic/, (r) => r.abort());
+    page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) errors.push(`CSP: ${m.text()}`); });
+    await page.addInitScript(() => document.addEventListener('securitypolicyviolation',
+        (e) => console.error(`Content Security Policy violation: ${e.violatedDirective} ${e.blockedURI}`)));
+    await page.route(/run\.app/, (r) => r.abort());                  // the game server: offline here
+    await page.route((u) => !/^(https?:\/\/127\.0\.0\.1[:/]|data:|blob:)/.test(u.href) && !/run\.app/.test(u.href),
+        (r) => { errors.push(`request to another host: ${r.request().url()}`); r.abort(); });
     await page.goto(url);
     await page.waitForFunction(() => window.__wyrm && window.__wyrm.world, null, { timeout: 60000 });
     await page.screenshot({ path: path.join(shots, 'menu.png') });

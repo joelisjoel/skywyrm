@@ -1,3 +1,9 @@
+/* Fonts are self-hosted subsets (see fonts/README.md): Cinzel for titles, Ma Shan Zheng
+   brush calligraphy for the Chinese characters the game uses. */
+@font-face { font-family: 'Cinzel'; src: url('fonts/cinzel-600.woff2?v=1') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Cinzel'; src: url('fonts/cinzel-700.woff2?v=1') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Ma Shan Zheng'; src: url('fonts/ma-shan-zheng.woff2?v=1') format('woff2'); font-display: swap; }
+
 :root {
     --night: #0b0f1a;
     --panel: rgba(11, 15, 26, 0.82);

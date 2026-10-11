@@ -31,6 +31,9 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
 
+      - name: Check self-hosted assets (CSP hashes, vendored three.js, font subset)
+        run: node scripts/check-assets.mjs
+
       - name: Smoke test (the game loads and flies)
         run: node scripts/smoke-test.mjs
 

@@ -410,10 +410,9 @@ device.
   - blocks bad words, including leetspeak spellings
   - blocks reserved words such as "admin" and "skywyrm"
   - always displays names as plain text, never as code
-- **Third parties a player's browser talks to:**
-  - Google Fonts
-  - esm.sh, which serves three.js
-  - the game server
+- **Third parties a player's browser talks to:** none besides the game
+  server. three.js and the fonts are served from skywyrm.io itself, and the
+  page's Content-Security-Policy blocks anything else.
 - The game server's own logs record created room names, but not player names
   or IP addresses. Google Cloud's standard request logs do record IP
   addresses, and keep them for 30 days by default.

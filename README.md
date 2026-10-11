@@ -11,7 +11,7 @@ shared rooms.
 
 | Path | What it is |
 |---|---|
-| `site/` | The game: a static page plus ES modules (three.js from esm.sh). Published to GitHub Pages. |
+| `site/` | The game: a static page plus ES modules, with three.js and the fonts self-hosted (no requests to other sites). Published to GitHub Pages. |
 | `site/js/sim.js` | The simulation, shared by the browser and the server |
 | `server/` | The multiplayer server: rooms over WebSockets, on Google Cloud Run |
 | `notes/` | Product and design docs ([PRD-v3](notes/PRD-v3.md), [DESIGN-v3](notes/DESIGN-v3.md)), rules, multiplayer setup, the voice clips' generator |
@@ -33,6 +33,7 @@ With a local game server, open `http://localhost:8765/?server=http://localhost:8
 npx playwright install chromium   # or reuse any Chromium already in PLAYWRIGHT_BROWSERS_PATH
 npm run smoke                     # the game loads and flies
 npm run stamps                    # cache stamps were bumped (npm run stamps:fix bumps them)
+npm run assets                    # CSP hashes, vendored three.js and the font subset are in step
 cd server && npm test             # simulation + rooms
 ```
 

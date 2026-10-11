@@ -33,7 +33,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 **Stack**
 - Plain ES modules with no bundler and no framework.
-- three.js 0.163.0 from esm.sh, through an importmap (`index.html:16-22`).
+- three.js 0.163.0, self-hosted at `site/vendor/` and mapped by an importmap in `index.html`.
+- Fonts self-hosted as subsets in `site/fonts/`. A Content-Security-Policy meta tag allows only this site plus the game server (and localhost for testing).
 - Node 22 with `ws` 8.22 and `@google-cloud/firestore` 7.11.
 - No TypeScript.
 
@@ -722,7 +723,7 @@ at dendroslabs.com/wyrm has been removed.
 |---|---|
 | `server/test/sim.test.mjs` (19 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed |
 | `server/test/rooms.test.mjs` (23 checks) | Starts the real server with the memory store. Covers: default rooms, reserved names, links and foreign origins refused, name cleaning, duplicate (409) and rate limit (429), forced beginner, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark |
-| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with three.js served locally and `run.app` blocked. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
+| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
 **CI** (`ci.yml`):
@@ -767,7 +768,7 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | 5 | Client IP | Uses the last `X-Forwarded-For` entry. That's correct behind Cloud Run directly, but a load balancer in front would put every player behind one IP |
 | 6 | Capacity | One thread runs every room, with no tick-overrun metric. A room waking runs a synchronous 300-tick warm-up that stalls the other rooms |
 | 7 | Hourly disconnect | The 3600 s timeout ends every socket, with no reconnect |
-| 8 | Third-party code | No CSP. three.js comes from esm.sh without SRI, and Google Fonts load from Google. Players' IPs reach both |
+| 8 | Third-party code | Fixed: three.js and the fonts are self-hosted and a CSP (meta tag) allows only this site and the game server. GitHub Pages can't send headers, so `frame-ancestors` isn't set |
 | 9 | Unpinned builds | Lockfiles are committed and the image installs with `npm ci`; GitHub Actions are pinned by SHA. The Docker base image (`node:22-slim`) is still a tag, so it picks up Node security patches |
 
 ---
@@ -794,8 +795,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
     though its note says it affects rooms.
   - Tuning while online saves the server's values as local overrides.
 - **Fonts:**
-  - The Ma Shan Zheng `text=` subset is missing 石玉珠云雷山日, so 7 of the
-    10 rank seals fall back to a system font.
   - Nunito is referenced but never loaded.
 - **Saved stats never shown:** best length, best kills and games played.
 - **Graphics:** the auto drop to Low isn't remembered between visits.
