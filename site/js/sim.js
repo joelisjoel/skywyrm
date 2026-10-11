@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=18';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=19';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -103,6 +103,7 @@ export class Dragon {
         this.alive = true;
         this.protect = 0;
         this.shield = 0; this.magnet = 0; this.fire = 0; this.breath = 0; this.breathHit = false;
+        this.breathLevel = 0; this.breathHits = [];   // charges spent on the breath in progress, ids it has cut
         this.kills = 0; this.bornAt = 0; this.peakMass = this.mass; this.bestRank = 99;
         this.tier = 0;
         this.boosting = false; this.braking = false; this.boostAcc = 0;
@@ -371,6 +372,7 @@ export class World {
         d.kills = 0; d.bornAt = this.time; d.bestRank = 99;
         d.protect = T.spawnProtect;
         d.shield = 0; d.magnet = 0; d.fire = 0; d.breath = 0; d.breathHit = false;
+        d.breathLevel = 0; d.breathHits.length = 0;
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
@@ -853,8 +855,9 @@ export class World {
                 if (d.pos.distanceToSquared(pu.pos) < rr * rr) {
                     if (pu.type === 'shield') d.shield = T.shieldTime;
                     else if (pu.type === 'magnet') d.magnet = T.magnetTime;
-                    else d.fire = 1;
-                    this.emit({ type: 'powerup', d, kind: pu.type });
+                    // Dragonfire charges stack (rule fireCharge), up to fireChargeMax.
+                    else d.fire = this.rule('fireCharge') ? Math.min(Math.max(1, this.rule('fireChargeMax')), d.fire + 1) : 1;
+                    this.emit({ type: 'powerup', d, kind: pu.type, charge: d.fire });
                     this.powerups.splice(k, 1);
                     break;
                 }
@@ -862,12 +865,31 @@ export class World {
         }
     }
 
-    // Find the first enemy bead inside d's fire cone. Returns {o, bead} or null.
-    fireTarget(d) {
-        const cosA = Math.cos(T.fireAngle * DEG);
-        let best = null, bestDist = T.fireRange;
+    // How big a breath of `lv` stored charges is (rule fireCharge). One
+    // charge is the classic dragonfire; each extra charge adds a share of
+    // its range, cone half-angle and time, and (every other charge) one
+    // more tail it can cut. With the rule off every breath is level 1.
+    breathStats(lv) {
+        const k = this.rule('fireCharge') ? Math.max(0, Math.min(this.rule('fireChargeMax'), lv) - 1) : 0;
+        return {
+            k,
+            range: T.fireRange * (1 + T.fireChargeRange * k),
+            angle: Math.min(80, T.fireAngle * (1 + T.fireChargeAngle * k)),
+            time: T.fireTime * (1 + T.fireChargeTime * k),
+            cuts: 1 + Math.floor(T.fireChargeCuts * k + 1e-6),
+        };
+    }
+
+    // Find the first enemy bead inside d's fire cone, sized for a breath
+    // of `lv` charges (default: the one in progress, else what d holds).
+    // Dragons in `skip` (ids) were already cut by this breath. Returns
+    // {o, bead} or null.
+    fireTarget(d, lv = d.breath > 0 ? d.breathLevel : d.fire, skip = null) {
+        const st = this.breathStats(lv);
+        const cosA = Math.cos(st.angle * DEG);
+        let best = null, bestDist = st.range;
         for (const o of this.dragons) {
-            if (o === d || !o.alive || o.protect > 0) continue;
+            if (o === d || !o.alive || o.protect > 0 || (skip && skip.includes(o.id))) continue;
             for (let b = 3; b < o.nBeads; b++) {
                 const i = b * 3;
                 const dx = o.beads[i] - d.pos.x, dy = o.beads[i + 1] - d.pos.y, dz = o.beads[i + 2] - d.pos.z;
@@ -880,18 +902,27 @@ export class World {
         return best;
     }
 
-    // Dragonfire (spec §6.6): a breath lasting fireTime. The first enemy
-    // tail that enters the cone during the breath is cut; everything past
-    // the cut burns into loot. Heads can't be hit.
+    // Dragonfire (spec §6.6): one breath spends every stored charge, and
+    // more charges make it reach farther, spread wider and last longer
+    // (breathStats). Each enemy tail that enters the cone is cut once, up
+    // to the breath's cut count, then the flame dies down; everything past
+    // a cut burns into loot. Heads can't be hit.
     updateBreath(d, dt) {
         if (d.input.fire && d.fire && d.breath <= 0) {
-            d.fire = 0; d.breath = T.fireTime;
-            this.emit({ type: 'fireStart', d });
+            d.breathLevel = d.fire; d.fire = 0;
+            d.breath = this.breathStats(d.breathLevel).time;
+            d.breathHit = false; d.breathHits.length = 0;
+            this.emit({ type: 'fireStart', d, lv: d.breathLevel });
         }
         if (d.breath <= 0) return;
         d.breath -= dt;
-        const t = d.breathHit ? null : this.fireTarget(d);   // one cut per breath
-        if (t) { this.sever(d, t); d.breath = Math.min(d.breath, 0.25); d.breathHit = true; }
+        const cuts = this.breathStats(d.breathLevel).cuts;
+        const t = d.breathHits.length < cuts ? this.fireTarget(d, d.breathLevel, d.breathHits) : null;
+        if (t) {
+            this.sever(d, t);
+            d.breathHits.push(t.o.id); d.breathHit = true;
+            if (d.breathHits.length >= cuts) d.breath = Math.min(d.breath, 0.25);
+        }
         if (d.breath <= 0) {
             if (!d.breathHit) this.emit({ type: 'fireMiss', d });
             d.breathHit = false; d.breath = 0;

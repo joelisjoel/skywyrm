@@ -282,12 +282,12 @@ export class Room {
                     if (e.d.human) { const c = this.clientOf(e.d); if (c) this.endLife(c, endCause(e)); }
                     break;
                 case 'sever': pub.push({ k: 'sever', id: e.d.id, o: e.o.id, burn: e.burn.map(r2).slice(0, 600) }); break;
-                case 'fireStart': pub.push({ k: 'fire', id: e.d.id }); break;
+                case 'fireStart': pub.push({ k: 'fire', id: e.d.id, lv: e.lv }); break;   // lv: charges spent (older clients ignore it)
                 case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'eat': to(e.d, { k: 'eat' }); break;
                 case 'tier': to(e.d, { k: 'tier', tier: e.tier }); break;
                 case 'nearMiss': to(e.d, { k: 'nm' }); break;
-                case 'powerup': to(e.d, { k: 'pu', kind: e.kind }); break;
+                case 'powerup': to(e.d, { k: 'pu', kind: e.kind, n: e.charge }); break;            // n: dragonfire charges now held
                 case 'shieldPop': to(e.d, { k: 'shield' }); break;
                 case 'fireMiss': to(e.d, { k: 'miss' }); break;
                 case 'thrustEmpty': to(e.d, { k: 'empty' }); break;
@@ -309,7 +309,8 @@ export class Room {
         const base = { t: 's', tm: r2(w.time), d: states, o, pu: this.powerups(), lb: board, n: w.dragons.filter((d) => d.alive).length, h: this.humans };
         for (const c of this.clients) {
             const d = c.dragon;
-            const me = { temp: r2(d.temp), thrust: r2(d.thrust), lock: d.thrustLocked ? 1 : 0, fire: d.fire, breath: r2(d.breath),
+            // fire: stored charges (older clients only test it for truthiness); bl: the breath's level.
+            const me = { temp: r2(d.temp), thrust: r2(d.thrust), lock: d.thrustLocked ? 1 : 0, fire: d.fire, breath: r2(d.breath), bl: d.breathLevel,
                 shield: r2(d.shield), magnet: r2(d.magnet), kills: d.kills, protect: r2(d.protect), tm: d.thrustMult || 1 };
             if (d.corrected) { me.c = [r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]; d.corrected = false; }
             c.send({ ...base, me });

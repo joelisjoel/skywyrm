@@ -76,9 +76,13 @@ export const DEFAULTS = {
     shieldTime: 12,
     magnetTime: 10,
     magnetRadius: 18,
-    fireRange: 24,
+    fireRange: 24,          // m, a one-charge breath (see World.breathStats)
     fireAngle: 30,          // deg half-angle
     fireTime: 1.2,          // s the breath lasts
+    fireChargeRange: 0.25,  // each stored charge past the first (rule fireCharge): +25% range…
+    fireChargeAngle: 0.15,  // …+15% cone half-angle…
+    fireChargeTime: 0.25,   // …+25% breath time…
+    fireChargeCuts: 0.5,    // …and half a tail more it can cut (levels 3 and 5 each cut one more)
 
     // --- Arena & population (spec §4, §9, §14) ---
     popStart: 3,            // other dragons when you spawn…
@@ -104,6 +108,8 @@ export const DEFAULTS = {
     lengthSpeed: 0.5,       // longer = faster: extra speed at 100 m long (0 = off); see sizeSpeed()
     lengthSpeedExp: 0.62,   // curve: 0.62 gives +80% at 200 m when it's +50% at 100 m
     lengthSpeedMax: 1,      // cap on the length bonus (+100% = double speed)
+    fireCharge: 1,          // fire crystals stack and one breath spends them all, bigger per charge (0 = one charge, classic)
+    fireChargeMax: 5,       // most charges a dragon can store
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -189,6 +195,10 @@ export const PANEL = [
     ['fireRange', 5, 60, 1, 'Growth & combat'],
     ['fireAngle', 5, 60, 1, 'Growth & combat'],
     ['fireTime', 0.2, 4, 0.1, 'Growth & combat'],
+    ['fireChargeRange', 0, 1, 0.05, 'Growth & combat'],
+    ['fireChargeAngle', 0, 0.5, 0.05, 'Growth & combat'],
+    ['fireChargeTime', 0, 1, 0.05, 'Growth & combat'],
+    ['fireChargeCuts', 0, 1, 0.25, 'Growth & combat'],
     ['tailBite', 0, 1, 1, 'Rules'],
     ['biteBeads', 1, 15, 1, 'Rules'],
     ['biteMult', 1, 15, 1, 'Rules'],
@@ -202,6 +212,8 @@ export const PANEL = [
     ['lengthSpeed', 0, 1.5, 0.05, 'Rules'],
     ['lengthSpeedExp', 0.2, 1.5, 0.02, 'Rules'],
     ['lengthSpeedMax', 0, 3, 0.1, 'Rules'],
+    ['fireCharge', 0, 1, 1, 'Rules'],
+    ['fireChargeMax', 1, 9, 1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

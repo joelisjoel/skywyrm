@@ -199,7 +199,30 @@ Crystals appear about every 20 s, with up to 5 in the sky at once. Half of them 
 |---|---|
 | **Ember Shield** (orange) | Lasts 12 s and survives one body hit. It does *not* stop head-ons, walls or fire |
 | **Lodestone** (blue) | Lasts 10 s and pulls food within 18 m with tractor beams |
-| **Dragonfire** (red) | One 1.2 s breath: a 24 m, 30° cone that burns through the nearest tail and cuts it off there. 80% of the lost part drops as food. It never kills. Bots use it too |
+| **Dragonfire** (red) | A breath (1.2 s, a 24 m, 30° cone for one crystal) that burns through the nearest tail and cuts it off there. 80% of the lost part drops as food. It never kills. Red crystals stack (below). Bots use it too |
+
+**Stacking dragonfire** (rule `fireCharge`) ✅
+- Each red crystal adds one charge, up to 5 (`fireChargeMax`). Pressing fire
+  lets out one breath that spends every charge you hold.
+- The more charges, the bigger the breath:
+
+| Charges | Range | Cone (half-angle) | Breath | Tails it can cut |
+|---|---|---|---|---|
+| 1 | 24 m | 30° | 1.2 s | 1 |
+| 2 | 30 m | 34.5° | 1.5 s | 1 |
+| 3 | 36 m | 39° | 1.8 s | 2 |
+| 4 | 42 m | 43.5° | 2.1 s | 2 |
+| 5 | 48 m | 48° | 2.4 s | 3 |
+
+- A breath cuts each tail at most once. After its last cut the flame dies down.
+- The fire gauge's ring is cut into one arc per charge slot, lit for each
+  charge held, and the gauge grows and glows brighter as they stack. On
+  phones the fire button shows the count.
+- Bots: hunters, kingslayers, big bots (mass over 150) and fierce ones save
+  up 2–4 charges before they attack. The rest breathe as soon as they hold
+  one, and a full stack is always used.
+- With the rule off, crystals don't stack and every breath is the one-charge
+  breath.
 
 ### 5.9 Bots ✅
 - **Numbers:** 3 at the start, then one more every 20 s, up to 30. Online, the
@@ -375,7 +398,8 @@ device.
 
 ### 10.3 HUD
 - **Bottom-left:** length, kills, lives (pearls), tier with speed, and gauges
-  for heat, thrust and fire. Shield and magnet gauges appear only while active.
+  for heat, thrust and fire (with a lit arc per stored charge). Shield and
+  magnet gauges appear only while active.
 - **Radar** at the bottom centre, with a 60 m range. It shows above and below,
   power-ups, the centre and the leader.
 - **Top:** leaderboard, kill feed, and toasts.

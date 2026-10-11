@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=18';
-import { MOOD_ICON } from './bots.js?v=18';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=19';
+import { MOOD_ICON } from './bots.js?v=19';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -23,9 +23,25 @@ function gauge(key) {
     el.className = 'g g-' + key;
     el.innerHTML = '<svg class="ring" viewBox="0 0 40 40"><circle class="track" cx="20" cy="20" r="17"/><circle class="val" cx="20" cy="20" r="17"/></svg>'
         + '<svg class="icon" viewBox="0 0 24 24">' + ICON[key] + '</svg>';
-    const val = el.querySelector('.val');
+    const val = el.querySelector('.val'), track = el.querySelector('.track');
     val.style.strokeDasharray = RING;
-    return { el, val, set(f) { val.style.strokeDashoffset = RING * (1 - Math.max(0, Math.min(1, f))); } };
+    let cut = false;
+    return {
+        el, val,
+        set(f) {
+            if (cut) { cut = false; val.style.strokeDasharray = RING; track.style.strokeDasharray = ''; }
+            val.style.strokeDashoffset = RING * (1 - Math.max(0, Math.min(1, f)));
+        },
+        // The ring cut into `n` arcs (slots), the first `on` lit: stacked dragonfire charges.
+        slots(n, on) {
+            const seg = RING / n, dash = `${seg - 7} 7`;
+            cut = true;
+            track.style.strokeDasharray = dash;
+            // `on` arcs, then a gap round the rest (no zero-length dash: round caps would draw a dot).
+            val.style.strokeDasharray = on > 0 ? `${(dash + ' ').repeat(on - 1)}${seg - 7} ${RING}` : RING;
+            val.style.strokeDashoffset = on > 0 ? 0 : RING;
+        },
+    };
 }
 // Cool → warm → hot, Apple system colours.
 function tempColour(t) {
@@ -60,6 +76,7 @@ export class Hud {
         const box = document.getElementById('hud-gauges');
         for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
         this.g.fire.el.insertAdjacentHTML('beforeend', '<kbd>E</kbd>');
+        this.tFire = document.getElementById('t-fire');
         this.lastBoard = 0;
         this.resize();
     }
@@ -240,8 +257,17 @@ export class Hud {
             g.thrust.set(p.thrust / (thrustCap(p.temp) * (p.thrustMult || 1)));
             g.thrust.el.dataset.state = p.thrustLocked ? 'empty' : '';
             // Dragonfire: dim until you have it, glowing when ready, draining while you breathe.
-            g.fire.el.dataset.state = p.breath > 0 ? 'breathing' : p.fire ? 'ready' : 'empty';
-            g.fire.set(p.breath > 0 ? p.breath / T.fireTime : p.fire ? 1 : 0);
+            // Charges stack (rule fireCharge): the ring is cut into one arc
+            // per slot, lit for each charge held, and the gauge grows and
+            // glows brighter with every one; phones show the count too.
+            const max = world.rule('fireCharge') ? Math.max(1, Math.round(world.rule('fireChargeMax'))) : 1;
+            const charge = Math.min(max, p.fire | 0), breathing = p.breath > 0;
+            g.fire.el.dataset.state = breathing ? 'breathing' : charge ? 'ready' : 'empty';
+            if (breathing || max < 2) g.fire.set(breathing ? p.breath / world.breathStats(p.breathLevel || 1).time : charge);
+            else g.fire.slots(max, charge);
+            g.fire.el.style.setProperty('--ch', breathing ? Math.min(max, p.breathLevel || 1) : charge);
+            const badge = max > 1 && charge ? String(charge) : '';
+            if (this.tFire && this.tFire.dataset.charge !== badge) this.tFire.dataset.charge = badge;
             // Timed power-ups appear only while active.
             g.shield.el.hidden = !(p.shield > 0);
             g.shield.set(p.shield / T.shieldTime);

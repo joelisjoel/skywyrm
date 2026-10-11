@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=18';
-import { World, Dragon } from './sim.js?v=18';
-import { MOODS } from './bots.js?v=18';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=19';
+import { World, Dragon } from './sim.js?v=19';
+import { MOODS } from './bots.js?v=19';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -135,6 +135,7 @@ export class NetGame {
         for (const k of Object.keys(DEFAULTS)) if (typeof m.tune[k] === 'number' && Number.isFinite(m.tune[k])) T[k] = m.tune[k];
         const w = new World(m.room.arena, 'client');
         if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
+        if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time
         this.world = w; this.room = m.room; this.you = m.you;
         for (const d of m.dragons) this.dragonNew(d);
         const o = m.orbs;
@@ -232,7 +233,7 @@ export class NetGame {
         const me = m.me, p = this.player;
         if (me && p) {
             p.temp = me.temp; p.thrust = me.thrust; p.thrustLocked = !!me.lock;
-            p.fire = me.fire; p.breath = me.breath; p.shield = me.shield; p.magnet = me.magnet;
+            p.fire = me.fire; p.breath = me.breath; p.breathLevel = me.bl || 1; p.shield = me.shield; p.magnet = me.magnet;
             p.kills = me.kills; p.protect = me.protect; p.thrustMult = me.tm || 1;
             if (me.c) p.pos.set(me.c[0], me.c[1], me.c[2]);    // server clamped us: snap back
         }
@@ -250,7 +251,7 @@ export class NetGame {
                     break;
                 }
                 case 'sever': { const d = this.dragon(e.id), o = this.dragon(e.o); if (d && o) this.queue({ type: 'sever', d, o, burn: e.burn || [] }); break; }
-                case 'fire': { const d = this.dragon(e.id); if (d) this.queue({ type: 'fireStart', d }); break; }
+                case 'fire': { const d = this.dragon(e.id); if (d) { d.breathLevel = e.lv > 0 ? e.lv | 0 : 1; this.queue({ type: 'fireStart', d, lv: d.breathLevel }); } break; }
                 case 'bite': {
                     const d = this.dragon(e.id), o = this.dragon(e.o);
                     if (d && o) this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
@@ -259,7 +260,7 @@ export class NetGame {
                 case 'eat': this.queue({ type: 'eat', d: p }); break;
                 case 'tier': this.queue({ type: 'tier', d: p, tier: e.tier | 0 }); break;
                 case 'nm': this.queue({ type: 'nearMiss', d: p }); break;
-                case 'pu': this.queue({ type: 'powerup', d: p, kind: e.kind }); break;
+                case 'pu': this.queue({ type: 'powerup', d: p, kind: e.kind, charge: e.n | 0 }); break;
                 case 'shield': this.queue({ type: 'shieldPop', d: p }); break;
                 case 'miss': this.queue({ type: 'fireMiss', d: p }); break;
                 case 'empty': this.queue({ type: 'thrustEmpty', d: p }); break;

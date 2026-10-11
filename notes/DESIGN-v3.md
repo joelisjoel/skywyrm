@@ -180,11 +180,21 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - The first appears at 10 s, then every 20 s ±25%, with at most 5.
   - The type pool is `shield, magnet, fire, fire`.
   - They are placed at food hotspots.
-- **Dragonfire** (`sim.js:866-918`):
-  - One charge gives a 1.2 s breath. The cone is 30° wide and 24 m (+r) long.
+- **Dragonfire** (`updateBreath`, `fireTarget`, `breathStats`):
+  - Each fire crystal adds a charge, up to `fireChargeMax` 5 (rule
+    `fireCharge`; with it off a crystal sets one charge). One breath spends
+    them all: `d.breathLevel` = the charges spent.
+  - `breathStats(lv)`, with k = lv − 1 (capped, 0 with the rule off):
+    range 24·(1 + 0.25k) m, half-angle 30°·(1 + 0.15k), time 1.2·(1 + 0.25k)
+    s, cuts 1 + ⌊0.5k⌋. So level 1 is 24 m, 30°, 1.2 s and 1 cut; level 5 is
+    48 m, 48°, 2.4 s and 3 cuts.
   - It hits the nearest enemy bead with index ≥ 3, so it never hits a head.
-  - It cuts once per breath, trims the rest of the breath to 0.25 s, then calls
-    `sever`.
+    Each dragon is cut at most once per breath (`d.breathHits`).
+  - After its last cut it trims the rest of the breath to 0.25 s. Each cut
+    calls `sever`.
+  - Bots (`Brain.fireReady`) breathe when a tail is in the cone and they hold
+    1 + (hunter or kingslayer) + (mass > 150) + (aggr > 0.6) charges, capped
+    at the max.
 
 ### 3.5 Rules layer and tunables
 - **`World.rule(k)`** returns `world.rules[k] ?? T[k]` (`sim.js:325`). Every newer
@@ -198,7 +208,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `lives` | 3 | `perks` | 1 |
 | `respawnDelay` | 3 | `lengthSpeed` | 0.5 |
 | `botMoods` | 1 | `lengthSpeedExp` | 0.62 |
-| | | `lengthSpeedMax` | 1 |
+| `fireCharge` | 1 | `lengthSpeedMax` | 1 |
+| `fireChargeMax` | 5 | | |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -288,9 +299,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | C→S | `p` | `{x,y,z,qx,qy,qz,qw,s,bk,b,k,f}`: pose, speed, bank, boost, brake, fire |
 | C→S | `spawn`, `park`, `unpark`, `ping{c}` | |
 | S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu}` |
-| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire, shield, magnet, kills and correction |
+| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), shield, magnet, kills and correction |
 | S→C | `dn` / `dx` | A dragon appears (meta plus a tail path at 1 cm precision, every other point, ≤600 points) / leaves |
-| S→C | `e` | Events: `death`, `sever`, `fire`, `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu`, `shield`, `miss`, `empty`, `park*` |
+| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss`, `empty`, `park*` |
 | S→C | `full` | The room is full |
 
 - **Flag bits** in `d`:
@@ -714,7 +725,8 @@ The improvement loop's numbers, kept without identifying anyone
 - **Food:** one InstancedMesh of icosahedra, capped at 6,000. Colours are pushed
   above 1 so they bloom.
 - **Power-up crystals** snap between shapes on a beat, like Tron's "Bit".
-- **Dragonfire:** a pooled additive cone, plus 26 flame particles per frame.
+- **Dragonfire:** a pooled additive cone sized by `breathStats` for the
+  charges spent, plus 26 + 12k flame particles per frame.
 - **Particles:** a single additive Points cloud, 4,000 drawn and 6,000 simulated.
 - **Lodestone:** a rig of tori and glow sprites, plus up to 240 camera-facing
   tractor beams.
@@ -802,7 +814,7 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (19 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed |
+| `server/test/sim.test.mjs` (32 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up) |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (36 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
@@ -935,8 +947,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Boost and food | boostCost 4/s · boostDropShare 0.5 · boostMinMass 15 · orbTarget 2000 · orbClusterShare 0.6 · foodSpread 0.2 · foodUniformShare 0.15 · pickupBase 2 · lootShare 0.8 · lootTtl 45 · botGrowthCapMass 400 |
 | Heat and thrust | ambientTemp 10 · sunHeat 70 · sunRadius 0.35 · crowdHeat 35 · crowdRadius 35 · crowdFull 5 · tempRiseTau 3 · tempFallTau 7 · tempSpeed 0.4 · thrustBase 10 · tempThrust 0.6 · thrustRegen 0.4 |
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
-| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 |
+| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedMax 1 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedMax 1 · fireCharge 1 · fireChargeMax 5 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 |
