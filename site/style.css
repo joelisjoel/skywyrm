@@ -144,7 +144,9 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .opt .badge { font-size: 11px; }
 button.ghost { width: 100%; margin: 8px 0 0; background: transparent; border: 1px dashed var(--slate); color: var(--dim); }
 #create-form { margin-top: 8px; padding: 10px; border: 1px solid var(--slate); border-radius: 10px; }
-#create-form input[type=text], #create-name { width: 100%; font: inherit; font-weight: 700; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--slate); background: #0f1526; color: var(--text); }
+.room-pick { display: flex; gap: 6px; }
+#create-name { flex: 1; min-width: 0; font-weight: 700; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--slate); background: #0f1526; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#create-reroll { flex: none; margin: 0; padding: 0 12px; font-size: 18px; line-height: 1; }
 button.cta.small { font-size: 15px; padding: 8px; margin: 0; }
 .err { color: #FF7A6A; font-size: 12px; min-height: 0; margin-top: 4px; text-align: left; }
 .err:empty { display: none; }
@@ -245,7 +247,7 @@ body[data-state=menu] #vignette, body[data-state=pause] #vignette, body[data-sta
 @media (min-width: 900px) and (min-height: 560px) { body[data-state=menu]:not([data-overlay]) .couplet { display: block; } }
 
 #name { background: rgba(0, 0, 0, 0.35); border-color: var(--gold-line); color: var(--gold-hi); letter-spacing: 0.02em; }
-#name:focus, #create-name:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217, 181, 108, 0.15); }
+#name:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217, 181, 108, 0.15); }
 button { background: rgba(255, 240, 210, 0.04); border-color: var(--gold-line); color: #EDE3D1; transition: background 0.15s, border-color 0.15s; }
 button:hover { background: rgba(255, 240, 210, 0.09); border-color: rgba(217, 181, 108, 0.45); }
 button.cta, .room button {

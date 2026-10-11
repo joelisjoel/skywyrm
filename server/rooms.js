@@ -3,13 +3,16 @@
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
 import { randomBytes } from 'node:crypto';
-import { World, Dragon, T, lengthFor, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../site/js/shared.js';
+import { World, Dragon, T, lengthFor, managePopulation, safePlayerName, cleanPerks, skinById, isRoomName, randomRoomName,
+    ROOM_ADJECTIVES, ROOM_NOUNS } from '../site/js/shared.js';
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [
     { id: 'the-orb', name: 'The Orb', arena: 'orb', beginner: true },
     { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: true },
 ];
+// Names no created room may read as. Created rooms get list names (see
+// names.js), and the names test checks every one passes checkName with these.
 export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold Nest', 'Skyhold (Beginners)', 'Skyhold Beginners', 'Nest', 'Orb']);
 
 export const LIMITS = {
@@ -32,6 +35,13 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 
 function newId() {
     return randomBytes(9).toString('base64url');   // 12 chars, ~72 bits, unguessable
+}
+
+// A random list name no room is using (the room cap keeps plenty free).
+function freeRoomName(taken) {
+    for (let k = 0; k < 50; k++) { const n = randomRoomName(); if (!taken.has(n)) return n; }
+    const all = ROOM_ADJECTIVES.flatMap((a) => ROOM_NOUNS.map((n) => `${a} ${n}`)).filter((n) => !taken.has(n));
+    return all[Math.floor(Math.random() * all.length)];
 }
 
 // Flags packed into one number per dragon in snapshots.
@@ -330,9 +340,8 @@ export class Registry {
         for (const m of saved) {
             if (!m || typeof m.id !== 'string' || this.rooms.has(m.id)) continue;
             if (m.expireAt && m.expireAt < now) { this.store.remove(m.id); continue; }
-            const name = checkName(m.name, 'room', RESERVED_ROOM_NAMES);
-            if (!name.ok) { this.store.remove(m.id); continue; }
-            const meta = { id: m.id, name: name.value, arena: m.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
+            if (!isRoomName(m.name)) { this.store.remove(m.id); continue; }          // typed before names came from the list
+            const meta = { id: m.id, name: m.name, arena: m.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
                 permanent: false, createdAt: m.createdAt || now, expireAt: m.expireAt || now + LIMITS.emptyTtlMs };
             this.rooms.set(meta.id, new Room(meta, this));
         }
@@ -354,11 +363,14 @@ export class Registry {
         if (recent.length >= LIMITS.roomsPerIpPerHour) return { error: 'You can create 3 servers an hour. Try again later.', status: 429 };
         const userRooms = [...this.rooms.values()].filter((r) => !r.meta.permanent).length;
         if (userRooms >= LIMITS.userRooms) return { error: 'Too many servers right now. Join one of the others!', status: 503 };
-        const name = checkName(body && body.name, 'room', RESERVED_ROOM_NAMES);
-        if (!name.ok) return { error: name.reason, status: 400 };
-        const lower = name.value.toLowerCase();
-        if ([...this.rooms.values()].some((r) => r.meta.name.toLowerCase() === lower)) return { error: 'A server with that name already exists', status: 409 };
-        const meta = { id: newId(), name: name.value, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
+        // Names come from the list in names.js, never from what a player
+        // typed. A free list name is honoured; anything else (a taken name,
+        // or an old cached client's free text) gets a random free one, so
+        // the name never fails a create.
+        const taken = new Set([...this.rooms.values()].map((r) => r.meta.name));
+        const asked = body && body.name;
+        const name = isRoomName(asked) && !taken.has(asked) ? asked : freeRoomName(taken);
+        const meta = { id: newId(), name, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
             permanent: false, createdAt: now, expireAt: now + LIMITS.emptyTtlMs };
         const room = new Room(meta, this);
         this.rooms.set(meta.id, room);

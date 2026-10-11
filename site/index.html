@@ -11,7 +11,7 @@
     <title>Skywyrm — fly a Chinese dragon</title>
     <meta name="description" content="Skywyrm: fly a Chinese dragon through the clouds. Eat, grow, and don't touch their tails. Free, in your browser.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20">
+    <link rel="stylesheet" href="style.css?v=21">
     <script type="importmap">
         {
             "imports": {
@@ -71,7 +71,10 @@
             <div id="room-list"></div>
             <button id="create-open" class="ghost">＋ Create server</button>
             <form id="create-form" hidden>
-                <input id="create-name" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Server name" aria-label="Server name">
+                <div class="room-pick">
+                    <output id="create-name" aria-label="Server name" aria-live="polite"></output>
+                    <button type="button" id="create-reroll" title="Another name" aria-label="Pick another name">🎲</button>
+                </div>
                 <div class="arenas">
                     <label><input type="radio" name="create-arena" value="sky" checked> <b>Skyhold</b></label>
                     <label><input type="radio" name="create-arena" value="orb"> <b>The Orb</b></label>
@@ -205,7 +208,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=39"></script>
+    <script type="module" src="js/main.js?v=40"></script>
 </body>
 
 </html>

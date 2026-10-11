@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { Registry } from '../rooms.js';
+import { isRoomName, ROOM_ADJECTIVES, ROOM_NOUNS } from '../../site/js/shared.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 18000 + Math.floor(Math.random() * 1000);
@@ -29,24 +31,33 @@ try {
     check(r.rooms.every((x) => x.beginner) && !r.rooms.some((x) => /beginner/i.test(x.name)),
         'every server is a beginner server; "beginner" is not part of a name');
 
-    // Create: name checks.
-    const bad = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Skyhold', arena: 'sky' }) });
-    check(bad.status === 400, 'reserved room name rejected');
-    const link = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'join www.spam.gg', arena: 'sky' }) });
-    check(link.status === 400, 'room name with a link rejected');
+    // Create: names come from the list in names.js. Whatever a client asks
+    // for (old cached clients send free text) never fails a create.
+    const create = async (body, ip) => {
+        const res = await api('/api/rooms', { method: 'POST', headers: ip ? { 'x-forwarded-for': ip } : {}, body: JSON.stringify(body) });
+        return { status: res.status, room: (await res.json()).room };
+    };
     const evil = await api('/api/rooms', { method: 'POST', headers: { origin: 'https://evil.example' }, body: JSON.stringify({ name: 'Evil Room' }) });
     check(evil.status === 403, 'create from a foreign origin refused');
-    const created = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: '  <b>Joel‮\'s</b>   Den ', arena: 'orb', beginner: true }) });
-    const room = (await created.json()).room;
-    check(created.status === 201 && room.name === "bJoel'sb Den" && room.arena === 'orb' && room.beginner, `room created and sanitised → "${room?.name}"`);
-    const dupe = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: "bjoel'sb den" }) });
-    check(dupe.status === 409, 'duplicate name (case-insensitive) rejected');
-    await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Third One', beginner: false }) });
-    await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fourth One' }) });
-    const limited = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fifth One' }) });
+    const created = await create({ name: '  <b>Joel‮\'s</b>   Den ', arena: 'orb', beginner: true });
+    const room = created.room;
+    check(created.status === 201 && isRoomName(room.name) && room.arena === 'orb' && room.beginner, `free text gets a list name → "${room?.name}"`);
+    const reserved = await create({ name: 'Skyhold', arena: 'sky' });
+    check(reserved.status === 201 && isRoomName(reserved.room.name), `reserved name gets a list name → "${reserved.room?.name}"`);
+    const link = await create({ name: 'join www.spam.gg', arena: 'sky' });
+    check(link.status === 201 && isRoomName(link.room.name), `name with a link gets a list name → "${link.room?.name}"`);
+    const limited = await create({ name: 'Fourth One' });
     check(limited.status === 429, 'per-IP creation limit (3/hour) enforced');
     r = await (await api('/api/rooms')).json();
-    check(r.rooms.find((x) => x.name === 'Third One')?.beginner === true, 'every new server is beginner, even if asked otherwise');
+    const wish = ROOM_ADJECTIVES.flatMap((a) => ROOM_NOUNS.map((n) => `${a} ${n}`)).find((n) => !r.rooms.some((x) => x.name === n));
+    const asked = await create({ name: wish, beginner: false }, '10.0.0.2');
+    check(asked.status === 201 && asked.room.name === wish, `a free list name is honoured → "${wish}"`);
+    const dupe = await create({ name: wish }, '10.0.0.2');
+    check(dupe.status === 201 && isRoomName(dupe.room.name) && dupe.room.name !== wish, `a taken name gets another list name → "${dupe.room?.name}"`);
+    r = await (await api('/api/rooms')).json();
+    const made = r.rooms.filter((x) => !x.permanent);
+    check(made.length === 5 && made.every((x) => isRoomName(x.name)) && new Set(made.map((x) => x.name)).size === 5, 'every created name is a list name, none twice');
+    check(made.find((x) => x.id === asked.room.id)?.beginner === true, 'every new server is beginner, even if asked otherwise');
 
     // Solo run notes (POST /api/run) and the public totals (GET /api/stats).
     const note = { v: 1, mode: 'solo', arena: 'orb', len: 42.4, secs: 95.6, kills: 2, cause: 'body' };
@@ -58,8 +69,8 @@ try {
     const solo = t.today.solo;
     check(t.res.headers.get('cache-control') === 'public, max-age=60' && t.today.day === new Date().toISOString().slice(0, 10) && solo.runs === 1 && solo.secs === 96
         && solo.maxLen === 42 && solo.len['25-50'] === 1 && solo.cause.body === 1 && solo.arena.orb === 1, 'GET /api/stats shows it in today\'s solo totals (cached 60 s)');
-    check(JSON.stringify(Object.keys(t.today)) === '["day","solo","room","peakHumans","roomsCreated"]' && t.today.roomsCreated === 3,
-        'the totals hold only counts (3 rooms created today), nothing per player');
+    check(JSON.stringify(Object.keys(t.today)) === '["day","solo","room","peakHumans","roomsCreated"]' && t.today.roomsCreated === 5,
+        'the totals hold only counts (5 rooms created today), nothing per player');
     res = await runNote({ ...note, arena: 'sky', len: 1e9, secs: -50, kills: 99999, cause: 'eaten by a grue', name: 'Ember Drake' }, { 'content-type': 'application/json' });
     t = await totals();
     check(res.status === 204 && t.today.solo.runs === 2 && t.today.solo.maxLen === 2000 && t.today.solo.len['200+'] === 1 && t.today.solo.kills === 502
@@ -166,6 +177,14 @@ try {
     const rm = t.today.room, ends = Object.entries(rm.cause).filter(([, n]) => n);
     check(rm.runs === 2 && ends.reduce((s, [, n]) => s + n, 0) === 2 && rm.arena.orb === 2 && rm.secs > 0 && t.today.peakHumans === 2 && t.today.solo.runs === 16,
         `both players' lives counted under room (${ends.map(([k, n]) => `${k} ${n}`).join(', ')}); peak 2 players today`);
+
+    // Restart: saved rooms with typed (pre-list) names are dropped, and
+    // deleted from the store too.
+    const removed = [], later = Date.now() + 3600 * 1000;
+    const saved = [{ id: 'typed', name: 'Joel Den', arena: 'sky', expireAt: later }, { id: 'listed', name: wish, arena: 'orb', expireAt: later }];
+    const reg = new Registry({ kind: 'test', loadAll: async () => saved, save() {}, remove(id) { removed.push(id); } });
+    await reg.init();
+    check(reg.get('listed')?.meta.name === wish && !reg.get('typed') && removed.join() === 'typed', 'on restart, saved rooms with typed names are dropped');
     console.log(`\n${ok} checks passed`);
 } catch (e) {
     console.error('FAILED:', e.message, '\n--- server log ---\n' + out);

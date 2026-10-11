@@ -81,7 +81,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   `sim.js:45-52` is unused.
 - **Step timing:**
   - Solo: the frame dt is capped at 0.1 s, then split into sub-steps of at most
-    1/60 s (`main.js:647,668`).
+    1/60 s (`main.js:650,671`).
   - Server: a fixed 1/30 s step with an accumulator capped at 0.25 s
     (`server.js:164-170`).
 - **`step(dt)` order** (`sim.js:937-964`):
@@ -200,7 +200,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `botMoods` | 1 | `lengthSpeedExp` | 0.62 |
 | | | `lengthSpeedMax` | 1 |
 
-- **Beginner rules:** solo (`main.js:450`) and every room (`rooms.js:24,90`) apply
+- **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
 - **Not in the rules layer:** `powerups`, `dragonfire` and `botAggression` are
   read straight from `T`, so a room can't override them.
@@ -309,8 +309,12 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 ### 4.4 Rooms (`server/rooms.js`)
 - **Defaults:** `the-orb` ("The Orb", orb) and `skyhold` ("Skyhold", sky).
   Both are permanent and beginner.
-- **Reserved names:** The Orb, Skyhold, Skyhold Nest, Skyhold (Beginners),
-  Skyhold Beginners, Nest and Orb, plus the reserved words in `names.js`.
+- **Names of created rooms** are generated, never typed: an adjective and a
+  noun from the lists in `names.js` (24 × 24, e.g. "Jade Peak"), checked
+  with `isRoomName`. The names test checks that every pair passes the room
+  filter against the reserved names (`RESERVED_ROOM_NAMES`: The Orb,
+  Skyhold, Skyhold Nest, Skyhold (Beginners), Skyhold Beginners, Nest and
+  Orb, plus the reserved words in `names.js`) and that no word contains one.
 - **Limits:**
 
 | Item | Value |
@@ -322,27 +326,31 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 - **Create** (`POST /api/rooms`):
   - Requires an allowed origin, JSON content and a body of at most 1 KB.
-  - Then checks, in order: the per-IP rate limit, the global cap, `checkName`
-    for rooms (3–24 characters), and case-insensitive duplicates (409).
+  - Then checks, in order: the per-IP rate limit and the global cap.
+  - The name is the `name` asked for if it's a list name not in use;
+    anything else (a taken name, or free text from an old cached client)
+    gets a random unused list name. The name never fails a create.
   - The `beginner` field is ignored, so every room is a beginner room.
   - The room id is 9 random bytes in base64url: 12 characters, about 72 bits.
 - **Lifecycle:**
   - A room's world is created on its first join, with a 10 s warm-up run before
-    players arrive (`rooms.js:96`). It is freed after 10 min empty.
+    players arrive (`rooms.js:106`). It is freed after 10 min empty.
   - Expiry: `expireAt` is set to now + 12 h when a room is created or becomes
     empty, and cleared while anyone is in it. Expired rooms are hidden and then
     swept.
+  - On start, saved rooms whose names aren't list names (typed before names
+    were generated) are dropped and deleted from the store.
 - **Join:** caps the room's humans, then runs `safePlayerName`, `cleanPerks`
   and `skinById`. It spawns at mass 10, sends `welcome` and broadcasts `dn`.
 - **Leave:** drops 80% of the dragon as loot and broadcasts `dx`.
 - **Respawn:** refused while alive, while parked, or within 1 s of a death. The
   server doesn't enforce lives; the client counts them.
-- **Park** (online pause, `rooms.js:178-216`):
+- **Park** (online pause, `rooms.js:188-226`):
   - A 3 s countdown during which you are still hittable, then you are removed
     with your mass and kills kept.
   - You can unpark after 2 s, and you return at a safe spawn point with
     protection.
-- **Per-room `meta.rules`:** merged in at `rooms.js:90` but never set. The
+- **Per-room `meta.rules`:** merged in at `rooms.js:100` but never set. The
   hook exists for future modes.
 
 ### 4.5 Persistence (`server/store.js`)
@@ -455,7 +463,7 @@ The improvement loop's numbers, kept without identifying anyone
    jade, and `reportLife` sends a solo life's anonymous numbers (§4.7).
 
 ### 5.2 Robustness
-- **Crash guard** (`main.js:604-643`):
+- **Crash guard** (`main.js:607-646`):
   - `noteProblem(kind, err)` stores the last problem in `wyrm.crash.v1`:
     `{kind, msg, at, state, online, ua}`.
   - It shows a toast at most once every 10 s.
@@ -771,8 +779,8 @@ at dendroslabs.com/wyrm has been removed.
 |---|---|
 | `server/test/sim.test.mjs` (19 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
-| `server/test/names.test.mjs` (13 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback |
-| `server/test/rooms.test.mjs` (33 checks) | Starts the real server with the memory store. Covers: default rooms, reserved names, links and foreign origins refused, name cleaning, duplicate (409) and rate limit (429), forced beginner, `POST /api/run` (accepted with CORS, clamped, refused 400 / 413 / 403, 21st in an hour 429), `GET /api/stats` (shows the runs, cached 60 s, CORS only for allowed origins), two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark, both players' lives counted under `room` on leaving |
+| `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
+| `server/test/rooms.test.mjs` (36 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
@@ -818,6 +826,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
     they hide in (Grape, Peacock); `kys` and a few abbreviations only match
     as whole words
   - matches reserved words as whole words (Admin is taken, Systemic isn't)
+- Room names are generated from word lists, never typed, so nothing a
+  player writes is shown in every lobby (§4.4).
 - The origin allowlist, rate limits and frame limits in §4.6.
 
 **Risks**
@@ -846,7 +856,7 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   tip (`sim.js:904`). Fix: subtract the burned share of the current mass.
 - **Quitting a solo life earns no jade.** `world.kill(...,'the menu')` emits its
   event outside `step()`, and the next `step()` clears it before `bankLife` runs
-  (`main.js:401`, `sim.js:939`).
+  (`main.js:404`, `sim.js:939`).
 - **Keen Pull's "40% farther" only scales the 2 m base,** not the whole pickup
   radius. Lodestone overrides it.
 - **Mutual head-on:** only one of the two dragons gets the kill.
@@ -865,8 +875,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **Graphics:** the auto drop to Low isn't remembered between visits.
 - **Death screen:** it can't be left during the respawn countdown.
 - **Fire gauge:** shows an `E` badge on touch devices too.
-- **Room names:** the client's reserved-name list is shorter than the server's,
-  so some names fail only after you submit.
 
 ### 10.3 Stale docs and comments
 - **`notes/MULTIPLAYER.md`** still says:

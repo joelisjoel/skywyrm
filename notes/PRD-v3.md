@@ -290,7 +290,9 @@ device.
   - Two always-on servers, Skyhold and The Orb.
   - Any rooms players have created.
   - Each row shows the number of humans and bots, and the list refreshes every 5 s.
-- **Create a server:** give it a name (3–24 characters) and pick a world.
+- **Create a server:** it gets a generated name such as "Jade Peak" (🎲
+  picks another), and you pick a world. Names aren't typed, so nothing a
+  player writes is shown in everyone's lobby.
   - Created servers disappear 12 h after the last player leaves.
   - At most 30 created servers can exist at once.
   - Each network can create 3 per hour.
@@ -417,7 +419,10 @@ device.
   - The server uses IP addresses only in memory, to rate-limit, and doesn't
     store or log them.
   - Nothing beyond this is collected.
-- **Names are filtered on both the browser and the server.** The filter:
+- **Server names aren't typed.** They're picked from lists of kid-friendly
+  sky and landscape words ("Jade Peak", "Misty Falls"), so the lobby every
+  player sees never shows what someone wrote.
+- **Player names are filtered on both the browser and the server.** The filter:
   - allows only the letters A–Z, numbers and simple punctuation. Accents
     are dropped (José becomes Jose); other alphabets are refused with a
     reason, so look-alike letters can't hide a bad word

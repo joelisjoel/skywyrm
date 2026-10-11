@@ -52,8 +52,8 @@ this on every pull request.
 ## Safety
 
 Made with kids in mind: there are no accounts, no chat, no ads, no cookies
-and no tracking. Player and room names are filtered, and progress stays in
-the browser. To improve the game, the server keeps anonymous daily totals
+and no tracking. Player names are filtered, server names come from a word list, and
+progress stays in the browser. To improve the game, the server keeps anonymous daily totals
 (how long lives last, how long dragons grow, how they end, how many play
 online at once): solo games send one note per life with just those numbers,
 and online lives are counted by the server. No ids or names, IP addresses
