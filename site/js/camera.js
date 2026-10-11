@@ -1,8 +1,8 @@
 // Chase camera (spec §8): springy follow behind + above the head, pulls
-// back as you grow, FOV kick on boost, partial roll with the bank.
+// back as you grow, FOV kick on boost and at high speed, partial roll with the bank.
 // Also the death-cam orbit and the menu's attract orbit.
 import * as THREE from 'three';
-import { T } from './tunables.js?v=20';
+import { T } from './tunables.js?v=21';
 
 const _v = new THREE.Vector3(), _u = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -27,7 +27,11 @@ export class ChaseCam {
         const dist = Math.min(T.camDistMax, T.camDist + T.camDistPerLen * d.len);
         const dir = lookBack ? -1 : 1;
         _t.copy(d.pos).addScaledVector(d.fwd, -dist * dir).addScaledVector(d.up, T.camHeight);
-        const kp = T.camPosTau > 0 ? 1 - Math.exp(-dt / T.camPosTau) : 1;
+        // The spring trails speed × τ behind its spot. Past ×2.4 boost that
+        // would leave the dragon shrinking into the distance, so τ stiffens
+        // to keep the lag under camLagMax.
+        const tau = Math.min(T.camPosTau, T.camLagMax / Math.max(1, d.speed));
+        const kp = tau > 0 ? 1 - Math.exp(-dt / tau) : 1;
         this.pos.lerp(_t, lookBack ? 1 : kp);
         // Up: flight-frame up, rolled by a share of the cosmetic bank.
         _q.setFromAxisAngle(d.fwd, d.bank * T.camRollFollow * (this.reduceMotion ? 0.3 : 1));
@@ -36,7 +40,8 @@ export class ChaseCam {
         this.up.lerp(_u, kr).normalize();
         _v.copy(d.pos).addScaledVector(d.fwd, T.camLookAhead * dir);
         this.look.lerp(_v, lookBack ? 1 : Math.min(1, kr * 1.5));
-        const fovTarget = d.boosting && !this.reduceMotion ? T.fovBoost : T.fov;
+        // FOV kicks out on boost, and a little more past ×2 speed (+8° at ×4).
+        const fovTarget = this.reduceMotion ? T.fov : (d.boosting ? T.fovBoost : T.fov) + T.fovSpeed * Math.max(0, (d.speedX || 1) - 2);
         this.fov += (fovTarget - this.fov) * (1 - Math.exp(-dt / 0.25));
         this.clamp(arena);
         this.apply();

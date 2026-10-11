@@ -191,7 +191,7 @@ export class Room {
         if (!d || !d.alive) return;
         const nums = [m.x, m.y, m.z, m.qx, m.qy, m.qz, m.qw, m.s, m.bk];
         if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e4)) return;
-        d.net = { x: m.x, y: m.y, z: m.z, qx: m.qx, qy: m.qy, qz: m.qz, qw: m.qw, speed: Math.min(80, Math.abs(m.s)), bank: m.bk, fresh: true };
+        d.net = { x: m.x, y: m.y, z: m.z, qx: m.qx, qy: m.qy, qz: m.qz, qw: m.qw, speed: Math.min(150, Math.abs(m.s)), bank: m.bk, fresh: true };
         d.input.boost = m.b === 1; d.input.brake = m.k === 1; d.input.fire = m.f === 1;
     }
 
