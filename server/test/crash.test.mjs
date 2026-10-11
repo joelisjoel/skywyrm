@@ -23,7 +23,7 @@ const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', 
     const reg = new Registry(store, (...a) => logs.push(a.join(' ')), stats);
     await reg.init();
     const fake = () => ({ dragon: null, room: null, parkAt: 0, parked: null, sent: [], closed: null,
-        send(m) { this.sent.push(m); }, sendRaw(s) { this.sent.push(JSON.parse(s)); }, close(code, reason) { this.closed = { code, reason }; } });
+        send(m) { this.sent.push(m); return true; }, sendRaw(s) { this.sent.push(JSON.parse(s)); return true; }, close(code, reason) { this.closed = { code, reason }; } });
     const snaps = (c) => c.sent.filter((m) => m.t === 's').length;
 
     const good = reg.get('skyhold'), bad = reg.get('the-orb');

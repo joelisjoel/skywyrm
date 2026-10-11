@@ -9,6 +9,7 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Registry } from './rooms.js';
+import { Client } from './client.js';
 import { makeStore } from './store.js';
 import { Stats, cleanRun } from './stats.js';
 import { T, DEFAULTS } from '../site/js/shared.js';
@@ -153,16 +154,6 @@ server.on('upgrade', (req, socket, head) => {
     if ((conns.get(ip) || 0) >= MAX_CONN_PER_IP) return reject(429, 'Too Many Requests');
     wss.handleUpgrade(req, socket, head, (ws) => onConnect(ws, room, ip));
 });
-
-class Client {
-    constructor(ws) { this.ws = ws; this.dragon = null; this.room = null; this.parkAt = 0; this.parked = null; }
-    send(msg) { this.sendRaw(JSON.stringify(msg)); }
-    sendRaw(s) {
-        // Drop frames for clients that can't keep up rather than buffering forever.
-        if (this.ws.readyState === 1 && this.ws.bufferedAmount < 512 * 1024) this.ws.send(s);
-    }
-    close(code, reason) { try { this.ws.close(code, reason); } catch { /* already closed */ } }
-}
 
 function onConnect(ws, room, ip) {
     conns.set(ip, (conns.get(ip) || 0) + 1);
