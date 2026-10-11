@@ -35,7 +35,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 - Plain ES modules with no bundler and no framework.
 - three.js 0.163.0, self-hosted at `site/vendor/` and mapped by an importmap in `index.html`.
 - Fonts self-hosted as subsets in `site/fonts/`. A Content-Security-Policy meta tag allows only this site plus the game server (and localhost for testing).
-- Node 22 with `ws` 8.22 and `@google-cloud/firestore` 7.11.
+- Node 22 with `ws` 8.22 and `@google-cloud/firestore` 9.3.
 - No TypeScript.
 
 ---
