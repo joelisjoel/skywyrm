@@ -53,6 +53,7 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     permissions:
+      contents: read # job permissions replace the workflow's, so checkout needs this again
       pages: write
       id-token: write
     environment:
