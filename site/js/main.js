@@ -588,8 +588,48 @@ setState('menu');
 let lastTarget = 0;
 let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0, simMs = 0, boardT = 0, wasBoosting = false;
 
+// Crash guard: a frame that throws is logged and skipped, not repeated
+// forever into a frozen screen; the problem is kept on this device so it
+// can be reported (Settings → Player shows the last one).
+const CRASH_KEY = 'wyrm.crash.v1';
+let lastProblemToast = -1e9;
+function noteProblem(kind, err) {
+    const msg = String((err && (err.stack || err.message)) || err).slice(0, 800);
+    console.error('wyrm', kind, err);
+    try {
+        localStorage.setItem(CRASH_KEY, JSON.stringify({ kind, msg, at: new Date().toISOString(), state, online: !!online,
+            ua: navigator.userAgent.slice(0, 160) }));
+    } catch { /* storage blocked */ }
+    showLastProblem();
+    const t = performance.now();
+    if (t - lastProblemToast > 10000) { lastProblemToast = t; hud.toast('Something went wrong; still flying', 'bad'); }
+}
+function showLastProblem() {
+    const el = $('last-problem');
+    if (!el) return;
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem(CRASH_KEY) || 'null'); } catch { /* ignore */ }
+    el.hidden = !p;
+    if (!p) return;
+    el.querySelector('.when').textContent = new Date(p.at).toLocaleString();
+    el.querySelector('pre').textContent = `${p.kind} · ${p.state}${p.online ? ' · online' : ''}\n${p.msg}\n${p.ua}`;
+}
+window.addEventListener('error', (e) => noteProblem('error', e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => noteProblem('promise', e.reason));
+// If the phone takes the GPU away (memory pressure), ask for it back and
+// carry on at Low quality instead of letting the page die.
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); noteProblem('gpu', 'WebGL context lost'); });
+canvas.addEventListener('webglcontextrestored', () => { renderer.quality = null; renderer.setQuality('low'); hud.toast('Graphics recovered (Low quality)', 'nm'); });
+$('last-problem-copy').onclick = () => { try { navigator.clipboard.writeText($('last-problem').querySelector('pre').textContent); } catch { /* ignore */ } };
+$('last-problem-clear').onclick = () => { try { localStorage.removeItem(CRASH_KEY); } catch { /* ignore */ } showLastProblem(); };
+showLastProblem();
+
 function frame(nowMs) {
     requestAnimationFrame(frame);
+    try { tick(nowMs); } catch (err) { noteProblem('frame', err); }
+}
+
+function tick(nowMs) {
     const now = nowMs / 1000;
     let dt = Math.min(0.1, (nowMs - last) / 1000);
     last = nowMs;
