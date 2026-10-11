@@ -30,6 +30,7 @@ const TICK = 1 / 30;
 const SNAP_EVERY = 2;            // 15 snapshots/s
 const PARK_DELAY = 3;            // s of flight (still vulnerable) before folded wings take effect
 const PARK_MIN = 2;              // s parked before you can fly back in
+const MAX_UNSENT_ORBS = 20000;   // food changes kept for a client skipping snapshots
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
@@ -340,7 +341,11 @@ export class Room {
             if (d.chill > 0) me.ch = r2(d.chill);
             if (d.stun > 0) me.st = r2(d.stun);
             if (d.corrected) { me.c = [r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]; d.corrected = false; }
-            c.send(c.el ? { ...base, me } : { ...base, pu: puOld, me });
+            // A slow client may skip a snapshot (client.js); its food
+            // changes ride along with the next one that goes out.
+            const o = c.unsentOrbs ? c.unsentOrbs.concat(base.o) : base.o;
+            if (c.send(c.el ? { ...base, o, me } : { ...base, o, pu: puOld, me })) c.unsentOrbs = null;
+            else if (o.length) c.unsentOrbs = o.length > MAX_UNSENT_ORBS ? o.slice(-MAX_UNSENT_ORBS) : o;
         }
     }
 
