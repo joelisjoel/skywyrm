@@ -4,7 +4,7 @@
 
 Sep 29, 2026 · Built to answer one question: **is the flight and the 3D
 snake loop fun on PC?** Graphics are deliberately minimal. This covers the
-spec's week-1 "Fun alone" milestone (SPEC-v2 §18).
+spec's week-1 "Fun alone" milestone (v2 spec §18; the spec is kept privately outside this repo).
 
 **Play:** `dendroslabs.com/wyrm/`. Locally, serve
 `docs/` and open `/wyrm/`.

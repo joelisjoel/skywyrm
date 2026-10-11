@@ -50,12 +50,12 @@ try {
     // Two players join the created room.
     const join = (name) => new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room.id}`, { headers: { origin: ORIGIN } });
-        const c = { ws, msgs: [], welcome: null, snaps: 0, last: null, events: [], dn: [], dx: [] };
+        const c = { ws, msgs: [], welcome: null, snaps: 0, corrections: 0, last: null, events: [], dn: [], dx: [] };
         ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name, perks: ['lungs', 'hack', 'pull', 'ember'], skin: 'jade' }));
         ws.onmessage = (e) => {
             const m = JSON.parse(e.data);
             if (m.t === 'welcome') { c.welcome = m; resolve(c); }
-            if (m.t === 's') { c.snaps++; c.last = m; }
+            if (m.t === 's') { c.snaps++; c.last = m; if (m.me && m.me.c) c.corrections++; }
             if (m.t === 'e') c.events.push(...m.ev);
             if (m.t === 'dn') c.dn.push(m.d);
             if (m.t === 'dx') c.dx.push(m.id);
@@ -82,8 +82,11 @@ try {
     // Speed check: teleport claim gets clamped and corrected.
     const me = a.last.d.find((s) => s[0] === a.welcome.you);
     a.ws.send(JSON.stringify({ t: 'p', x: me[1] + 400, y: me[2], z: me[3], qx: 0, qy: 0, qz: 0, qw: 1, s: 16, bk: 0, b: 0, k: 0, f: 0 }));
+    // The correction rides on one snapshot only, so count it as it arrives
+    // rather than hoping the latest snapshot is that one.
+    const corrections = a.corrections;
     let corrected = false;
-    for (let i = 0; i < 20 && !corrected; i++) { await sleep(60); corrected = !!(a.last && a.last.me && a.last.me.c); }
+    for (let i = 0; i < 40 && !corrected; i++) { await sleep(60); corrected = a.corrections > corrections; }
     const after = a.last.d.find((s) => s[0] === a.welcome.you);
     check(corrected && Math.abs(after[1] - me[1]) < 30, `teleport clamped (moved ${Math.abs(after[1] - me[1]).toFixed(1)} m, correction sent)`);
 
@@ -117,8 +120,10 @@ try {
     await sleep(300);
     check(!a.dn.some((d) => d.id === you), 'a parked dragon can\'t respawn fresh (no length reset)');
     a.ws.send(JSON.stringify({ t: 'unpark' }));
+    // Both players get the same 'dn' broadcast, but B's copy can land a few
+    // ms after A's, so wait for both before checking.
     let back = null;
-    for (let i = 0; i < 40 && !back; i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
+    for (let i = 0; i < 40 && !(back && b.dn.some((d) => d.id === you)); i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
     check(back && Math.abs(back.s[8] - massBefore) < 2 && b.dn.some((d) => d.id === you), `unpark flies back in with its length (${massBefore} → ${back?.s[8]})`);
 
     // Lifecycle: when both leave, the room gets a 12 h expiry.

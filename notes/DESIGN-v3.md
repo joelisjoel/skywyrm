@@ -1,8 +1,8 @@
 # Skywyrm: v3 design (how it's built)
 
-Oct 11, 2026 · v3 · describes commit `12fae98` · companion to [PRD-v3.md](PRD-v3.md) (what and why) · supersedes the engineering sections of [SPEC-v2.md](SPEC-v2.md)
+Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD-v3.md) (what and why) · supersedes the engineering sections of the v2 spec (kept privately outside this repo)
 
-> File references are `file:line` at `12fae98`. Constants come from
+> File references are `file:line` at `87d6f4c`. Constants come from
 > `site/js/tunables.js` (`T`) unless another file is named. Setup steps for
 > Cloud Run and Firestore are in [MULTIPLAYER.md](MULTIPLAYER.md). Some of
 > that file is out of date (§10.3).

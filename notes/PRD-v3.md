@@ -1,6 +1,6 @@
 # Skywyrm: v3 product requirements (as built)
 
-Oct 11, 2026 · v3 · describes commit `12fae98` · supersedes [SPEC-v2.md](SPEC-v2.md) for product decisions · how it works is in [DESIGN-v3.md](DESIGN-v3.md)
+Oct 11, 2026 · v3 · describes commit `87d6f4c` · supersedes the v2 spec (Sep 29, kept privately outside this repo) for product decisions · how it works is in [DESIGN-v3.md](DESIGN-v3.md)
 
 > **What this is.** v2 (Sep 29) was a plan. v3 records what was built in the
 > two weeks since, the decisions that changed along the way, and what is still
