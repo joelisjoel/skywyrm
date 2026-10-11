@@ -4,8 +4,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 > File references are `file:line` at `87d6f4c`. Constants come from
 > `site/js/tunables.js` (`T`) unless another file is named. Setup steps for
-> Cloud Run and Firestore are in [MULTIPLAYER.md](MULTIPLAYER.md). Some of
-> that file is out of date (§10.3).
+> Cloud Run and Firestore are in [MULTIPLAYER.md](MULTIPLAYER.md).
 
 ---
 
@@ -1130,20 +1129,9 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **Fire gauge:** shows an `E` badge on touch devices too.
 
 ### 10.3 Stale docs and comments
-- **`notes/MULTIPLAYER.md`** still says:
-  - "three permanent rooms" (there are two)
-  - a beginner on/off switch in the create form (it was removed)
-  - pose 15×/s (it is 30×/s)
-  - setup steps for `dendroslabs.com` and the old repo
-- **`notes/RULES.md`:** paths under `docs/wyrm/` and `wyrm-server/`, and a
-  "Beginner" menu toggle.
-- **`notes/PROTOTYPE.md`:** behind the code (lists Beginner as a setting, and
-  touch and multiplayer as not built).
-- **Header comments:**
-  - `render.js:1-3` says "minimal… everything instanced".
-  - `main.js:1-3` says "prototype… PC-first".
-  - `server.js:1` says "Wyrm".
-  - `net-config.js:2` points at `3d-snake/MULTIPLAYER.md`.
+- None known. `MULTIPLAYER.md`, `RULES.md`, the voice README and the file
+  header comments were brought up to date in October 2026, and
+  `PROTOTYPE.md` is marked historical.
 
 ### 10.4 Dead code
 - **Arena obstacles** (`sim.js:45-52`).

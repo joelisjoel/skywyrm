@@ -1,6 +1,6 @@
-// Minimal renderer: the prototype is about feel, not looks (spec §10 is
-// deliberately skipped). Everything that moves is instanced; the arena is
-// wireframe + fog + drifting dust so speed and depth read clearly.
+// Renderer: draws the World, never changes it. Dragon bodies are GPU tubes
+// with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
+// pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
 import { T, TIERS } from './tunables.js?v=23';
 
