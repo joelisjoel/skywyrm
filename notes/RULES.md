@@ -6,7 +6,7 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 | Rule | Default | What it does |
 |---|---|---|
 | `tailBite` | 1 | A head touching the last `biteBeads` beads of a tail bites the tip off instead of dying |
-| `biteBeads` | 5 | How many tail-tip beads are edible (they shimmer gold) |
+| `biteBeads` | 5 | How many tail-tip beads are edible (drawn as a slim gold stalk with amber feathers and a tuft) |
 | `biteMult` | 5 | Orbs gained per bitten bead (5 × 5 = +25) |
 | `lives` | 3 | Lives per game; 0 = endless (every death ends the run) |
 | `respawnDelay` | 3 | Seconds between lives |

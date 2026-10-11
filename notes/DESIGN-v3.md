@@ -860,11 +860,23 @@ The improvement loop's numbers, kept without identifying anyone
 - **Radius profile:**
   - The neck starts at 0.7 and grows over the first 6 beads.
   - The last 15% tapers down to 0.4.
+  - With rule `tailBite`, the edible tip (the last `biteBeads` beads)
+    narrows to a slender stalk: ×0.62 on its first bead, ×0.42 after.
+    Drawing only: the bite hitbox is still r × `tailColScale` round every
+    bead, so the tip is easier to bite than it looks, never harder.
   - The last bead is ×0.05.
 - **Swim wave** (drawing only; the simulation keeps the true path):
   - Amplitude r·1.05 (×0.6 for your own dragon), wavelength r·14.3, lift 0.35.
   - Phase follows the distance flown.
   - The frame tilts with the wave's slope.
+- **Edible tail tip** (rule `tailBite`; every dragon, yours too): besides
+  the gold shimmer on others' tips, the stalk carries plume instances (so
+  no extra draw): a pair on each edible bead, swept back, (1.1 + 0.25k)·r
+  long on the k-th, and at the last bead a tuft of five in a fan (up to
+  3r) plus two standing up (2r). They are deep amber gold, pulsing with
+  the shimmer (bright enough to bloom on High), flutter a little, and fade
+  near the camera on your own dragon. The crest fins stop where the tip
+  starts, and the tip's three-fin fan is drawn only with the rule off.
 - **Your own dragon:**
   - Drawn in its own tube (1,000 frames), translucent at 0.5 opacity with
     `depthWrite` off.
@@ -1016,7 +1028,7 @@ The improvement loop's numbers, kept without identifying anyone
 | Heads (shadows, legs) | 80 |
 | Heads drawn | 128 |
 | Fins | 12,400 |
-| Plumes | 8,000 |
+| Plumes (flank plumes and tip feathers, 15 a dragon) | 8,000 |
 | Beams | 240 |
 
 ---

@@ -184,7 +184,10 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
 - **Spawn protection:** 3 s, extended while you're still inside someone's body.
 
 ### 5.6 Tail nibbling ✅
-- The last 5 beads of every tail shimmer gold.
+- The last 5 beads of every tail are the **edible tip**: a slender stalk
+  that shimmers gold, with amber-gold feathers along it and a feather tuft
+  at the end, so you can spot it across the sky. Only the look is slim: the
+  tip is as easy to bite as before.
 - Hitting them is a **bite**, not a death:
   - you gain **+25 mass** (5 beads × 5)
   - they lose about one tip's worth
