@@ -783,18 +783,43 @@ The improvement loop's numbers, kept without identifying anyone
 ### 5.4 Audio
 - **Sound effects** (`audio.js`):
   - All synthesised in WebAudio, with master gain 0.6.
-  - The food chime climbs a D-minor pentatonic ladder.
-- **Music** (`music.js`): live synthesis in D minor at 118 BPM, over a 32-bar form.
+  - The food chime and the pearl's bell run climb a pentatonic ladder in the
+    music's current mode (D yu until the music starts).
+- **Music** (`music.js`): an original score composed live in Chinese
+  pentatonic modes. Home is D yu (D F G A C); sections also visit the shang,
+  zhi and gong modes and the A, F, G and C tonics. Nothing loops:
+  - A phrase (4 bars) is written at a time from a motif: stated, developed
+    (sequence, inversion, retrograde, new rhythm), handed between two voices
+    (call and response, echoes or unison) and closed with a cadence, open on
+    the 5th and then home. Each phrase starts on the note the last one ended
+    on.
+  - Sections A (theme), B (contrast), C (lyrical) and X (a two-bar opera
+    gong-and-drum break) rotate the lead voice, zheng figure, drum kit and
+    key. A new theme replaces the old one every 7 sections. Menu → flying
+    starts the theme on the next bar.
+  - Instruments: guzheng and ruan (Karplus-Strong strings rendered once and
+    replayed at any pitch, with bends, tremolo and glissandi), dizi and xiao
+    (breath noise, grace notes, vibrato), erhu (slides, scoops, swelling
+    vibrato), sheng chords, and rendered one-shots for dagu, bangu, muyu, two
+    cymbals, the big gong (with a reversed-gong swell into sections) and the
+    small opera gong. Stingers use suona, zheng, gongs and drums, in the
+    current mode; the ice, lightning and acid crystals get short ones,
+    quieter than dragonfire's.
 
-| Level | When | Instruments |
-|---|---|---|
-| 0 | menu, pause, dead | pad, arpeggio, bass |
-| 1 | flying | adds kick and hats |
-| 2 | action | adds snare, 16th-note hats, lead and crashes |
+| Level | When | Tempo | Instruments |
+|---|---|---|---|
+| 0 | menu, pause, dead | 80 BPM | sheng, zheng, xiao or erhu, gongs |
+| 1 | flying | 108 BPM | adds ruan bass, dagu, bangu or muyu, dizi or erhu |
+| 2 | action | 120 BPM | adds dagu fills, cymbals, 16th-note zheng and a second melody voice |
 
   - `hype()` windows trigger level 2.
-  - Level changes land on bar lines, and stingers are quantised to 16ths.
+  - Level changes land on bar lines and the tempo glides there over about two
+    bars. Stingers are quantised to 16ths.
   - Pause adds a 650 Hz low-pass.
+  - **Cost:** the instruments render in about 20 jobs of a few ms, one per
+    25 ms scheduler tick, after the first tap. Melody notes that touch share
+    one oscillator, and at most 28 sources sound at once (accompaniment gives
+    way first). It builds about half the audio nodes the old loop did.
 - **Voice** (`voice.js`): 8 events × 3 phrases.
   - Priorities: power-up 1 < tier 2 < sever and kill 3 < leader 4 < death 5.
   - A higher-priority line interrupts; others are dropped.

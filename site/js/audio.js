@@ -1,10 +1,11 @@
 // Synthesised sound (spec §11) — no assets. Feel-first: wind that rises
 // with speed, an orb chime ladder, whooshes for near misses, and the
-// adaptive soundtrack (music.js) with power-up stingers in its key.
-import { Music } from './music.js?v=10';
+// adaptive soundtrack (music.js) with power-up stingers in its mode.
+import { Music } from './music.js?v=11';
 import { Voice } from './voice.js?v=2';
 
-// D minor pentatonic, so orb chimes sit inside the soundtrack.
+// D minor pentatonic (D yu), the soundtrack's home; once the music is
+// running the chimes follow whatever mode it's in.
 const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24, 27, 29];
 
 export class Audio {
@@ -155,11 +156,13 @@ export class Audio {
         s.start(t, Math.random()); s.stop(t + dur + 0.05);
     }
 
-    // Orbs eaten in quick succession climb a pentatonic ladder.
+    // Orbs eaten in quick succession climb a pentatonic ladder, in the
+    // music's current mode.
     eat(now) {
-        this.ladder = now - this.lastEat < 0.6 ? Math.min(PENTA.length - 1, this.ladder + 1) : 0;
+        const L = this.music ? this.music.ladder() : PENTA;
+        this.ladder = now - this.lastEat < 0.6 ? Math.min(L.length - 1, this.ladder + 1) : 0;
         this.lastEat = now;
-        this.tone(587.33 * 2 ** (PENTA[this.ladder] / 12), 0.18, 'sine', 0.1);
+        this.tone(587.33 * 2 ** (L[this.ladder] / 12), 0.18, 'sine', 0.1);
     }
 
     nearMiss() { this.whoosh(0.4, 400, 4000, 0.5); }
@@ -178,14 +181,16 @@ export class Audio {
         else if (kind === 'acid') { for (let i = 0; i < 4; i++) this.tone(350 + i * 120, 0.09, 'sine', 0.06, i * 0.05, 800 + i * 150); }
         this.sting(kind);
     }
-    // Flaming pearl: a bright bell run up the pentatonic and a shimmer.
+    // Flaming pearl: a bright bell run up the music's current mode and a
+    // shimmer two octaves above its tonic.
     pearl() {
-        [0, 3, 5, 7, 10, 12].forEach((n, i) => {
+        const L = this.music ? this.music.ladder() : PENTA;
+        L.slice(0, 6).forEach((n, i) => {
             const f = 587.33 * 2 ** (n / 12);
             this.tone(f, 0.5, 'sine', 0.07, i * 0.06);
             this.tone(f * 2, 0.35, 'triangle', 0.025, i * 0.06 + 0.01);
         });
-        this.tone(2349.3, 1.1, 'sine', 0.04, 0.4);
+        this.tone(587.33 * 2 ** (L[10] / 12), 1.1, 'sine', 0.04, 0.4);
         this.whoosh(0.7, 1500, 6000, 0.12);
     }
     // Chomp: a short crunch and a rising blip.
