@@ -117,8 +117,10 @@ try {
     await sleep(300);
     check(!a.dn.some((d) => d.id === you), 'a parked dragon can\'t respawn fresh (no length reset)');
     a.ws.send(JSON.stringify({ t: 'unpark' }));
+    // Both players get the same 'dn' broadcast, but B's copy can land a few
+    // ms after A's, so wait for both before checking.
     let back = null;
-    for (let i = 0; i < 40 && !back; i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
+    for (let i = 0; i < 40 && !(back && b.dn.some((d) => d.id === you)); i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
     check(back && Math.abs(back.s[8] - massBefore) < 2 && b.dn.some((d) => d.id === you), `unpark flies back in with its length (${massBefore} → ${back?.s[8]})`);
 
     // Lifecycle: when both leave, the room gets a 12 h expiry.
