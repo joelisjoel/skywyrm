@@ -4,7 +4,7 @@
 import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=23';
 import { World, Dragon, hazardDist } from './sim.js?v=23';
 import { managePopulation, targetBots } from './bots.js?v=23';
-import { Renderer } from './render.js?v=36';
+import { Renderer } from './render.js?v=37';
 import { ChaseCam } from './camera.js?v=23';
 import { Input } from './input.js?v=26';
 import { Hud } from './hud.js?v=25';
@@ -50,11 +50,16 @@ const profile = new Profile();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
 const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, gfx: 'auto', arena: 'sky', name: '', runs: 0, v: 2 };
+let savedSettings = {};
 try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    Object.assign(settings, saved);
+    savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+    Object.assign(settings, savedSettings);
     settings.beginner = true;                                            // Beginner is the only mode now
 } catch { /* defaults */ }
+// Wide view draws the sky six more times a frame, too much for most phones:
+// touch devices start without it. Ticking the box in Settings is kept
+// (wideSet), and so is an "off" saved before there was a per-device default.
+if (!settings.wideSet && savedSettings.wideView !== false) settings.wideView = !input.isTouch;
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
 
 const ADJ = ['Crimson', 'Azure', 'Gilded', 'Ashen', 'Verdant', 'Storm', 'Ember', 'Frost', 'Umbral', 'Solar'];
@@ -621,11 +626,25 @@ function beginnerRules() { if (online) return; world.rules.botAggrMax = 0.5; }
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
 bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
 bindCheck('opt-voice', 'voice', () => audio.setVoice(settings.voice));
-// Graphics: Auto starts high and steps down once if play runs slow.
-$('opt-gfx').value = settings.gfx;
-$('opt-gfx').onchange = () => { settings.gfx = $('opt-gfx').value; saveSettings(); gfxAuto.t = 0; gfxAuto.n = 0; renderer.setQuality(settings.gfx === 'low' ? 'low' : 'high'); };
-renderer.setQuality(settings.gfx === 'low' ? 'low' : 'high');
-const gfxAuto = { t: 0, n: 0 };
+// Graphics: Auto starts high and steps down once if play runs well below
+// what the screen can show, and remembers that for next time (autoLow).
+// Picking any option in Settings starts over.
+const gfxQuality = () => (settings.gfx === 'low' || (settings.gfx === 'auto' && settings.autoLow) ? 'low' : 'high');
+const showGfx = () => { $('opt-gfx').value = settings.gfx; $('opt-gfx').options[0].textContent = settings.autoLow ? 'Auto (now Low)' : 'Auto'; };
+showGfx();
+$('opt-gfx').onchange = () => { settings.gfx = $('opt-gfx').value; settings.autoLow = false; saveSettings(); showGfx(); gfxAuto.t = 0; gfxAuto.n = 0; renderer.setQuality(gfxQuality()); };
+renderer.setQuality(gfxQuality());
+// The screen's own frame rate comes from the median gap between the first
+// frames (menu frames are light): 60 on most screens, but 30 on a phone in
+// Low Power Mode, where 30 fps is as good as it gets and no reason to drop.
+const gfxAuto = { t: 0, n: 0, gaps: [], cap: 0 };
+function measureScreen(gapMs) {
+    if (gfxAuto.cap) return;
+    gfxAuto.gaps.push(gapMs);
+    if (gfxAuto.gaps.length < 90) return;
+    const g = gfxAuto.gaps.slice(15).sort((a, b) => a - b);   // skip the first frames (shaders compiling)
+    gfxAuto.cap = 1000 / Math.max(1, g[g.length >> 1]);
+}
 function autoGraphics() {
     if (settings.gfx !== 'auto' || renderer.quality === 'low' || state !== 'play') { gfxAuto.t = 0; return; }
     const now = performance.now() / 1000;             // wall clock: frame dt is capped
@@ -634,7 +653,12 @@ function autoGraphics() {
     if (now - gfxAuto.t < 5) return;
     const fps = gfxAuto.n / (now - gfxAuto.t);
     gfxAuto.t = 0;
-    if (fps < 40) { renderer.setQuality('low'); hud.toast('Graphics set to Low for smoother flying', 'hint'); }
+    // Below 40 fps, or below ¾ of a slower screen's own rate.
+    if (fps < Math.min(40, 0.75 * (gfxAuto.cap || 60))) {
+        renderer.setQuality('low');
+        settings.autoLow = true; saveSettings(); showGfx();
+        hud.toast('Graphics set to Low for smoother flying', 'hint');
+    }
 }
 bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.invertY));
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
@@ -728,7 +752,7 @@ renderProfile();
 
 // Settings tabs: Server (room rules) vs Player (personal).
 for (const b of document.querySelectorAll('#settings .tab')) b.onclick = () => ($('settings').dataset.tab = b.dataset.tab);
-bindCheck('opt-wide', 'wideView', () => (renderer.view.wide = settings.wideView));
+bindCheck('opt-wide', 'wideView', () => { settings.wideSet = true; saveSettings(); renderer.view.wide = settings.wideView; });
 bindCheck('opt-mirror', 'mirror', () => (renderer.view.mirror = settings.mirror));
 renderer.view.wide = settings.wideView;
 renderer.view.mirror = settings.mirror;
@@ -794,7 +818,7 @@ let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0, simMs = 0, boardT = 0
 // can be reported (Settings → Player shows the last one).
 const CRASH_KEY = 'wyrm.crash.v1';
 let lastProblemToast = -1e9;
-function noteProblem(kind, err) {
+function noteProblem(kind, err, quiet = false) {
     const msg = String((err && (err.stack || err.message)) || err).slice(0, 800);
     console.error('wyrm', kind, err);
     try {
@@ -803,7 +827,7 @@ function noteProblem(kind, err) {
     } catch { /* storage blocked */ }
     showLastProblem();
     const t = performance.now();
-    if (t - lastProblemToast > 10000) { lastProblemToast = t; hud.toast('Something went wrong; still flying', 'bad'); }
+    if (!quiet && t - lastProblemToast > 10000) { lastProblemToast = t; hud.toast('Something went wrong; still flying', 'bad'); }
 }
 function showLastProblem() {
     const el = $('last-problem');
@@ -818,9 +842,21 @@ function showLastProblem() {
 window.addEventListener('error', (e) => noteProblem('error', e.error || e.message));
 window.addEventListener('unhandledrejection', (e) => noteProblem('promise', e.reason));
 // If the phone takes the GPU away (memory pressure), ask for it back and
-// carry on at Low quality instead of letting the page die.
-canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); noteProblem('gpu', 'WebGL context lost'); });
-canvas.addEventListener('webglcontextrestored', () => { renderer.quality = null; renderer.setQuality('low'); hud.toast('Graphics recovered (Low quality)', 'nm'); });
+// carry on at Low quality instead of letting the page die. A loss that comes
+// back within a few seconds is only noted (Settings → Player), not toasted.
+let gpuLostTimer = 0;
+canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    clearTimeout(gpuLostTimer);
+    gpuLostTimer = setTimeout(() => noteProblem('gpu', 'WebGL context lost'), 5000);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+    clearTimeout(gpuLostTimer);
+    noteProblem('gpu', 'WebGL context lost, then restored', true);
+    renderer.restore();
+    renderer.quality = null; renderer.setQuality('low');
+    hud.toast('Graphics recovered (Low quality)', 'nm');
+});
 $('last-problem-copy').onclick = () => { try { navigator.clipboard.writeText($('last-problem').querySelector('pre').textContent); } catch { /* ignore */ } };
 $('last-problem-clear').onclick = () => { try { localStorage.removeItem(CRASH_KEY); } catch { /* ignore */ } showLastProblem(); };
 showLastProblem();
@@ -832,6 +868,7 @@ function frame(nowMs) {
 
 function tick(nowMs) {
     const now = nowMs / 1000;
+    measureScreen(nowMs - last);
     let dt = Math.min(0.1, (nowMs - last) / 1000);
     last = nowMs;
     fpsN++; fpsT += dt;
