@@ -1,5 +1,7 @@
 # Wyrm prototype (PC, single-player vs bots)
 
+> **Historical.** Prototype notes from before v3; see [PRD-v3.md](PRD-v3.md) and [DESIGN-v3.md](DESIGN-v3.md) for the current game.
+
 Sep 29, 2026 · Built to answer one question: **is the flight and the 3D
 snake loop fun on PC?** Graphics are deliberately minimal. This covers the
 spec's week-1 "Fun alone" milestone (SPEC-v2 §18).

@@ -14,7 +14,7 @@ shared rooms.
 | `site/` | The game: a static page plus ES modules (three.js from esm.sh). Published to GitHub Pages. |
 | `site/js/sim.js` | The simulation, shared by the browser and the server |
 | `server/` | The multiplayer server: rooms over WebSockets, on Google Cloud Run |
-| `notes/` | Design notes: rules, multiplayer setup, the voice clips' generator |
+| `notes/` | Product and design docs ([PRD-v3](notes/PRD-v3.md), [DESIGN-v3](notes/DESIGN-v3.md)), rules, multiplayer setup, the voice clips' generator |
 | `scripts/` | Local server, smoke test, cache-stamp check |
 
 ## Run it locally

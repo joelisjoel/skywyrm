@@ -1,8 +1,10 @@
 # Working on Skywyrm
 
 Start with [README.md](README.md) for the repo layout, the checks and how
-each part ships. The game rules are in `notes/RULES.md` and the server
-setup is in `notes/MULTIPLAYER.md`.
+each part ships. What the game is and why: `notes/PRD-v3.md`. How it works
+(sim, netcode, renderer, deploy, known issues): `notes/DESIGN-v3.md`. Keep
+both current when a change alters what they describe. Server setup steps
+are in `notes/MULTIPLAYER.md` (partly stale, see DESIGN-v3 §10.3).
 
 ## Owner's ground rules (Joel)
 
