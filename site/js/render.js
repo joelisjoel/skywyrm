@@ -2,7 +2,7 @@
 // with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
 // pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=23';
+import { T, TIERS } from './tunables.js?v=24';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -113,7 +113,11 @@ export class Renderer {
         // The flaming pearl an Ancient chases.
         this.pearlMat = new THREE.MeshStandardMaterial({ color: 0xFFF4DA, emissive: 0xFFB050, emissiveIntensity: 1.1, roughness: 0.1 });
         this.pearlGeo = new THREE.SphereGeometry(1, 20, 14);
-        this.gapeGeo = new THREE.ConeGeometry(1, 1, 12).translate(0, -0.5, 0).rotateX(Math.PI / 2);   // apex at 0, base at z = -1
+        // The inside of the open mouth: a funnel open at the front (apex at 0,
+        // rim at z = -1), seen from inside too, so a wide gape looks into a
+        // dark throat rather than at a red plate.
+        this.gapeGeo = new THREE.ConeGeometry(1, 1, 12, 1, true).translate(0, -0.5, 0).rotateX(Math.PI / 2);
+        this.gapeMat = throatMaterial();
         this.whiskerMat = new THREE.MeshStandardMaterial({ color: 0xF3E3BF, roughness: 0.4, metalness: 0.2 });
         // All heads are drawn together, one instanced mesh per part, so a
         // sky full of dragons costs the same ~20 draws as one. Each head's
@@ -142,7 +146,7 @@ export class Renderer {
         const from = (k) => (t) => t >= k;
         this.headDraws = [
             part(P.skin, skinMat, 'g', null, 1), part(P.jawSkin, skinMat, 'jaw', null, 1),
-            part(P.mouth, this.mouthMat, 'g'), part(P.jawMouth, this.mouthMat, 'jaw'), part(this.gapeGeo, this.mouthMat, 'gape'),
+            part(P.mouth, this.mouthMat, 'g'), part(P.jawMouth, this.mouthMat, 'jaw'), part(this.gapeGeo, this.gapeMat, 'gape'),
             part(P.accent, accentMat, 'g', null, 2), part(P.jawAccent, accentMat, 'jaw', null, 2),
             part(P.maneLong, accentMat, 'g', from(2), 2), part(P.jawBeard, accentMat, 'jaw', from(2), 2),
             part(P.eyes, this.eyeMat, 'g', (t) => t < 3), part(P.eyes, this.eyeGlowMat, 'g', from(3)), part(P.pupils, this.pupilMat, 'g'),
@@ -784,7 +788,7 @@ export class Renderer {
             // the back of the skull so the head stays on its neck.
             _q.setFromAxisAngle(Zaxis, -d.bank);
             _qa.copy(d.quat).multiply(_q);                               // body + bank
-            _e.set(h.pitch + 0.22 * (h.open || 0), h.yaw, 0, 'YXZ');      // the snout lifts as the jaws part
+            _e.set(h.pitch + 0.22 * T.eatMotion * (h.open || 0), h.yaw, 0, 'YXZ');   // the snout lifts as the jaws part
             _qb.setFromEuler(_e);
             h.g.quaternion.copy(_qa).multiply(_qb);
             _p.set(0, 0, 0.7 * hs);                                      // pivot, behind the eyes
@@ -811,10 +815,10 @@ export class Renderer {
             else h.food = false;
             const wantOpen = d.breath > 0 ? 1 : h.chomp > 0 ? 0.12 : (h.food || h.eatT > 0) ? 1 : 0;
             h.open += (wantOpen - h.open) * (1 - Math.exp(-dt / (wantOpen > h.open ? 0.05 : 0.06)));
-            const gap = 0.6 * h.open;                                           // up to ~34°
+            const gap = 0.6 * T.eatMotion * h.open;                             // up to ~69° (eatMotion 2)
             h.jaw.rotation.x = -gap;
             h.gapeG.rotation.x = -gap / 2;
-            h.gape.scale.set(0.26, 0.02 + 1.2 * Math.tan(gap / 2), 1.55);
+            h.gape.scale.set(0.4, 0.02 + 1.15 * Math.tan(gap / 2), 1.45);
             // The pearl floats ahead of the nose, bobbing and circling.
             if (t >= 4) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             // Hot dragons glow; the leader blazes gold. Frost whitens a
@@ -1876,6 +1880,18 @@ function bodyDepthMaterial() {
     m.onBeforeCompile = (sh) => {
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + BODY_VERT)
             .replace('#include <begin_vertex>', 'bodySetup();\nvec3 transformed = bodyPos;');
+    };
+    return m;
+}
+
+// The open mouth's inside (gapeGeo): deep red, darkening toward the throat.
+function throatMaterial() {
+    const m = new THREE.MeshStandardMaterial({ color: 0x7A0C1C, roughness: 0.7, emissive: 0x240004, side: THREE.DoubleSide });
+    m.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vRim;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRim = -position.z;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRim;')
+            .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.12, 1.0, smoothstep(0.1, 0.95, vRim));');
     };
     return m;
 }
