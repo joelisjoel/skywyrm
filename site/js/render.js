@@ -109,6 +109,7 @@ export class Renderer {
         // The flaming pearl an Ancient chases.
         this.pearlMat = new THREE.MeshStandardMaterial({ color: 0xFFF4DA, emissive: 0xFFB050, emissiveIntensity: 1.1, roughness: 0.1 });
         this.pearlGeo = new THREE.SphereGeometry(1, 20, 14);
+        this.gapeGeo = new THREE.ConeGeometry(1, 1, 12).translate(0, -0.5, 0).rotateX(Math.PI / 2);   // apex at 0, base at z = -1
         this.whiskerMat = new THREE.MeshStandardMaterial({ color: 0xF3E3BF, roughness: 0.4, metalness: 0.2 });
 
         // Power-up crystals.
@@ -459,8 +460,10 @@ export class Renderer {
         g.add(jaw);
         // The red inside of the open mouth: sits halfway between the jaws
         // and swells to fill the gap as they part.
-        const gapeG = new THREE.Group(), gape = new THREE.Mesh(this.pearlGeo, this.mouthMat);
-        gapeG.position.copy(P.hinge); gape.position.set(0, -0.14, -0.78);
+        // A wedge from the hinge to the jaw tip, set halfway between the
+        // jaws and as tall as the gap, so the open mouth is solid red inside.
+        const gapeG = new THREE.Group(), gape = new THREE.Mesh(this.gapeGeo, this.mouthMat);
+        gapeG.position.copy(P.hinge); gape.position.set(0, -0.1, 0);
         gapeG.add(gape); g.add(gapeG);
         h = { g, mat, mat2, wl, wr, eyes, buds, antlers, crown, mane, pearl, jaw, beard, gapeG, gape, open: 0, eatT: 0, lastMass: d.mass,
             tier: -1, flap: Math.random() * 6 };
@@ -674,7 +677,7 @@ export class Renderer {
             // the back of the skull so the head stays on its neck.
             _q.setFromAxisAngle(Zaxis, -d.bank);
             _qa.copy(d.quat).multiply(_q);                               // body + bank
-            _e.set(h.pitch, h.yaw, 0, 'YXZ');
+            _e.set(h.pitch + 0.22 * (h.open || 0), h.yaw, 0, 'YXZ');      // the snout lifts as the jaws part
             _qb.setFromEuler(_e);
             h.g.quaternion.copy(_qa).multiply(_qb);
             _p.set(0, 0, 0.7 * hs);                                      // pivot, behind the eyes
@@ -698,14 +701,20 @@ export class Renderer {
             // Jaw: snaps open when the dragon eats (its mass goes up, which
             // works for bots and online players too) and gapes wide while
             // breathing fire; opens fast, closes a little slower.
-            if (d.mass > h.lastMass + 1e-3) h.eatT = 0.3;
+            // Food just ahead of the snout opens the mouth wide; each bite
+            // snaps it shut for a moment, so grazing reads as chomping.
+            if (d.mass > h.lastMass + 1e-3) { h.chomp = 0.11; h.eatT = 0.35; }
             h.lastMass = d.mass;
+            h.chomp = Math.max(0, (h.chomp || 0) - dt);
             h.eatT = Math.max(0, h.eatT - dt);
-            const wantOpen = d.breath > 0 ? 1 : h.eatT > 0 ? 0.7 : 0;
-            h.open += (wantOpen - h.open) * (1 - Math.exp(-dt / (wantOpen > h.open ? 0.04 : 0.13)));
-            h.jaw.rotation.x = -0.55 * h.open;
-            h.gapeG.rotation.x = -0.27 * h.open;
-            h.gape.scale.set(0.27, 0.04 + 0.28 * h.open, 0.8);
+            if (cp.distanceToSquared(d.pos) < 120 * 120) h.food = foodAhead(world, d, hs);
+            else h.food = false;
+            const wantOpen = d.breath > 0 ? 1 : h.chomp > 0 ? 0.12 : (h.food || h.eatT > 0) ? 1 : 0;
+            h.open += (wantOpen - h.open) * (1 - Math.exp(-dt / (wantOpen > h.open ? 0.05 : 0.06)));
+            const gap = 0.6 * h.open;                                           // up to ~34°
+            h.jaw.rotation.x = -gap;
+            h.gapeG.rotation.x = -gap / 2;
+            h.gape.scale.set(0.26, 0.02 + 1.2 * Math.tan(gap / 2), 1.55);
             // The pearl floats ahead of the nose, bobbing and circling.
             if (h.pearl.visible) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
@@ -1603,6 +1612,20 @@ function merged(parts) {
     out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     return out;
+}
+
+// Is there food just in front of this dragon's mouth? (Opens it wide.)
+function foodAhead(world, d, hs) {
+    const reach = Math.max(2.2, 1.6 * hs + 1.5), mx = d.pos.x + d.fwd.x * 1.6 * hs, my = d.pos.y + d.fwd.y * 1.6 * hs, mz = d.pos.z + d.fwd.z * 1.6 * hs;
+    const r2 = reach * reach, ox = world.ox, oy = world.oy, oz = world.oz, alive = world.oalive;
+    for (let i = 0, n = world.oHigh; i < n; i++) {
+        if (!alive[i]) continue;
+        const dx = ox[i] - mx; if (dx > reach || dx < -reach) continue;
+        const dy = oy[i] - my; if (dy > reach || dy < -reach) continue;
+        const dz = oz[i] - mz;
+        if (dx * dx + dy * dy + dz * dz < r2 && dx * d.fwd.x + dy * d.fwd.y + dz * d.fwd.z > -0.5 * reach) return true;
+    }
+    return false;
 }
 
 // Each dragon's bloodline, the same on every screen (from its id): about
