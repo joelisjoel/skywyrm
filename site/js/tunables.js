@@ -132,6 +132,10 @@ export const DEFAULTS = {
     fireCharge: 1,          // fire crystals stack and one breath spends them all, bigger per charge (0 = one charge, classic)
     fireChargeMax: 5,       // most charges a dragon can store
     elements: 1,            // ice, lightning and acid crystals join fire; the last one eaten sets your breath (0 = only fire)
+    pearls: 3,              // flaming pearls drifting through the sky (0 = none)
+    pearlMass: 30,          // mass for catching one
+    pearlRespawn: 8,        // s until a new one appears elsewhere (±25%)
+    pearlDrift: 2.5,        // m/s, on long curving paths
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -260,6 +264,10 @@ export const PANEL = [
     ['fireCharge', 0, 1, 1, 'Rules'],
     ['fireChargeMax', 1, 9, 1, 'Rules'],
     ['elements', 0, 1, 1, 'Rules'],
+    ['pearls', 0, 8, 1, 'Rules'],
+    ['pearlMass', 0, 100, 1, 'Rules'],
+    ['pearlRespawn', 1, 60, 1, 'Rules'],
+    ['pearlDrift', 0, 10, 0.1, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

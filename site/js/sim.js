@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=22';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=23';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -17,6 +17,11 @@ const NET_GRACE = 0.25;         // s before the server enforces a fresh chill or
 const PU_WALL_GAP = 30;         // m: drifting power-ups turn back this far from walls and the cloud sea
 const PU_SUN_GAP = 20;          // m: …and this far from the sun (its glare would hide them)
 const PU_HOME = 0.55;           // × arena radius: …and wander back toward the action past this
+// How drifting things wander: re-aim every `every`–`every + span` s, ease
+// toward the new heading with τ `tau` s, and turn for home past `home` × R.
+const PU_PATH = { every: 3, span: 5, tau: 2, home: PU_HOME };
+const PEARL_PATH = { every: 8, span: 8, tau: 4, home: 0.7 };   // long, sweeping curves over more of the sky
+const MAX_PEARLS = 8;
 
 const _v1 = new Vector3(), _v2 = new Vector3(), _v3 = new Vector3();
 const _q1 = new Quaternion(), _m = new Matrix4();
@@ -220,6 +225,9 @@ export class World {
         this.powerups = [];
         this.nextPowerup = 10;
         this.clouds = []; this.cloudSeq = 0;      // acid clouds (rule elements)
+        this.pearls = [];                         // flaming pearls (rule pearls): { id, pos, vel, … }
+        this.pearlRespawns = [];                  // { at, from }: a new pearl is due, away from `from`
+        this.pearlId = 0;
         // Spatial hash over all beads.
         this.hStart = new Int32Array(HASH_SIZE + 1);
         this.hCount = new Int32Array(HASH_SIZE);
@@ -903,7 +911,7 @@ export class World {
         for (let k = this.powerups.length - 1; k >= 0; k--) {
             const pu = this.powerups[k];
             pu.spin += dt;
-            this.drift(pu, this.rule('powerupDrift'), dt);
+            this.drift(pu, this.rule('powerupDrift'), dt, PU_PATH);
             for (const d of this.dragons) {
                 if (!d.alive) continue;
                 const rr = 2.5 + d.r;
@@ -925,11 +933,11 @@ export class World {
         }
     }
 
-    // Power-ups float about (rule powerupDrift, m/s; each one 0.6–1.4× that):
-    // a slow wander that eases toward a new heading every few seconds and
-    // turns for home near a wall or the cloud sea, out of the sun's glare,
-    // or once it has strayed from the action.
-    drift(t, speed, dt) {
+    // Power-ups (rule powerupDrift, m/s; each one 0.6–1.4× that) and pearls
+    // float about: a slow wander that eases toward a new heading every few
+    // seconds and turns for home near a wall or the cloud sea, out of the
+    // sun's glare, or once it has strayed too far out (path.home).
+    drift(t, speed, dt, path) {
         if (!(speed > 0)) return;
         const a = this.arena;
         if (!t.vel) { t.vel = randomUnit(new Vector3()).multiplyScalar(speed); t.aim = new Vector3(); t.aimAt = 0; t.pace = 0.6 + 0.8 * Math.random(); }
@@ -937,20 +945,69 @@ export class World {
             randomUnit(t.aim);
             if (a.gravity) t.aim.y *= 0.5;                    // mostly level in Skyhold
             t.aim.normalize();
-            t.aimAt = this.time + 3 + Math.random() * 5;
+            t.aimAt = this.time + path.every + Math.random() * path.span;
         }
         const toC = _d1.subVectors(a.center, t.pos), dc = toC.length();
         if (dc > 1e-3) {
             toC.multiplyScalar(1 / dc);
-            if (hazardDist(a, t.pos)[0] < PU_WALL_GAP || dc > a.radius * PU_HOME) t.aim.copy(toC);
+            if (hazardDist(a, t.pos)[0] < PU_WALL_GAP || dc > a.radius * path.home) t.aim.copy(toC);
             else if (dc < PU_SUN_GAP) t.aim.copy(toC).negate();
         }
-        // Velocity eases toward the aim (τ 2 s): wide, gentle curves.
-        const k = Math.min(1, dt * 0.5), v = speed * t.pace;
+        // Velocity eases toward the aim: wide, gentle curves.
+        const k = Math.min(1, dt / path.tau), v = speed * t.pace;
         t.vel.x += (t.aim.x * v - t.vel.x) * k;
         t.vel.y += (t.aim.y * v - t.vel.y) * k;
         t.vel.z += (t.aim.z * v - t.vel.z) * k;
         t.pos.addScaledVector(t.vel, dt);
+    }
+
+    // ------------------------------------------------ flaming pearls
+    // A few glowing pearls (rule pearls) drift through the sky on long
+    // curves. Catching one is worth pearlMass; a new one appears somewhere
+    // else pearlRespawn s later.
+    updatePearls(dt) {
+        const want = Math.min(MAX_PEARLS, Math.max(0, Math.round(this.rule('pearls'))));
+        if (!want) { this.pearls.length = 0; this.pearlRespawns.length = 0; return; }
+        for (let i = this.pearlRespawns.length - 1; i >= 0; i--) {
+            const r = this.pearlRespawns[i];
+            if (r.at <= this.time) { this.pearlRespawns.splice(i, 1); this.addPearl(r.from); }
+        }
+        while (this.pearls.length + this.pearlRespawns.length < want) this.addPearl(null);
+        while (this.pearls.length + this.pearlRespawns.length > want) { if (this.pearlRespawns.length) this.pearlRespawns.pop(); else this.pearls.pop(); }
+        const speed = this.rule('pearlDrift');
+        for (let k = this.pearls.length - 1; k >= 0; k--) {
+            const pl = this.pearls[k];
+            this.drift(pl, speed, dt, PEARL_PATH);
+            for (const d of this.dragons) {
+                if (!d.alive) continue;
+                const rr = 3 + d.r;
+                if (d.pos.distanceToSquared(pl.pos) >= rr * rr) continue;
+                let gain = this.rule('pearlMass');
+                if (d.isBot && d.mass > T.botGrowthCapMass) gain *= 0.5;
+                d.mass += gain;
+                this.emit({ type: 'pearl', d, gain: Math.round(gain), x: pl.pos.x, y: pl.pos.y, z: pl.pos.z });
+                this.pearls.splice(k, 1);
+                this.pearlRespawns.push({ at: this.time + this.rule('pearlRespawn') * (0.75 + Math.random() * 0.5), from: pl.pos });
+                break;
+            }
+        }
+    }
+
+    // A new pearl: away from the walls and the sun, and (after one is
+    // caught) the farthest of a few candidates from where that happened.
+    addPearl(away) {
+        const a = this.arena, p = new Vector3(), c = new Vector3();
+        let best = -1;
+        for (let n = 0; n < (away ? 6 : 1); n++) {
+            for (let tries = 0; tries < 20; tries++) {
+                randomUnit(c).y *= a.foodSquashY;
+                c.normalize().multiplyScalar(a.radius * (0.2 + 0.45 * Math.random())).add(a.center);
+                if (hazardDist(a, c)[0] > 40) break;
+            }
+            const score = away ? c.distanceTo(away) : 0;
+            if (score > best) { best = score; p.copy(c); }
+        }
+        this.pearls.push({ id: ++this.pearlId, pos: p });
     }
 
     // A breath crystal: fire, or (rule elements) for a share of them ice,
@@ -1237,6 +1294,7 @@ export class World {
         this.updateOrbs(dt);
         this.updatePowerups(dt);
         if (this.clouds.length) this.updateClouds(dt);
+        this.updatePearls(dt);
         // Stats bucket (1 s).
         const b = this._bucket;
         for (const d of this.dragons) if (d.alive) { b.ds += dt; if (d === this.player) b.pds += dt; }

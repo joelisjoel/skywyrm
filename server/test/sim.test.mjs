@@ -344,7 +344,7 @@ const X = { x: 1, y: 0, z: 0 };
 {
     const trial = (mass, rules = {}, human = false, flipOff = false, type = 'shield', charges = 0) => {
         const w = new World('orb', 'local');
-        Object.assign(w.rules, { botAggrMax: 0.5 }, rules);
+        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 0 }, rules);
         w.ageStart = 0;
         w.botTarget = () => 1;
         managePopulation(w, true);
@@ -535,6 +535,75 @@ const X = { x: 1, y: 0, z: 0 };
         check(oldC.dragon.element === 'fire' && newC.dragon.element === 'acid' && pu(oldC).kind === 'fire' && pu(newC).kind === 'acid',
             'picking it up, the older browser\'s dragon gets fire (and is told "fire"); the new one gets acid');
     }
+}
+
+// Flaming pearls (rule pearls): a few drift through the sky on long
+// curves, catching one is worth pearlMass, and a new one turns up
+// somewhere else pearlRespawn s later.
+{
+    for (const arena of ['sky', 'orb']) {
+        const w = new World(arena, 'local');
+        w.step(1 / 30);
+        const start = w.pearls.map((p) => p.pos.clone()), last = start.map((v) => v.clone()), walked = start.map(() => 0);
+        let wall = Infinity, sun = Infinity, far = 0;
+        for (let s = 0; s < 1200; s++) {
+            w.time += 0.1; w.updatePearls(0.1);
+            w.pearls.forEach((p, i) => {
+                walked[i] += p.pos.distanceTo(last[i]); last[i].copy(p.pos);
+                wall = Math.min(wall, hazardDist(w.arena, p.pos)[0]);
+                const c = p.pos.distanceTo(w.arena.center);
+                sun = Math.min(sun, c); far = Math.max(far, c / w.arena.radius);
+            });
+        }
+        const pace = walked.map((m) => m / 120), moved = w.pearls.map((p, i) => p.pos.distanceTo(start[i]));
+        check(w.pearls.length === T.pearls && pace.every((v) => v > 1 && v < 3.6) && Math.max(...moved) > 10,
+            `${arena}: ${w.pearls.length} pearls drift ${pace.map((v) => v.toFixed(1)).join('/')} m/s over 2 min`);
+        check(wall > 20 && sun > 15 && far < 0.8, `${arena}: pearls keep ${wall.toFixed(0)} m from the walls, ${sun.toFixed(0)} m from the sun, within ${(far * 100).toFixed(0)}% of the radius`);
+    }
+    const w = new World('orb', 'local');
+    w.step(1 / 30);
+    const d = new Dragon('P', false);
+    w.spawn(d, 50); d.protect = 0;
+    const pl = w.pearls[0], at = pl.pos.clone();
+    d.pos.copy(pl.pos);
+    w.updatePearls(0);
+    const e = w.events.find((x) => x.type === 'pearl');
+    check(e && e.d === d && d.mass === 50 + T.pearlMass && w.pearls.length === T.pearls - 1, `catching a pearl: +${T.pearlMass} mass (${d.mass}), ${w.pearls.length} left`);
+    d.pos.set(0, 300, 0);
+    for (let s = 0; s < T.pearlRespawn * 1.25 * 10 + 2; s++) { w.time += 0.1; w.updatePearls(0.1); }
+    const fresh = w.pearls.find((p) => p.id > T.pearls);              // the first ones are 1..pearls
+    check(w.pearls.length === T.pearls && fresh && fresh.pos.distanceTo(at) > 60,
+        `a new pearl appears within ${T.pearlRespawn * 1.25} s, ${fresh ? fresh.pos.distanceTo(at).toFixed(0) : '?'} m from the last catch`);
+    const off = new World('orb', 'local');
+    off.rules.pearls = 0;
+    for (let s = 0; s < 30; s++) off.step(1 / 30);
+    check(off.pearls.length === 0, 'rule pearls 0: no pearls');
+}
+// Bots want pearls more than power-ups: a big bot between a crystal and a
+// pearl the same distance away goes for the pearl.
+{
+    const trial = () => {
+        const w = new World('orb', 'local');
+        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 1, pearlDrift: 0 });
+        w.ageStart = 0; w.botTarget = () => 1;
+        managePopulation(w, true);
+        const b = w.dragons[0];
+        w.spawn(b, 600); b.protect = 0;
+        b.pos.set(0, 0, -100);
+        quatFromForwardUp(new Vector3(1, 0, 0), new Vector3(0, 1, 0), b.quat); b.updateFrame(); b.vdir.copy(b.fwd);
+        b.pathHead = -1; b.pathCount = 0; b.lastPt.copy(b.pos);
+        w.updatePearls(0);
+        w.pearls[0].pos.set(0, 50, -100);
+        w.powerups.push({ pos: new Vector3(0, -50, -100), type: 'shield', spin: 0 });
+        w.nextPowerup = Infinity; w.rules.powerupDrift = 0;
+        for (let i = 0; i < 6 * 30; i++) {
+            w.step(1 / 30);
+            for (const e of w.events) if (e.type === 'pearl' || e.type === 'powerup') return e.type;
+        }
+        return 'neither';
+    };
+    const picks = [trial(), trial(), trial()];
+    check(picks.every((p) => p === 'pearl'), `a big bot picks the pearl over a crystal the same distance away (${picks.join(', ')})`);
 }
 
 console.log(`\n${ok} sim checks passed`);

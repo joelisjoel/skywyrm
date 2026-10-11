@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=22';
+import { T, TIERS } from './tunables.js?v=23';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -12,6 +12,7 @@ const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THR
 const LODE = 0x3D8BFF;           // lodestone blue
 const MAX_BEAMS = 240;
 const MAX_ARCS = 360;            // lightning ribbon quads per frame
+const MAX_PEARLS = 8;
 const Zaxis = new THREE.Vector3(0, 0, 1);
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
@@ -156,6 +157,28 @@ export class Renderer {
             blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
         this.leaderLight = new THREE.PointLight(0xffb040, 1500, 60, 1.5);
         this.scene.add(this.leaderGlow, this.leaderCore, this.leaderLight);
+
+        // Flaming pearls drifting through the sky (rule pearls): the Ancient's
+        // pearl, instanced (one draw), plus a world-size glow and a
+        // constant-size twinkle (one Points draw each) so they read from
+        // across the arena. Their flames come from the particle cloud.
+        this.pearlMesh = new THREE.InstancedMesh(this.pearlGeo, this.pearlMat, MAX_PEARLS);
+        this.pearlMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.pearlMesh.frustumCulled = false;
+        this.pearlMesh.count = 0;
+        this.scene.add(this.pearlMesh);
+        const pearlHalo = (map, size, atten) => {
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAX_PEARLS * 3), 3));
+            const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map, size, sizeAttenuation: atten, color: 0xffd9a0,
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+            pts.frustumCulled = false;
+            this.scene.add(pts);
+            return pts;
+        };
+        this.pearlGlow = pearlHalo(this.glowTex, 16, true);
+        this.pearlStar = pearlHalo(this.starTex, 22, false);
+        this.pearlFlames = 0;
 
         // Dragonfire cone (shown while breathing).
         const coneGeo = new THREE.ConeGeometry(1, 1, 24, 1, true);
@@ -878,6 +901,36 @@ export class Renderer {
             }
         });
 
+        // Flaming pearls: bob, breathe, twinkle and lick with flame.
+        const pls = world.pearls || [], npl = Math.min(pls.length, MAX_PEARLS);
+        const pm = this.pearlMesh.instanceMatrix.array;
+        const gpa = this.pearlGlow.geometry.attributes.position, spa = this.pearlStar.geometry.attributes.position;
+        this.pearlFlames += dt * (this.quality === 'low' ? 25 : 50);
+        const flames = Math.floor(this.pearlFlames);
+        this.pearlFlames -= flames;
+        for (let i = 0; i < npl; i++) {
+            const q = pls[i], ph = q.id * 2.3;
+            const x = q.pos.x, y = q.pos.y + 0.5 * Math.sin(time * 1.1 + ph), z = q.pos.z;
+            const s = 1.5 * (1 + 0.06 * Math.sin(time * 3.1 + ph)), k = i * 16;
+            pm[k] = s; pm[k + 1] = 0; pm[k + 2] = 0; pm[k + 3] = 0;
+            pm[k + 4] = 0; pm[k + 5] = s; pm[k + 6] = 0; pm[k + 7] = 0;
+            pm[k + 8] = 0; pm[k + 9] = 0; pm[k + 10] = s; pm[k + 11] = 0;
+            pm[k + 12] = x; pm[k + 13] = y; pm[k + 14] = z; pm[k + 15] = 1;
+            gpa.setXYZ(i, x, y, z); spa.setXYZ(i, x, y, z);
+            if (q.pos.distanceToSquared(this.camera.position) > 250 * 250) continue;
+            // Flame tongues swirl round it and lick upward.
+            for (let f = 0; f < flames; f++) {
+                const a = Math.random() * Math.PI * 2, h = Math.random() * 1.6 - 0.8, c = Math.cos(a), sn = Math.sin(a);
+                this.emit(x + c * s, y + h * s, z + sn * s, -sn * 2.4 + c * 0.7, 1.2 + Math.random(), c * 2.4 + sn * 0.7,
+                    0.45 + Math.random() * 0.45, 1.3);
+            }
+        }
+        this.pearlMesh.count = npl;
+        this.pearlMesh.instanceMatrix.needsUpdate = true;
+        this.pearlGlow.geometry.setDrawRange(0, npl); this.pearlStar.geometry.setDrawRange(0, npl);
+        gpa.needsUpdate = spa.needsUpdate = true;
+        this.pearlStar.material.size = 22 * this.renderer.getPixelRatio() * (0.8 + 0.2 * Math.sin(time * 5));
+
         // The sun breathes.
         if (this.sun) {
             const b = 1 + 0.06 * Math.sin(time * 1.3) + 0.03 * Math.sin(time * 3.7);
@@ -1260,6 +1313,14 @@ export class Renderer {
         for (let k = 0; k < 40; k++) {
             _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(4 + Math.random() * 8);
             this.emit(x, y, z, _s.x, _s.y, _s.z, 0.4 + Math.random() * 0.4, 1.4, k % 3 ? 0 : 1);
+        }
+    }
+
+    // A pearl caught: a sparkle of gold and pearly white.
+    pearlBurst(x, y, z) {
+        for (let k = 0; k < 45; k++) {
+            _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(3 + Math.random() * 6);
+            this.emit(x, y, z, _s.x, _s.y, _s.z, 0.5 + Math.random() * 0.5, 1.3, k % 3 ? 0 : 1);
         }
     }
 

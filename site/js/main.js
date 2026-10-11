@@ -1,17 +1,17 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=22';
-import { World, Dragon, hazardDist } from './sim.js?v=22';
-import { managePopulation, targetBots } from './bots.js?v=22';
-import { Renderer } from './render.js?v=34';
-import { ChaseCam } from './camera.js?v=22';
-import { Input } from './input.js?v=25';
-import { Hud } from './hud.js?v=23';
-import { Audio } from './audio.js?v=13';
-import { TunePanel } from './tune-panel.js?v=23';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=23';
+import { World, Dragon, hazardDist } from './sim.js?v=23';
+import { managePopulation, targetBots } from './bots.js?v=23';
+import { Renderer } from './render.js?v=35';
+import { ChaseCam } from './camera.js?v=23';
+import { Input } from './input.js?v=26';
+import { Hud } from './hud.js?v=24';
+import { Audio } from './audio.js?v=14';
+import { TunePanel } from './tune-panel.js?v=24';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=24';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=25';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -203,6 +203,11 @@ function handleEvents() {
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
+            case 'pearl':
+                renderer.pearlBurst(e.x, e.y, e.z);
+                if (mine) { hud.toast(`FLAMING PEARL  +${e.gain}`, 'big'); audio.pearl(); hype(8); }
+                else if (e.d.pos.distanceTo(cam.pos) < 100) hud.feed(`✨ ${e.d.name} caught a flaming pearl`);
+                break;
             case 'bite':
                 renderer.biteBurst(e.x, e.y, e.z, e.color);
                 if (mine) { hud.toast(`CHOMP  +${e.gain}`, 'nm'); audio.bite(); hype(6); lifeBites++; }

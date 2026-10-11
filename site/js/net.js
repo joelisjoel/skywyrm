@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=22';
-import { World, Dragon, ELEMENTS } from './sim.js?v=22';
-import { MOODS } from './bots.js?v=22';
+import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=23';
+import { World, Dragon, ELEMENTS } from './sim.js?v=23';
+import { MOODS } from './bots.js?v=23';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -70,6 +70,19 @@ function poseAt(S, t, d) {
     d.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
     _qa.set(a.qx, a.qy, a.qz, a.qw); _qb.set(b.qx, b.qy, b.qz, b.qw);
     d.quat.copy(_qa).slerp(_qb, k).normalize();
+}
+
+// The same for a point that only moves (flaming pearls).
+function pointAt(S, t, out) {
+    const n = S.length;
+    let a = S[0], b = a, k = 0;
+    if (n > 1 && t > a.t) {
+        let i = 1;
+        while (i < n - 1 && S[i].t < t) i++;
+        a = S[i - 1]; b = S[i];
+        k = (Math.min(t, b.t + EXTRAP_MAX) - a.t) / (b.t - a.t);
+    }
+    out.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
 }
 
 // Rooms list / create (HTTP).
@@ -143,6 +156,7 @@ export class NetGame {
         const o = m.orbs;
         for (let k = 0; k < o.length; k += 7) this.setOrb(o[k], o[k + 1], o[k + 2], o[k + 3], o[k + 4], o[k + 5], o[k + 6]);
         this.setPowerups(m.pu);
+        this.setPearls(m.pl, typeof m.time === 'number' ? m.time : 0);
         this.player = w.byId.get(m.you);
         w.player = this.player;
         this.player.wallAssist = !!m.room.beginner;
@@ -232,6 +246,7 @@ export class NetGame {
         }
         this.setPowerups(m.pu);
         w.clouds = Array.isArray(m.ac) ? m.ac.map((c) => ({ id: c[0], x: c[1], y: c[2], z: c[3], r: c[4], ttl: c[5], life: c[6] || 1, owner: c[7] })) : [];
+        this.setPearls(m.pl, tm);
         this.humans = m.h;
         const me = m.me, p = this.player;
         if (me && p) {
@@ -284,6 +299,7 @@ export class NetGame {
                     if (d && o) this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
                     break;
                 }
+                case 'pearl': { const d = this.dragon(e.id); if (d) this.queue({ type: 'pearl', d, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z }); break; }
                 case 'eat': this.queue({ type: 'eat', d: p }); break;
                 case 'tier': this.queue({ type: 'tier', d: p, tier: e.tier | 0 }); break;
                 case 'nm': this.queue({ type: 'nearMiss', d: p }); break;
@@ -329,6 +345,21 @@ export class NetGame {
         w.powerups = (list || []).map((q) => ({ type: String(q[0]), pos: new Vector3(q[1], q[2], q[3]), spin: q[4] }));
     }
 
+    // Flaming pearls (absent from older servers): kept by id, each with its
+    // snapshots at server time tm, and drawn on the server's clock like the
+    // dragons (update, pointAt).
+    setPearls(list, tm) {
+        if (!Array.isArray(list)) return;
+        const w = this.world, old = new Map(w.pearls.map((p) => [p.id, p]));
+        w.pearls = list.filter((q) => Array.isArray(q) && [q[1], q[2], q[3]].every(Number.isFinite)).slice(0, 16).map((q) => {
+            const p = old.get(q[0]) || { id: q[0], pos: new Vector3(q[1], q[2], q[3]), samples: [] }, S = p.samples;
+            if (S.length && tm < S[S.length - 1].t - 1) S.length = 0;                  // the room restarted
+            if (!S.length || tm > S[S.length - 1].t) S.push({ t: tm, x: q[1], y: q[2], z: q[3] });
+            if (S.length > 30) S.shift();
+            return p;
+        });
+    }
+
     // Per frame: place other dragons along their snapshot timeline, send
     // your pose, keep an RTT estimate.
     update(dt) {
@@ -350,6 +381,12 @@ export class NetGame {
             if (rt <= newest.t) w.recordPath(d);
             d.updateFrame(); d.vdir.copy(d.fwd);
             d.bank += ((d.bankNet || 0) - d.bank) * 0.3;
+        }
+        for (const q of w.pearls) {
+            const S = q.samples;
+            if (!S || !S.length) continue;
+            while (S.length > 2 && S[1].t <= rt) S.shift();
+            pointAt(S, rt, q.pos);
         }
         const p = this.player;
         this.sendAcc += dt;

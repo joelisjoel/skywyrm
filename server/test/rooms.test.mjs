@@ -117,6 +117,9 @@ try {
     const names = a.last.lb.map((x) => x[1]);
     const aName = a.welcome.dragons.find((d) => d.id === a.welcome.you)?.name ?? names.find((n) => n.startsWith('Alice'));
     check(a.snaps >= 6, `snapshots flowing (${a.snaps} in 0.7 s)`);
+    const pearlOk = (pl) => Array.isArray(pl) && pl.length >= 1 && pl.length <= 3 && pl.every((q) => q.length === 4 && q.every(Number.isFinite));   // a bot may have just caught one
+    check(pearlOk(a.welcome.pl) && pearlOk(a.last.pl) && !a.last.pu.some((q) => q[0] === 'pearl'),
+        'flaming pearls sync in their own optional field (pl: [id, x, y, z]), never as power-ups');
     r = await (await api('/api/rooms')).json();
     const listed = r.rooms.find((x) => x.id === room.id);
     check(listed.humans === 2 && listed.bots >= 3, `lobby shows 2 players + ${listed.bots} bots`);

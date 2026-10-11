@@ -163,7 +163,7 @@ export class Room {
             room: { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner },
             tune: { ...T }, rules: w.rules, time: r2(w.time),
             dragons: w.dragons.filter((x) => x.alive || x.human).map(dragonMeta),
-            orbs, pu: this.powerups(!client.el),
+            orbs, pu: this.powerups(!client.el), pl: this.pearls(),
         });
         this.broadcast({ t: 'dn', d: dragonMeta(d) }, client);
         return { ok: true };
@@ -272,6 +272,11 @@ export class Room {
         return this.world ? this.world.powerups.map((p) => [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)]) : [];
     }
 
+    // Flaming pearls, as a field of their own: old clients ignore it.
+    pearls() {
+        return this.world ? this.world.pearls.map((p) => [p.id, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z)]) : [];
+    }
+
     tick() {
         const w = this.world;
         if (!w || this.humans === 0) return;
@@ -298,6 +303,7 @@ export class Room {
                 case 'bolt': pub.push({ k: 'bolt', id: e.d.id, o: e.hits.map((x) => x.id), p: e.pts.map(r2), s: r2(e.stun) }); break;
                 case 'acid': pub.push({ k: 'acid', id: e.d ? e.d.id : 0, o: e.o.id }); break;
                 case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
+                case 'pearl': pub.push({ k: 'pearl', id: e.d.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'eat': to(e.d, { k: 'eat' }); break;
                 case 'tier': to(e.d, { k: 'tier', tier: e.tier }); break;
                 case 'nearMiss': to(e.d, { k: 'nm' }); break;
@@ -320,7 +326,7 @@ export class Room {
         const states = w.dragons.filter((d) => d.alive || d.human).map(stateOf);
         const board = w.leaderboard().slice(0, 10).map((d) => [d.id, d.name, Math.round(d.shownLen || d.len)]);
         const o = w.orbLog.splice(0).map((op) => (op[0] === 'd' ? [0, op[1]] : [1, op[1], r2(op[2]), r2(op[3]), r2(op[4]), r2(op[5]), op[6], Math.round(op[7])]));
-        const base = { t: 's', tm: r2(w.time), d: states, o, pu: this.powerups(), lb: board, n: w.dragons.filter((d) => d.alive).length, h: this.humans };
+        const base = { t: 's', tm: r2(w.time), d: states, o, pu: this.powerups(), pl: this.pearls(), lb: board, n: w.dragons.filter((d) => d.alive).length, h: this.humans };
         // Acid clouds: [id, x, y, z, radius, s left, lifetime, spitter] (older clients ignore them).
         if (w.clouds.length) base.ac = w.clouds.map((c) => [c.id, r2(c.x), r2(c.y), r2(c.z), r2(c.r), r2(c.ttl), r2(c.life), c.owner]);
         const puOld = this.powerups(true);
