@@ -120,7 +120,22 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - The leaderboard ranks by mass.
 - **Size:**
   - `lengthFor(m) = min(400, 8 + 0.4m)`
-  - `radiusFor(m) = 0.6 + 1.4·min(1, m/2000)`
+  - `radiusFor(m) = (0.6 + 1.4·min(1, m/2000)) × (1 + girth·((L − 12)/88)^girthExp)`,
+    with L = `lengthFor(m)`. Rule `girth` (1; 0 = the old thin dragons) and
+    `girthExp` (0.585) make big dragons fatter than the thin radius at the
+    same length: ×1 for a newborn, ×1.4 at 32 m, ×2 at 100 m, ×2.5 at 188 m,
+    ×3 at 300 m, ×3.4 at 400 m. So r is 0.61 m at spawn, 1.52 m at 100 m,
+    3.33 m at 300 m and 4.35 m at 400 m (mass 980), up to 6.76 m by mass
+    2000; a body is about 45 times as long as it is thick from 200 m up
+    (thin dragons went from 66:1 at 100 m to 156:1 at 400 m). The curve has
+    the same shape as `sizeSpeed` and was picked from same-seed renders.
+    `World.radius(m)` applies the room's rule (spawn, `upkeep`, and in the
+    browser `net.js` `applyState`).
+  - Everything sized by r follows: hitboxes, bead spacing (0.7r, so a fat
+    dragon has fewer beads, wider apart, and a longer edible tip), the
+    pickup reach (2 + r), power-up and pearl reach, the wall assist's
+    margin, and in the renderer the head, jaws, fins, legs, plumes, tip
+    feathers, swim wave, shadow and glows.
   - Length eases toward its target at +12 m/s when growing and −30 m/s when
     shrinking.
 - **Movement** (`move`, `sim.js:453-512`):
@@ -158,13 +173,24 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   nearest bead decides what happens:
   - **Bite:** if the bead index is ≥ max(4, nBeads − `biteBeads`) and `tailBite`
     is on. The victim loses up to 5 beads' worth of mass and the biter gains
-    `biteBeads × biteMult` = 25. Bites have a 0.5 s cooldown.
+    `biteBeads × biteMult` = 25. Bites have a 0.5 s cooldown. With rule
+    `girth` the beads are counted at a thin dragon's spacing, so a bite
+    costs what it did (9.7 mass from a 300 m dragon) though a fat tip is
+    longer; the reach to bite it grows with r like every hitbox.
   - **Death:** any other bead, unless the shield absorbs the hit (shield → 0,
     1.5 s protection).
   - Skipped while the head is stunned by lightning (`d.stun`): it can't
     steer, so a body it's carried into doesn't count.
 - **Head-on:** the heavier dragon wins if it is more than 5% heavier; otherwise
   both die. This is skipped if either dragon is protected or stunned.
+- **Bead hash** (`buildHash`, `queryBeads`): beads go in cells, and a query
+  looks one cell round a point, so a cell must be as wide as the farthest
+  reach asked about: head + tail radius, or a bot feeler's pad. Thin
+  dragons fit in 4 m. With rule `girth` on, the cell is
+  max(4, 1.8·r + 1.5 m) for the fattest dragon alive (7.5 m with a 300 m
+  dragon, 13.7 m at mass 2000); with it off, always 4 m. A busy room with
+  two mass-2000 dragons kept alive costs about 2.1 ms a tick against
+  1.3–1.6 ms thin.
 - **`kill`:** drops 80% of the dragon's mass as orbs worth about 6, with a 45 s
   TTL, and credits the killer. Bots respawn after 2–4 s.
 - **Spawn** (`sim.js:343-406`):
@@ -278,6 +304,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `botTreasureNear` | 18 | `botTreasureFar` | 150 |
 | `pearls` | 3 | `pearlMass` | 30 |
 | `pearlRespawn` | 8 | `pearlDrift` | 2.5 |
+| `girth` | 1 | `girthExp` | 0.585 |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -450,7 +477,13 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     stunned like everyone else, enforced by the server's budget, which it
     feels as corrections.
   - A newer browser on an older server treats rules the server's `tune`
-    lacks (`fireCharge`, `elements`) as off.
+    lacks (`fireCharge`, `elements`, `girth`) as off.
+  - **Girth** changes hitboxes, and a browser works out every radius
+    itself from mass and the room's rules (snapshots carry mass, not
+    radius). So for one release, a page cached from before the rule draws
+    every dragon thinner than the server's hitboxes (and sizes its own wall
+    assist and camera thin): a fat tail can kill a little outside what that
+    page shows. It goes away when the cache refreshes.
   - **Pearls** use only additions that old clients skip, so they need no
     cap: the `pl` field (their `welcome` and `s` handlers read named fields
     only) and the `pearl` event (their event switch has no default). Pearls
@@ -715,9 +748,10 @@ The improvement loop's numbers, kept without identifying anyone
 
 | Setting | Value |
 |---|---|
-| Chase distance | 7 m, +0.02 m per metre of length, up to 16 m |
-| Height | 2.2 m |
-| Look-ahead | 10 m |
+| Chase distance | 7 m, +0.02 m per metre of length, up to 16 m; × the girth scale |
+| Height | 2.2 m × the girth scale |
+| Look-ahead | 10 m × the girth scale |
+| Girth scale | (r ÷ the thin radius)^`camGirth` 0.8: ×1.74 at 100 m and ×2.41 at 300 m (so 31 m back and 5.3 m up there), 1 with rule `girth` off. Your head shows about a quarter bigger on screen at 300 m than a thin one did, and the camera stays 2 m above the fatter body (it was 1.1 m above the thin one) |
 | Position τ | 0.12 s, stiffening at speed so the lag stays under 8 m (`camLagMax`) |
 | Rotation τ | 0.08 s |
 | Roll follow | 35% |
@@ -1167,6 +1201,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 ## 10. Known issues and tech debt
 
 ### 10.1 Gameplay bugs
+- **For one release after rule `girth` ships,** a browser still running the
+  cached page draws dragons thinner than the server collides them (§4.3).
 - **`sever` removes too much from long dragons.** The new mass comes from the
   cut length, so above the 400 m length cap a tip burn strips far more than the
   tip (`sim.js:904`). Fix: subtract the burned share of the current mass.
@@ -1214,6 +1250,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
 | Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 · powerupDrift 1 (rule) |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 |
-| Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · wideCorner 122 · wideExpo 3 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 · girth 1 · girthExp 0.585 |
+| Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · camGirth 0.8 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 · eatMotion 2 |

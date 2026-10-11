@@ -31,6 +31,8 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 | `pearlMass` | 30 | Mass for catching one |
 | `pearlRespawn` | 8 | s until a new one appears elsewhere (±25%) |
 | `pearlDrift` | 2.5 | m/s, on long curving paths |
+| `girth` | 1 | Bigger dragons are fatter: body radius × (1 + `girth` × ((length − 12 m) ÷ 88 m)^`girthExp`), so ×2 at 100 m and ×3 at 300 m, newborns unchanged. Hitboxes grow with the body (a bite still costs what it did). 0 = the old thin dragons |
+| `girthExp` | 0.585 | Shape of the girth curve (0.585 gives ×3 at 300 m when it's ×2 at 100 m) |
 
 ## Where to change them
 

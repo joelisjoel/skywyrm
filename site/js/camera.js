@@ -2,9 +2,15 @@
 // back as you grow, FOV kick on boost and at high speed, partial roll with the bank.
 // Also the death-cam orbit and the menu's attract orbit.
 import * as THREE from 'three';
-import { T } from './tunables.js?v=24';
+import { T, radiusFor } from './tunables.js?v=25';
 
 const _v = new THREE.Vector3(), _u = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+// How much farther back and higher the camera sits for this dragon: a fat
+// one (rule girth) has a bigger head and body to see past, so the offsets
+// grow with its girth factor (its radius over a thin dragon's of the same
+// mass) to the power camGirth. 1 without girth.
+const girthScale = (d) => Math.pow(Math.max(1, d.r / radiusFor(d.mass, 0)), T.camGirth);
 
 export class ChaseCam {
     constructor(camera) {
@@ -18,15 +24,17 @@ export class ChaseCam {
     }
 
     snap(d) {
-        this.pos.copy(d.pos).addScaledVector(d.fwd, -T.camDist).addScaledVector(d.up, T.camHeight);
+        const g = girthScale(d);
+        this.pos.copy(d.pos).addScaledVector(d.fwd, -T.camDist * g).addScaledVector(d.up, T.camHeight * g);
         this.up.copy(d.up);
-        this.look.copy(d.pos).addScaledVector(d.fwd, T.camLookAhead);
+        this.look.copy(d.pos).addScaledVector(d.fwd, T.camLookAhead * g);
     }
 
     follow(d, dt, arena, lookBack) {
-        const dist = Math.min(T.camDistMax, T.camDist + T.camDistPerLen * d.len);
+        const g = girthScale(d);
+        const dist = Math.min(T.camDistMax, T.camDist + T.camDistPerLen * d.len) * g;
         const dir = lookBack ? -1 : 1;
-        _t.copy(d.pos).addScaledVector(d.fwd, -dist * dir).addScaledVector(d.up, T.camHeight);
+        _t.copy(d.pos).addScaledVector(d.fwd, -dist * dir).addScaledVector(d.up, T.camHeight * g);
         // The spring trails speed × τ behind its spot. Past ×2.4 boost that
         // would leave the dragon shrinking into the distance, so τ stiffens
         // to keep the lag under camLagMax.
@@ -38,7 +46,7 @@ export class ChaseCam {
         _u.copy(d.up).applyQuaternion(_q);
         const kr = T.camRotTau > 0 ? 1 - Math.exp(-dt / T.camRotTau) : 1;
         this.up.lerp(_u, kr).normalize();
-        _v.copy(d.pos).addScaledVector(d.fwd, T.camLookAhead * dir);
+        _v.copy(d.pos).addScaledVector(d.fwd, T.camLookAhead * g * dir);
         this.look.lerp(_v, lookBack ? 1 : Math.min(1, kr * 1.5));
         // FOV kicks out on boost, and a little more past ×2 speed (+8° at ×4).
         const fovTarget = this.reduceMotion ? T.fov : (d.boosting ? T.fovBoost : T.fov) + T.fovSpeed * Math.max(0, (d.speedX || 1) - 2);

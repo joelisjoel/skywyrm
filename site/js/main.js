@@ -1,17 +1,17 @@
 // Skywyrm game loop and flow: menu (attract mode, server list) → play,
 // solo vs bots or online (net.js) → death-cam → run card → play again.
 // Runs on PCs and phones.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=24';
-import { World, Dragon, hazardDist } from './sim.js?v=24';
-import { managePopulation, targetBots } from './bots.js?v=24';
-import { Renderer } from './render.js?v=39';
-import { ChaseCam } from './camera.js?v=24';
-import { Input } from './input.js?v=27';
-import { Hud } from './hud.js?v=26';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=25';
+import { World, Dragon, hazardDist } from './sim.js?v=25';
+import { managePopulation, targetBots } from './bots.js?v=25';
+import { Renderer } from './render.js?v=40';
+import { ChaseCam } from './camera.js?v=25';
+import { Input } from './input.js?v=28';
+import { Hud } from './hud.js?v=27';
 import { Audio } from './audio.js?v=14';
-import { TunePanel } from './tune-panel.js?v=25';
+import { TunePanel } from './tune-panel.js?v=26';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=27';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=28';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';

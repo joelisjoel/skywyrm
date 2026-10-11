@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=24';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=25';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -114,7 +114,7 @@ export class Dragon {
         this.speed = T.speedCruise;
         this.mass = T.spawnMass;
         this.len = lengthFor(this.mass);
-        this.r = radiusFor(this.mass);
+        this.r = radiusFor(this.mass, 0);        // World.spawn sets the room's radius
         this.alive = true;
         this.protect = 0;
         this.shield = 0; this.magnet = 0; this.fire = 0; this.breath = 0; this.breathHit = false;
@@ -234,7 +234,7 @@ export class World {
         this.bx = new Float32Array(40000); this.by = new Float32Array(40000); this.bz = new Float32Array(40000);
         this.bOwner = new Int32Array(40000); this.bIdx = new Int32Array(40000);
         this.hEntries = new Int32Array(40000); this.bKey = new Int32Array(40000);
-        this.nb = 0;
+        this.nb = 0; this.cell = CELL;
         this.byId = new Map();
         // Encounter stats (spec §4): encounters vs dragon-seconds alive.
         this.statWindow = [];     // [time, encounters, dragonSeconds] per second bucket
@@ -347,6 +347,9 @@ export class World {
     // A rule's value for this world: the room's override, else the tunable.
     rule(k) { const v = this.rules[k]; return v === undefined ? T[k] : v; }
 
+    // Body radius for a mass, by this room's rules (girth: big dragons are fatter).
+    radius(m) { return radiusFor(m, this.rule('girth'), this.rule('girthExp')); }
+
     // Cruise/boost multiplier: heat plus the length reward (rule lengthSpeed),
     // never more than the rule speedCap (×4). Kept on the dragon as d.speedX
     // for the HUD ("1.5×").
@@ -390,7 +393,7 @@ export class World {
         const a = this.arena;
         d.alive = true;
         d.mass = mass; d.peakMass = mass;
-        d.r = radiusFor(mass);
+        d.r = this.radius(mass);
         d.len = lengthFor(mass);
         d.tier = tierFor(mass);
         d.kills = 0; d.bornAt = this.time; d.bestRank = 99;
@@ -643,7 +646,7 @@ export class World {
         // Growth: length eases toward target, radius follows mass.
         const targetLen = lengthFor(d.mass);
         d.len += Math.max(-30 * dt, Math.min(12 * dt, targetLen - d.len));
-        d.r = radiusFor(d.mass);
+        d.r = this.radius(d.mass);
         if (d.mass > d.peakMass) d.peakMass = d.mass;
         const tier = tierFor(d.mass);
         if (tier > d.tier) this.emit({ type: 'tier', d, tier });
@@ -660,9 +663,15 @@ export class World {
     }
 
     // ------------------------------------------------ spatial hash
+    // Queries look one cell round a point, so a cell must be as wide as the
+    // farthest reach asked about: head + tail radius (+ a bot's feeler pad).
+    // That fits in CELL for thin dragons; with rule girth the cells grow
+    // with the fattest dragon instead.
     buildHash() {
-        let nb = 0;
+        let nb = 0, maxR = 0;
         const hc = this.hCount; hc.fill(0);
+        if (this.rule('girth') > 0) for (const d of this.dragons) if (d.alive && d.r > maxR) maxR = d.r;
+        const cell = this.cell = Math.max(CELL, (T.headColScale + T.tailColScale) * maxR + 1.5);
         for (const d of this.dragons) {
             if (!d.alive) continue;
             for (let b = 0; b < d.nBeads; b++) {
@@ -671,7 +680,7 @@ export class World {
                 const x = d.beads[o], y = d.beads[o + 1], z = d.beads[o + 2];
                 this.bx[nb] = x; this.by[nb] = y; this.bz[nb] = z;
                 this.bOwner[nb] = d.id; this.bIdx[nb] = b;
-                const key = hashCell(Math.floor(x / CELL), Math.floor(y / CELL), Math.floor(z / CELL));
+                const key = hashCell(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
                 this.bKey[nb] = key; hc[key]++;
                 nb++;
             }
@@ -687,7 +696,7 @@ export class World {
 
     // Visit beads near p (within one cell). cb(beadIndex) → true to stop.
     queryBeads(p, cb) {
-        const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), cz = Math.floor(p.z / CELL);
+        const cell = this.cell, cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell), cz = Math.floor(p.z / cell);
         for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
             const key = hashCell(cx + dx, cy + dy, cz + dz);
             for (let e = this.hStart[key]; e < this.hStart[key + 1]; e++) {
@@ -817,7 +826,10 @@ export class World {
     bite(d, o, bead) {
         if (this.time - (d.lastBite || -9) < 0.5) return;
         const n = this.rule('biteBeads');
-        const lost = Math.min(Math.max(0, o.mass - T.spawnMass), n * o.beadSpacing / T.lenPerMass);
+        // A tip's worth of length, measured in thin-dragon beads: rule girth
+        // spaces a fat dragon's beads wider, but a bite costs what it did.
+        const spacing = this.rule('girth') > 0 ? Math.max(0.2, T.beadSpacing * radiusFor(o.mass, 0)) : o.beadSpacing;
+        const lost = Math.min(Math.max(0, o.mass - T.spawnMass), n * spacing / T.lenPerMass);
         if (lost < 0.5) return;
         d.lastBite = this.time;
         o.mass -= lost;

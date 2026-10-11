@@ -123,7 +123,13 @@ while the kid-safety rules stand. Reopening them is a decision for Joel (§14).
 ### 5.1 Dragon and growth ✅
 - **Mass drives everything.**
   - Length = 8 m + 0.4 m per unit of mass, capped at 400 m (reached at mass 980).
-  - Body radius grows from 0.6 m to 2.0 m by mass 2000.
+  - **Bigger dragons are fatter** (rule `girth`): about twice as thick at
+    100 m as before and three times at 300 m, so a big dragon looks
+    mighty instead of like a thread. The radius is 0.6 m at spawn (as
+    before), 1.5 m at 100 m, 3.3 m at 300 m and 4.4 m at full length, and
+    keeps growing a little with mass after that (6.8 m by mass 2000). The
+    hitbox grows with it, and the camera backs off and rises to keep a fat
+    dragon in view.
 - You spawn at mass 10, which is 12 m long.
 - **Tiers** change only how the dragon looks and the bragging. They have no
   gameplay effect (§10.2).
@@ -452,6 +458,9 @@ device.
 | Wyvern | mane and beard | back legs, plumes along the spine |
 | Elder | gold crown and antlers, glowing eyes | gilded scale edges |
 | Ancient | a flaming pearl floats ahead | qi light flowing down the body |
+
+Bodies also thicken as they grow (§5.1, rule `girth`), and the head,
+legs, fins and feathers grow with them.
 
 **Animation:**
 - Whiskers lengthen with each tier.
