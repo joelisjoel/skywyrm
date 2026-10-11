@@ -48,7 +48,7 @@ Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
 
 | Journey | How |
 |---|---|
-| See the list of servers and how many players are on each | The start page calls `GET /api/rooms` every 5 s and shows name, world, beginner badge, and players (plus bots). |
+| See the list of servers and how many players are on each | The start page calls `GET /api/rooms` every 10 s while it's on screen and shows name, world, beginner badge, and players (plus bots). |
 | There are always three servers | Three permanent rooms are built into the server: **Skyhold (Beginners)**, **Skyhold**, **The Orb**. They can never expire. |
 | Create a server and name it | A "Create server" form (name, world, beginner on/off) calls `POST /api/rooms`, then you join it. |
 | Servers live until 12 h after the last person leaves | When a room's last player leaves, it gets `expireAt = now + 12 h`, saved in Firestore. It's cleared if anyone joins. Expired rooms disappear from the list and are deleted. |

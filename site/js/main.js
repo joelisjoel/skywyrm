@@ -332,7 +332,7 @@ function joinRoom(id) {
         onClose(reason) {
             const wasIn = !!online;
             leaveOnline();
-            if (wasIn) { setState('menu'); setLobbyStatus(reason); refreshLobby(); }
+            if (wasIn) { setState('menu'); setLobbyStatus(reason); }
         },
     });
     tune.lock(true);
@@ -353,31 +353,50 @@ function leaveOnline() {
 
 function setLobbyStatus(text) { $('lobby-status').textContent = text || ''; }
 
+// Rows are kept and updated in place, keyed by room id: a refresh only
+// changes their text, so a tap on Join can't land on a button it replaced.
+const roomRows = new Map();     // room id → { row, nm, meta, count, btn }
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 function renderRooms(rooms) {
     const list = $('room-list');
-    list.textContent = '';
     rooms = rooms.slice().sort((a, b) => (b.beginner - a.beginner) || (b.permanent - a.permanent) || (b.humans - a.humans) || a.name.localeCompare(b.name));
-    for (const r of rooms) {
-        const row = document.createElement('div');
-        row.className = 'room';
-        const info = document.createElement('div');
-        const nm = document.createElement('div'); nm.className = 'rn'; nm.textContent = r.name;
-        const meta = document.createElement('div'); meta.className = 'rm';
-        meta.textContent = (r.arena === 'orb' ? 'The Orb · zero-G' : 'Skyhold · gravity') + (r.permanent ? ' · always on' : '');
-        info.append(nm, meta);
-        const count = document.createElement('div'); count.className = 'rc';
-        count.textContent = `👤 ${r.humans} · 🐉 ${r.bots}`;
-        count.title = `${r.humans} player${r.humans === 1 ? '' : 's'} and ${r.bots} bots`;
-        const btn = document.createElement('button');
-        btn.textContent = r.humans >= r.max ? 'Full' : 'Join';
-        btn.disabled = r.humans >= r.max;
-        btn.onclick = () => joinRoom(r.id);
-        row.append(info, count, btn);
-        list.appendChild(row);
-    }
+    const ids = new Set(rooms.map((r) => r.id));
+    for (const [id, el] of roomRows) if (!ids.has(id)) { el.row.remove(); roomRows.delete(id); }
+    rooms.forEach((r, i) => {
+        let el = roomRows.get(r.id);
+        if (!el) {
+            el = { row: document.createElement('div'), nm: document.createElement('div'), meta: document.createElement('div'),
+                count: document.createElement('div'), btn: document.createElement('button') };
+            el.row.className = 'room'; el.nm.className = 'rn'; el.meta.className = 'rm'; el.count.className = 'rc';
+            const info = document.createElement('div');
+            info.append(el.nm, el.meta);
+            el.btn.onclick = () => joinRoom(r.id);
+            el.row.append(info, el.count, el.btn);
+            roomRows.set(r.id, el);
+        }
+        setText(el.nm, r.name);
+        setText(el.meta, (r.arena === 'orb' ? 'The Orb · zero-G' : 'Skyhold · gravity') + (r.permanent ? ' · always on' : ''));
+        setText(el.count, `👤 ${r.humans} · 🐉 ${r.bots}`);
+        el.count.title = `${r.humans} player${r.humans === 1 ? '' : 's'} and ${r.bots} bots`;
+        setText(el.btn, r.humans >= r.max ? 'Full' : 'Join');
+        el.btn.disabled = r.humans >= r.max;
+        if (list.children[i] !== el.row) list.insertBefore(el.row, list.children[i] || null);
+    });
 }
 
-let lobbyBusy = false, lobbyT = -99;
+// The lobby asks for the room list every 10 s, but only while you can see
+// it (the menu, no overlay, a visible tab), and at once when it comes into
+// view. Every request keeps the one Cloud Run server awake, so a hidden tab
+// or a game in progress asks for nothing.
+const LOBBY_POLL = 10;
+let lobbyBusy = false, lobbyShown = false, lobbyT = 0;
+function lobbyTick(now) {
+    const shown = state === 'menu' && !overlay && !document.hidden;
+    if (shown && (!lobbyShown || now - lobbyT >= LOBBY_POLL)) { lobbyT = now; refreshLobby(); }
+    lobbyShown = shown;
+}
+document.addEventListener('visibilitychange', () => lobbyTick(performance.now() / 1000));
+
 async function refreshLobby() {
     if (!SERVER_BASE) { setLobbyStatus('multiplayer not set up yet — play solo'); $('create-open').hidden = true; return; }
     if (lobbyBusy) return;
@@ -416,7 +435,7 @@ $('create-form').onsubmit = async (ev) => {
 $('name').value = settings.name || randomName();
 $('play').onclick = () => startPlay();
 $('again').onclick = () => playAgain();
-$('menu-btn').onclick = () => { if (online) leaveOnline(); setState('menu'); refreshLobby(); };
+$('menu-btn').onclick = () => { if (online) leaveOnline(); setState('menu'); };
 $('resume').onclick = () => resume();
 
 // Touch devices: on-screen buttons, and a flag the CSS keys off.
@@ -438,7 +457,6 @@ $('quit').onclick = () => {
         return;
     }
     setState('menu');
-    refreshLobby();
 };
 
 // Pause. Solo freezes the world. A room can't stop, so online Esc folds
@@ -730,7 +748,7 @@ function tick(nowMs) {
         }
         simMs = simMs * 0.9 + (performance.now() - t0) * 0.1;
     }
-    if (state === 'menu' && now - lobbyT > 5) { lobbyT = now; refreshLobby(); }
+    lobbyTick(now);
 
     // Population ramp: announce each new arrival (solo).
     if (!online && player && player.alive && state === 'play') {
