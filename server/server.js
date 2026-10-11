@@ -34,8 +34,15 @@ function ipOf(req) {
     return (xff.length ? xff[xff.length - 1] : req.socket.remoteAddress) || 'unknown';
 }
 
-const MAX_CONN_PER_IP = 6;
+// Sockets per client IP. A home or school network shares one address, so
+// this is generous. MAX_CONN_PER_IP overrides it (a positive whole number).
+const MAX_CONN_PER_IP = positiveInt(process.env.MAX_CONN_PER_IP, 16);
 const conns = new Map();   // ip → count
+
+function positiveInt(s, fallback) {
+    const n = Number(s);
+    return s && Number.isInteger(n) && n > 0 ? n : fallback;
+}
 
 // Solo run notes (POST /api/run): 20 an hour per address. The address is
 // held only here, in memory, until its hour is up; never stored or logged.

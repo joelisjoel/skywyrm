@@ -539,7 +539,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 - **Client IP:** the last `X-Forwarded-For` entry. It is held only in
   memory, for the per-IP limits below, and never stored or logged.
 - **Limits:**
-  - 6 sockets per IP.
+  - 16 sockets per IP (429 beyond that), so a family or a classroom on one
+    network can play together. `MAX_CONN_PER_IP` overrides it; anything but
+    a positive whole number falls back to 16.
   - 20 run notes per IP per hour (`POST /api/run`), counted in memory and
     swept every minute. The body is at most 512 bytes.
   - 2 KB maximum frame.
@@ -933,7 +935,8 @@ The improvement loop's numbers, kept without identifying anyone
 **Environment variables:**
 - `ALLOWED_ORIGINS`: leave unset, so the code default (skywyrm.io and
   www.skywyrm.io) applies.
-- `STORE`, `WYRM_TUNE` and `ALLOW_LOCALHOST`: optional.
+- `STORE`, `WYRM_TUNE`, `ALLOW_LOCALHOST` and `MAX_CONN_PER_IP` (sockets per
+  IP, default 16): optional.
 
 **The image:**
 - `node:22-slim`.
@@ -965,6 +968,7 @@ at dendroslabs.com/wyrm has been removed.
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (37 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
 | `server/test/crash.test.mjs` (15 checks) | The crash guard: a `Registry` with fake clients, then the real server with bugs planted by `poison-room.mjs` (`node --import`). A throwing tick or sweep resets only its room (1011) and other rooms keep snapshotting; a throwing message closes only its sender (1011) while the rest of its room plays on; a reset counts the lives it cut off; a repeated error is logged once, an unhandled rejection is not fatal |
+| `server/test/limits.test.mjs` (4 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
@@ -981,8 +985,8 @@ at dendroslabs.com/wyrm has been removed.
 Actions are pinned to commit SHAs (with the tag in a comment).
 
 **Not tested:**
-- **Server limits:** rate limit, per-IP cap, hello timeout, room expiry and
-  sweep, a full room, the global room cap.
+- **Server limits:** rate limit, hello timeout, room expiry and sweep, a full
+  room, the global room cap.
 - **Configuration:** the Firestore store (rooms and totals), `WYRM_TUNE`.
 - **Multiplayer in a real browser:** there is no end-to-end test of it.
 - **Phones:** the smoke test runs only at a desktop viewport.
@@ -1021,7 +1025,7 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | # | Risk | Notes |
 |---|---|---|
 | 1 | Room-creation denial of service | 3 creations per hour per IP and a 12 h lifetime for unjoined rooms. One address can fill all 30 slots in about 10 h. The per-IP counts reset on restart |
-| 2 | Shared networks | 6 sockets per IP blocks the 7th player on one school or home network |
+| 2 | Shared networks | 16 sockets per IP (it was 6) still blocks the 17th player on one school or home network; `MAX_CONN_PER_IP` on Cloud Run raises it. The trade-off: one address can hold more player slots (16 of a room's 30) |
 | 3 | Scripted clients | `Origin` can be forged and there is no auth. Pose is client-reported within the speed budget. Perks aren't checked against rank. Lives are client-only. Accepted for a kids' game |
 | 4 | Dropped control frames | The backpressure dropper can drop `dn`, `dx` or `e`, not just snapshots. A missed `dn` hides that dragon until it rejoins |
 | 5 | Client IP | Uses the last `X-Forwarded-For` entry. That's correct behind Cloud Run directly, but a load balancer in front would put every player behind one IP |

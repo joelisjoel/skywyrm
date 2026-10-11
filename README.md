@@ -47,7 +47,8 @@ this on every pull request.
   `site/` to GitHub Pages ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 - **Server:** Cloud Run builds the `Dockerfile` from `main` and redeploys.
   The `ALLOWED_ORIGINS` environment variable lists the sites allowed to
-  connect.
+  connect. `MAX_CONN_PER_IP` (default 16) caps the sockets from one
+  address; raise it if a big class shares one network.
 
 ## Safety
 

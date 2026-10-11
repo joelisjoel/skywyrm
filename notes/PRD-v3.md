@@ -584,7 +584,8 @@ These are listed roughly by how much a player would notice.
 8. Auto graphics re-tests on every visit instead of remembering that it dropped
    to Low.
 9. **Room-creation abuse:** one network could fill all 30 server slots in about
-   10 hours. A school or home network is limited to 6 players.
+   10 hours. A school or home network is limited to 16 players (it was 6;
+   `MAX_CONN_PER_IP` on the server can raise it).
 
 ---
 
