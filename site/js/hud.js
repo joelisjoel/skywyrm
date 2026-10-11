@@ -86,6 +86,10 @@ export class Hud {
         this.fireIcon = this.g.fire.el.querySelector('.icon');
         this.fireEl = 'fire'; this.chillMax = 0; this.stunMax = 0;
         this.lastBoard = 0;
+        // An upright phone stacks the radar above the stats, which grow when
+        // timed gauges appear: style.css reads their height from --stats-h.
+        const stats = document.getElementById('hud-stats');
+        if (window.ResizeObserver) new ResizeObserver(() => document.documentElement.style.setProperty('--stats-h', stats.offsetHeight + 'px')).observe(stats);
         this.resize();
     }
 

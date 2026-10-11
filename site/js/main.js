@@ -7,7 +7,7 @@ import { managePopulation, targetBots } from './bots.js?v=23';
 import { Renderer } from './render.js?v=36';
 import { ChaseCam } from './camera.js?v=23';
 import { Input } from './input.js?v=26';
-import { Hud } from './hud.js?v=24';
+import { Hud } from './hud.js?v=25';
 import { Audio } from './audio.js?v=14';
 import { TunePanel } from './tune-panel.js?v=24';
 import { checkName, randomRoomName } from './names.js?v=11';
@@ -227,7 +227,7 @@ function handleEvents() {
                 break;
             case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
             case 'unparked': parkEndsAt = 0; break;
-            case 'parked': parkEndsAt = 0; setPauseNote(PARKED_NOTE); break;
+            case 'parked': showParked(); break;
             case 'land': hud.feed(`🪽 ${e.d.name} folded their wings`); break;
             case 'shieldPop': if (mine) { hud.toast('SHIELD SAVED YOU', 'nm'); audio.shieldPop(); } break;
             case 'fireStart':
@@ -412,7 +412,7 @@ function joinRoom(id) {
             lifeAtDrop = false;
             // Tell the room what we're doing now: flying, or wings folded.
             if (state === 'dead') { setState('play'); input.requestLock(); }    // this is the next life
-            else if (state === 'pause' && online.parked) { parkEndsAt = 0; setPauseNote(PARKED_NOTE); }
+            else if (state === 'pause' && online.parked) showParked();
             else if (state === 'pause') online.park();
             else online.unpark();
         },
@@ -478,7 +478,10 @@ function renderRooms(rooms) {
             roomRows.set(r.id, el);
         }
         setText(el.nm, r.name);
-        setText(el.meta, (r.arena === 'orb' ? 'The Orb · zero-G' : 'Skyhold · gravity') + (r.permanent ? ' · always on' : ''));
+        // The world, unless the room is already named after it ("Skyhold").
+        const [worldName, physics] = r.arena === 'orb' ? ['The Orb', 'zero-G'] : ['Skyhold', 'gravity'];
+        const named = r.name.trim().toLowerCase() === worldName.toLowerCase();
+        setText(el.meta, (named ? physics : `${worldName} · ${physics}`) + (r.permanent ? ' · always on' : ''));
         setText(el.count, `👤 ${r.humans} · 🐉 ${r.bots}`);
         el.count.title = `${r.humans} player${r.humans === 1 ? '' : 's'} and ${r.bots} bots`;
         setText(el.btn, r.humans >= r.max ? 'Full' : 'Join');
@@ -566,8 +569,8 @@ $('quit').onclick = () => {
 // your wings: after a 3 s countdown (still flying) your dragon leaves the
 // sky with its length kept, and Resume brings it back at a safe spot.
 let pausedAt = 0, parkEndsAt = 0;
-const PARKED_NOTE = 'Wings folded — you\'re out of the sky and safe. Your length is kept.';
 function setPauseNote(t) { $('pause-note').textContent = t; }
+function showParked() { parkEndsAt = 0; $('pause-title').textContent = 'Wings folded'; setPauseNote('You\'re out of the sky and safe. Your length is kept.'); }
 function pause() {
     if (state !== 'play') return;
     setState('pause');
@@ -672,6 +675,15 @@ for (const b of document.querySelectorAll('.open-settings')) b.onclick = () => o
 for (const b of document.querySelectorAll('.open-controls')) b.onclick = () => openOverlay('controls');
 for (const b of document.querySelectorAll('.close-overlay')) b.onclick = () => closeOverlay();
 $('open-dojo').onclick = () => { renderDojo(); openOverlay('dojo'); };
+// On a short screen the menu and the Settings and Controls lists scroll.
+// While there's more below, data-more is set: the menu shows "more ▾" at
+// its foot and the lists fade out.
+function scrollHint(el) {
+    const mark = () => el.toggleAttribute('data-more', el.scrollHeight - el.scrollTop - el.clientHeight > 6);
+    el.addEventListener('scroll', mark, { passive: true });
+    if (window.ResizeObserver) { const ro = new ResizeObserver(() => requestAnimationFrame(mark)); ro.observe(el); for (const c of el.children) ro.observe(c); }
+}
+for (const el of [$('menu'), ...document.querySelectorAll('#settings .tab-body, #controls .keys')]) scrollHint(el);
 
 // Profile strip (start menu) and the Perks & colours panel.
 function renderProfile() {
