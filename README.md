@@ -30,9 +30,9 @@ With a local game server, open `http://localhost:8765/?server=http://localhost:8
 ## Checks
 
 ```sh
-npx playwright install chromium
+npx playwright install chromium   # or reuse any Chromium already in PLAYWRIGHT_BROWSERS_PATH
 npm run smoke                     # the game loads and flies
-npm run stamps                    # cache stamps were bumped
+npm run stamps                    # cache stamps were bumped (npm run stamps:fix bumps them)
 cd server && npm test             # simulation + rooms
 ```
 

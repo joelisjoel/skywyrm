@@ -3,11 +3,11 @@
 // the simulation start, solo play begins, and nothing throws. three.js is
 // served from node_modules instead of esm.sh so CI needs no network.
 // Run: npm install && npx playwright install chromium && npm run smoke
-import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { serve } from './serve.mjs';
+import { launchChromium } from './browser.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const THREE = readFileSync(path.join(root, 'node_modules/three/build/three.module.js'));
@@ -16,10 +16,7 @@ mkdirSync(shots, { recursive: true });
 
 const server = await serve(0);
 const url = `http://127.0.0.1:${server.address().port}/index.html`;
-const browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH || undefined,
-    args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-});
+const browser = await launchChromium();
 const errors = [];
 let ok = false;
 try {
