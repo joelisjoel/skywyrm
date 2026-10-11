@@ -8,10 +8,10 @@ import { Renderer } from './render.js?v=30';
 import { ChaseCam } from './camera.js?v=18';
 import { Input } from './input.js?v=21';
 import { Hud } from './hud.js?v=19';
-import { Audio } from './audio.js?v=10';
+import { Audio } from './audio.js?v=11';
 import { TunePanel } from './tune-panel.js?v=19';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=19';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -459,6 +459,13 @@ function pause() {
         setPauseNote('');
     }
 }
+// Switching tabs or locking the phone: solo pauses, and online folds your
+// wings just like Esc (the room can't stop, so the 3 s countdown still
+// applies). Coming back shows the pause screen; you tap to fly again.
+document.addEventListener('visibilitychange', () => {
+    audio.setHidden(document.hidden);
+    if (document.hidden) pause();
+});
 function resume() {
     if (state !== 'pause') return;
     if (online) {
@@ -529,10 +536,11 @@ function speak(ev) {
     captionTimer = setTimeout(() => box.classList.remove('show'), 2800);
 }
 // Browsers only allow sound after a gesture: the first click or key starts
-// the menu music.
-const firstGesture = () => { audio.unlock(); removeEventListener('pointerdown', firstGesture); removeEventListener('keydown', firstGesture); };
-addEventListener('pointerdown', firstGesture);
-addEventListener('keydown', firstGesture);
+// the menu music, and later ones wake it if the phone stopped it (iOS
+// 'interrupts' it after a call or an app switch).
+const gesture = () => audio.unlock();
+addEventListener('pointerdown', gesture);
+addEventListener('keydown', gesture);
 
 // Settings / Controls overlays, reachable from the main menu and pause.
 let overlay = '';

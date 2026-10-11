@@ -1,8 +1,8 @@
 // Synthesised sound (spec §11) — no assets. Feel-first: wind that rises
 // with speed, an orb chime ladder, whooshes for near misses, and the
 // adaptive soundtrack (music.js) with power-up stingers in its key.
-import { Music } from './music.js?v=8';
-import { Voice } from './voice.js?v=1';
+import { Music } from './music.js?v=9';
+import { Voice } from './voice.js?v=2';
 
 // D minor pentatonic, so orb chimes sit inside the soundtrack.
 const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24, 27, 29];
@@ -13,11 +13,12 @@ export class Audio {
         this.musicOn = true; this.music = null;
         this.voiceOn = true; this.voice = null;
         this.ladder = 0; this.lastEat = 0;
+        this.hidden = false;
     }
 
     // Must be called from a user gesture (browser autoplay rules).
     unlock() {
-        if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+        if (this.ctx) { this.resume(); return; }
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         this.ctx = new AC();
@@ -41,6 +42,34 @@ export class Audio {
         this.music.setOn(this.musicOn);
         this.voice = new Voice(this.ctx, this.master, this.music);
         this.voice.on = this.voiceOn;
+    }
+
+    // Wake the context from any stopped state: 'suspended', or iOS's
+    // 'interrupted' after a call or an app switch (which may need a tap).
+    resume() {
+        const c = this.ctx;
+        if (!c || this.hidden || c.state === 'running' || c.state === 'closed') return;
+        try { const p = c.resume(); if (p && p.catch) p.catch(() => {}); } catch { /* the next tap tries again */ }
+    }
+
+    // A hidden tab goes quiet at once: no wind, no shout, no music blips
+    // from a throttled scheduler, and the context is suspended. Back on
+    // screen, the sound fades in again.
+    setHidden(h) {
+        this.hidden = h;
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime, mg = this.master.gain;
+        if (this.music) this.music.hold = h;
+        if (h) {
+            mg.cancelScheduledValues(t); mg.setValueAtTime(0, t);
+            this.windGain.gain.cancelScheduledValues(t); this.windGain.gain.setValueAtTime(0, t);
+            this.hum(false);
+            if (this.voice) this.voice.stop();
+            try { const p = this.ctx.suspend(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ }
+        } else {
+            this.resume();
+            mg.cancelScheduledValues(t); mg.setTargetAtTime(this.muted ? 0 : this.volume, t, 0.2);
+        }
     }
 
     setMusic(on) { this.musicOn = on; if (this.music) this.music.setOn(on); }

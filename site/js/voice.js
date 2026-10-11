@@ -43,6 +43,13 @@ export class Voice {
         }
     }
 
+    // Cut the line being spoken (the tab was hidden).
+    stop() {
+        if (!this.playing) return;
+        try { this.playing.src.stop(); } catch { /* already done */ }
+        this.playing = null;
+    }
+
     // Speak one of the event's phrases. Returns the phrase (for a caption)
     // or null if it didn't play.
     say(ev) {

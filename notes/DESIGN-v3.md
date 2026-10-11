@@ -463,6 +463,11 @@ The improvement loop's numbers, kept without identifying anyone
      runs.
 5. **Lives:** counted in `main.js:76-104,223-273`. `bankLife` turns each life into
    jade, and `reportLife` sends a solo life's anonymous numbers (§4.7).
+6. **Hidden tab** (`visibilitychange`): solo pauses, and online play folds your
+   wings like Esc (`park`, with the server's 3 s countdown). Coming back shows
+   the pause screen, and Resume flies back in. A hidden tab doesn't run the
+   loop, so `NetGame` queues only your own deaths and bites and the park
+   events while hidden (or once 200 are waiting), and drops the rest.
 
 ### 5.2 Robustness
 - **Crash guard** (`main.js:607-646`):
@@ -531,6 +536,11 @@ The improvement loop's numbers, kept without identifying anyone
   - A higher-priority line interrupts; others are dropped.
   - The voice ducks the music.
   - Captions show the characters, pinyin and English.
+- **Hidden tab** (`Audio.setHidden`): the master and wind gains drop to 0,
+  the voice line and hum stop, the music scheduler holds (a throttled
+  background timer would play stray notes) and the context is suspended.
+  Coming back resumes it from any stopped state, including iOS's
+  `interrupted`, and every tap or key retries if that fails.
 
 ### 5.5 Browser storage
 
