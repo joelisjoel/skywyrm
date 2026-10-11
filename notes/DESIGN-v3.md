@@ -934,14 +934,17 @@ The improvement loop's numbers, kept without identifying anyone
 | 3 | crown, gold antlers, glowing eyes | gilding, 35% gilded plumes |
 | 4 | pearl ahead | qi veins |
 
-- **Jaw:** hinged at (0, −0.12, 0.2), with an opening angle of 0.6·open rad
-  (about 34°). It opens fully when breathing fire or when `foodAhead()` finds
-  food in reach.
+- **Jaw:** hinged at (0, −0.12, 0.2), with an opening angle of
+  0.6·`eatMotion`·open rad: about 69° with `eatMotion` 2 (the Look tunable;
+  1 is the first version's 34°). It opens fully when breathing fire or when
+  `foodAhead()` finds food in reach.
   - `foodAhead()` is a scan run only for heads within 120 m.
   - Each bite snaps the jaw shut briefly.
-  - A wedge-shaped cone fills the open mouth; its height is
-    0.02 + 1.2·tan(gap/2).
-  - The snout lifts by 0.22·open.
+  - The inside of the mouth is a funnel open at the front (`gapeGeo`, drawn
+    from both sides with `throatMaterial`, deep red darkening toward the
+    throat), 0.4 wide, 1.45 long and 0.02 + 1.15·tan(gap/2) tall, so a wide
+    gape looks into a dark throat.
+  - The snout lifts by 0.22·`eatMotion`·open (about 25°).
 - **Look into turns:**
   - The turn rate comes from the quaternion change since last frame.
   - Yaw is clamped to ±0.8 and pitch to ±0.6, both ×`headLook` 0.3, smoothed
@@ -1201,4 +1204,4 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
 | Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · wideCorner 122 · wideExpo 3 |
-| Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 |
+| Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 · eatMotion 2 |

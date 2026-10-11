@@ -452,7 +452,8 @@ device.
 
 **Animation:**
 - Whiskers lengthen with each tier.
-- The jaw opens wide to eat or breathe fire.
+- The jaw opens wide (about 70°, with the snout tipping up) to eat or
+  breathe fire, and snaps shut on each bite, so grazing reads as chomping.
 - The head looks into turns.
 - The body swims in an S-wave.
 
