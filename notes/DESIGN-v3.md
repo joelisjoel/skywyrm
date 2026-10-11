@@ -275,7 +275,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | Snapshots | 15 Hz (`SNAP_EVERY = 2`) |
 | Client pose | 30 Hz |
 | Ping | every 2 s |
-| Lobby poll | every 5 s, menu only |
+| Lobby poll | every 10 s while the menu shows in a visible tab, and at once when it appears |
 | Sweep | every 60 s |
 
 ### 4.3 Wire protocol

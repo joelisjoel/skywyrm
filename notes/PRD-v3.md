@@ -291,7 +291,8 @@ device.
 - **Lobby.**
   - Two always-on servers, Skyhold and The Orb.
   - Any rooms players have created.
-  - Each row shows the number of humans and bots, and the list refreshes every 5 s.
+  - Each row shows the number of humans and bots, and the list refreshes every 10 s
+    while it's on screen.
 - **Create a server:** it gets a generated name such as "Jade Peak" (🎲
   picks another), and you pick a world. Names aren't typed, so nothing a
   player writes is shown in everyone's lobby.
