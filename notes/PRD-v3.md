@@ -418,10 +418,15 @@ device.
     store or log them.
   - Nothing beyond this is collected.
 - **Names are filtered on both the browser and the server.** The filter:
-  - allows only letters, numbers and simple punctuation
+  - allows only the letters A–Z, numbers and simple punctuation. Accents
+    are dropped (José becomes Jose); other alphabets are refused with a
+    reason, so look-alike letters can't hide a bad word
   - blocks links and e-mail addresses
-  - blocks bad words, including leetspeak spellings
-  - blocks reserved words such as "admin" and "skywyrm"
+  - blocks bad words, including leetspeak, spaced-out and stretched
+    spellings, without blocking innocent words that contain them (SkyStorm,
+    Grape, Peacock)
+  - blocks reserved words such as "admin" and "skywyrm" as whole words
+  - a bad player name becomes "Dragon" on the server
   - always displays names as plain text, never as code
 - **Third parties a player's browser talks to:** none besides the game
   server. three.js and the fonts are served from skywyrm.io itself, and the
