@@ -488,9 +488,9 @@ These are listed roughly by how much a player would notice.
    cap, burning just the tip removes far more than the tip. A 1,500-mass dragon
    can lose about 540 mass.
 3. **Quitting a solo life from the pause menu earns no jade** for that life.
-4. **The dev tuning button (⚙) and FPS counter show for every desktop player.**
-   The Settings "Server" tab is the default tab, only affects solo, and says
-   it affects rooms.
+4. ✅ **Fixed:** the dev tuning panel, its ⚙ button and the FPS counter show
+   only with `?dev=1` or on localhost, and can't change a room. Settings opens
+   on the Player tab; the Server tab is for solo and read-only online.
 5. **7 of the 10 rank seals render in a fallback font.** Those characters
    (石玉珠云雷山日) are missing from the font subset. The body font Nunito is never
    loaded either.
@@ -516,6 +516,6 @@ Each decision has a recommended default, so work can start on that default.
    kid-first. Ads would require consent tooling and a COPPA review.
 4. **Privacy page.** ✅ Done, together with the anonymous play totals (§11).
 5. **Dev tools in production.** Recommend hiding the ⚙ tuning panel and FPS
-   counter unless `?dev=1` is in the URL.
+   counter unless `?dev=1` is in the URL. ✅ Done (localhost pages count too).
 6. **Hardcore mode.** Beginner is the only mode now. Recommend adding a
    non-beginner mode later, as a per-room rule, only if the kids ask for it.

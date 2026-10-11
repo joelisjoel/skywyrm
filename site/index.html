@@ -11,7 +11,7 @@
     <title>Skywyrm — fly a Chinese dragon</title>
     <meta name="description" content="Skywyrm: fly a Chinese dragon through the clouds. Eat, grow, and don't touch their tails. Free, in your browser.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="style.css?v=22">
     <script type="importmap">
         {
             "imports": {
@@ -113,13 +113,13 @@
         <button id="quit">Leave to menu</button>
     </div>
 
-    <div id="settings" class="panel" data-tab="server">
+    <div id="settings" class="panel" data-tab="player">
         <div class="tabs">
             <button class="tab" data-tab="server">🖧 Server</button>
             <button class="tab" data-tab="player">👤 Player</button>
         </div>
         <div class="tab-body" data-body="server">
-            <p class="note">Room rules. In multiplayer the room sets these for everyone in it.</p>
+            <p class="note">Room rules for your solo games (until you reload). In multiplayer the room sets these for everyone in it.</p>
             <label class="opt-range"><span>Starting dragons</span><input type="range" id="srv-start" min="0" max="30" step="1"><b id="srv-start-v"></b></label>
             <label class="opt-range"><span>Max dragons</span><input type="range" id="srv-max" min="1" max="40" step="1"><b id="srv-max-v"></b></label>
             <label class="opt-range"><span>New dragon every</span><input type="range" id="srv-every" min="5" max="120" step="5"><b id="srv-every-v"></b></label>
@@ -171,7 +171,7 @@
             <div><b>Esc / P</b></div><div>pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
             <div><b>N</b></div><div>music on / off</div>
             <div><b>M</b></div><div>mute all sound</div>
-            <div><b>`</b></div><div>tuning panel</div>
+            <div class="dev-only"><b>`</b></div><div class="dev-only">tuning panel</div>
         </div>
         <button class="cta close-overlay">Done</button>
     </div>
@@ -205,10 +205,10 @@
         <button id="t-boost" aria-label="Boost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z"/></svg></button>
     </div>
 
-    <button id="tune-btn" title="Tuning panel (`)">⚙</button>
+    <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=41"></script>
+    <script type="module" src="js/main.js?v=42"></script>
 </body>
 
 </html>

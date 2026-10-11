@@ -1,7 +1,7 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS, lengthFor } from './tunables.js?v=18';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=18';
 import { World, Dragon, hazardDist } from './sim.js?v=18';
 import { managePopulation, targetBots } from './bots.js?v=18';
 import { Renderer } from './render.js?v=30';
@@ -9,16 +9,21 @@ import { ChaseCam } from './camera.js?v=18';
 import { Input } from './input.js?v=21';
 import { Hud } from './hud.js?v=19';
 import { Audio } from './audio.js?v=10';
-import { TunePanel } from './tune-panel.js?v=18';
+import { TunePanel } from './tune-panel.js?v=19';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=1';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
 
-loadTune();
+// Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
+// with ?dev=1 or on a local page. Everyone else plays on the defaults: saved
+// tuning overrides are ignored (and left alone for when dev is back on).
+const DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || new URLSearchParams(location.search).get('dev') === '1';
+if (DEV) loadTune();
 
 const $ = (id) => document.getElementById(id);
+if (!DEV) for (const el of document.querySelectorAll('.dev-only')) el.remove();
 const canvas = $('game');
 const renderer = new Renderer(canvas);
 const cam = new ChaseCam(renderer.camera);
@@ -289,6 +294,7 @@ function nextLife() {
 
 // ------------------------------------------------ multiplayer
 let online = null;              // NetGame while in a room
+let soloTune = null;            // your own tunables, kept while a room's numbers replace them
 const SERVER_BASE = serverUrl();
 
 function joinRoom(id) {
@@ -297,6 +303,7 @@ function joinRoom(id) {
     audio.unlock();
     if (online) leaveOnline();
     setLobbyStatus('Joining…');
+    soloTune = { ...T };
     online = new NetGame(SERVER_BASE, id, name, { perks: profile.data.perks, skin: profile.data.skin }, {
         onWelcome(w, p, room) {
             world = w; player = p;
@@ -310,6 +317,7 @@ function joinRoom(id) {
             input.zero();
             input.requestLock();
             setLobbyStatus('');
+            syncServer();                                   // the room's numbers, read-only
             setState('play');
             hud.toast(`Joined ${room.name}`, 'hint');
         },
@@ -326,6 +334,8 @@ function joinRoom(id) {
             if (wasIn) { setState('menu'); setLobbyStatus(reason); refreshLobby(); }
         },
     });
+    tune.lock(true);
+    syncServer();
 }
 
 function leaveOnline() {
@@ -333,8 +343,10 @@ function leaveOnline() {
     online = null;
     if (g) g.close();
     // Back to your own tunables and a local world for the menu / solo.
-    Object.assign(T, DEFAULTS);
-    loadTune();
+    Object.assign(T, soloTune || DEFAULTS);
+    soloTune = null;
+    tune.lock(false);
+    syncServer();
     newWorld();
 }
 
@@ -571,26 +583,30 @@ bindCheck('opt-mirror', 'mirror', () => (renderer.view.mirror = settings.mirror)
 renderer.view.wide = settings.wideView;
 renderer.view.mirror = settings.mirror;
 
-const tune = new TunePanel(() => { newWorld(); setState('menu'); syncServer(); });
-$('tune-btn').onclick = () => tune.toggle();
+// Online the panel closes and stays shut (the room's numbers rule), so
+// 'Restart world' and 'Reset all' never touch a room.
+const tune = new TunePanel(() => { if (online) return; newWorld(); setState('menu'); syncServer(); });
+if (DEV) $('tune-btn').onclick = () => tune.toggle();
 
-// Server sliders edit the same tunables as the dev panel.
+// Server sliders edit the same tunables as the dev panel, for solo games and
+// this visit only (never saved). Online they show the room's values, read-only.
 const SERVER = [['srv-start', 'popStart', (v) => String(v)], ['srv-max', 'popMax', (v) => String(v)], ['srv-every', 'popRampSec', (v) => v + ' s']];
 function syncServer() {
-    for (const [id, key, fmt] of SERVER) { $(id).value = T[key]; $(id + '-v').textContent = fmt(T[key]); }
+    for (const [id, key, fmt] of SERVER) { $(id).value = T[key]; $(id + '-v').textContent = fmt(T[key]); $(id).disabled = !!online; }
 }
-for (const [id, key, fmt] of SERVER) {
+for (const [id, key] of SERVER) {
     $(id).oninput = () => {
+        if (online) { syncServer(); return; }
         T[key] = +$(id).value;
         if (key === 'popStart' && T.popStart > T.popMax) T.popMax = T.popStart;
         if (key === 'popMax' && T.popMax < T.popStart) T.popStart = T.popMax;
-        saveTune(); syncServer(); tune.sync();
+        syncServer(); tune.sync();
     };
 }
 syncServer();
 
 input.onKey = (code) => {
-    if (code === 'Backquote') tune.toggle();
+    if (code === 'Backquote') { if (DEV) tune.toggle(); }
     else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
     else if (code === 'KeyN') { settings.music = !settings.music; audio.setMusic(settings.music); $('opt-music').checked = settings.music; saveSettings(); hud.toast(settings.music ? '♪ Music on' : 'Music off', 'hint'); }
     else if (overlay && (code === 'Escape' || code === 'Enter')) closeOverlay();
@@ -765,7 +781,7 @@ function tick(nowMs) {
     autoGraphics();
     renderer.update(world, view, dt, now);
     hud.draw(world, view, renderer, input, now);
-    hud.updateStats(world, view, now, fps);
+    hud.updateStats(world, view, now, DEV ? fps : 0);
     tune.update(world, renderer, simMs, fps);
 }
 requestAnimationFrame(frame);
