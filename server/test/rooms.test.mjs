@@ -17,6 +17,13 @@ const srv = spawn(process.execPath, [path.join(here, '..', 'server.js')], { env:
 let out = '';
 srv.stdout.on('data', (d) => (out += d)); srv.stderr.on('data', (d) => (out += d));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Polls cond (which may be async) until it's truthy or ms pass, and returns
+// its last value. Tests wait for what they check, not for a fixed time, so
+// a slow machine only makes them slower.
+const waitFor = async (cond, ms = 8000, step = 50) => {
+    const end = Date.now() + ms;
+    for (;;) { const v = await cond(); if (v || Date.now() >= end) return v; await sleep(step); }
+};
 for (let i = 0; i < 100 && !out.includes('listening'); i++) await sleep(100);
 assert.ok(out.includes('listening'), 'server did not start:\n' + out);
 
@@ -92,7 +99,7 @@ try {
     // Two players join the created room.
     const join = (name) => new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room.id}`, { headers: { origin: ORIGIN } });
-        const c = { ws, msgs: [], welcome: null, snaps: 0, corrections: 0, last: null, events: [], dn: [], dx: [] };
+        const c = { ws, msgs: [], welcome: null, snaps: 0, corrections: 0, last: null, events: [], dn: [], dx: [], pongs: [] };
         ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name, perks: ['lungs', 'hack', 'pull', 'ember'], skin: 'jade' }));
         ws.onmessage = (e) => {
             const m = JSON.parse(e.data);
@@ -101,28 +108,35 @@ try {
             if (m.t === 'e') c.events.push(...m.ev);
             if (m.t === 'dn') c.dn.push(m.d);
             if (m.t === 'dx') c.dx.push(m.id);
+            if (m.t === 'pong') c.pongs.push(m.c);
             c.msgs.push(m.t);
         };
         ws.onerror = reject;
         setTimeout(() => reject(new Error('join timeout')), 8000);
     });
+    // The server handles a socket's messages in order and answers a ping at
+    // once, so the pong means everything sent before it has been handled.
+    let pingN = 0;
+    const handled = (c) => { const n = ++pingN; c.ws.send(JSON.stringify({ t: 'ping', c: n })); return waitFor(() => c.pongs.includes(n)); };
     const a = await join('Alice <script>');
     const b = await join('B​ob');
     check(a.welcome.room.id === room.id && a.welcome.orbs.length > 1000, `welcome has room + ${a.welcome.orbs.length / 7} orbs`);
     const bInA = () => a.last && a.last.d.some((s) => s[0] === b.welcome.you);
-    await sleep(700);
+    await waitFor(() => bInA() && a.snaps >= 6);
     check(bInA(), 'player A sees player B in snapshots');
     const meA = a.welcome.dragons.find((d) => d.id === a.welcome.you);
     check(meA && meA.c1 === 0x3DFFB5 && a.last.me.tm === 1.2, 'profile colours applied; perks re-checked server-side (Deep Lungs active)');
     const names = a.last.lb.map((x) => x[1]);
     const aName = a.welcome.dragons.find((d) => d.id === a.welcome.you)?.name ?? names.find((n) => n.startsWith('Alice'));
-    check(a.snaps >= 6, `snapshots flowing (${a.snaps} in 0.7 s)`);
+    check(a.snaps >= 6, `snapshots flowing (${a.snaps} so far)`);
     const pearlOk = (pl) => Array.isArray(pl) && pl.length >= 1 && pl.length <= 3 && pl.every((q) => q.length === 4 && q.every(Number.isFinite));   // a bot may have just caught one
     check(pearlOk(a.welcome.pl) && pearlOk(a.last.pl) && !a.last.pu.some((q) => q[0] === 'pearl'),
         'flaming pearls sync in their own optional field (pl: [id, x, y, z]), never as power-ups');
-    r = await (await api('/api/rooms')).json();
-    const listed = r.rooms.find((x) => x.id === room.id);
-    check(listed.humans === 2 && listed.bots >= 3, `lobby shows 2 players + ${listed.bots} bots`);
+    const listed = await waitFor(async () => {
+        const x = (await (await api('/api/rooms')).json()).rooms.find((y) => y.id === room.id);
+        return x && x.humans === 2 && x.bots >= 3 && x;
+    });
+    check(listed, `lobby shows 2 players + ${listed?.bots} bots`);
 
     // Speed check: teleport claim gets clamped and corrected.
     const me = a.last.d.find((s) => s[0] === a.welcome.you);
@@ -130,15 +144,13 @@ try {
     // The correction rides on one snapshot only, so count it as it arrives
     // rather than hoping the latest snapshot is that one.
     const corrections = a.corrections;
-    let corrected = false;
-    for (let i = 0; i < 40 && !corrected; i++) { await sleep(60); corrected = a.corrections > corrections; }
+    const corrected = await waitFor(() => a.corrections > corrections);
     const after = a.last.d.find((s) => s[0] === a.welcome.you);
     check(corrected && Math.abs(after[1] - me[1]) < 30, `teleport clamped (moved ${Math.abs(after[1] - me[1]).toFixed(1)} m, correction sent)`);
 
     // Garbage and oversize messages don't crash anything.
     a.ws.send('not json'); a.ws.send(JSON.stringify({ t: 'p', x: 'NaN' })); a.ws.send(JSON.stringify([1, 2, 3]));
-    await sleep(200);
-    check(a.ws.readyState === 1, 'bad messages ignored, connection still open');
+    check(await handled(a) && a.ws.readyState === 1, 'bad messages ignored, connection still open');
     const big = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room.id}`, { headers: { origin: ORIGIN } });
     await new Promise((res) => { big.onopen = () => big.send('x'.repeat(5000)); big.onclose = res; setTimeout(res, 2000); });
     check(big.readyState === 3, 'oversize message closes the connection');
@@ -155,31 +167,24 @@ try {
     const you = a.welcome.you;
     const massBefore = a.last.d.find((s) => s[0] === you)[8];
     a.ws.send(JSON.stringify({ t: 'park' }));
-    await sleep(300);
+    await waitFor(() => a.events.some((e) => e.k === 'parking'));
     check(a.events.some((e) => e.k === 'parking') && a.last.d.some((s) => s[0] === you), 'park starts a 3 s countdown (still in the sky)');
-    for (let i = 0; i < 40 && !a.events.some((e) => e.k === 'parked'); i++) await sleep(100);
-    await sleep(200);
-    check(b.dx.includes(you) && b.events.some((e) => e.k === 'land' && e.id === you) && !b.last.d.some((s) => s[0] === you),
-        'after the countdown the dragon leaves the sky; others see it land');
+    const landed = () => b.dx.includes(you) && b.events.some((e) => e.k === 'land' && e.id === you) && !b.last.d.some((s) => s[0] === you);
+    check(await waitFor(landed), 'after the countdown the dragon leaves the sky; others see it land');
     a.ws.send(JSON.stringify({ t: 'spawn' }));
-    await sleep(300);
+    await handled(a);                                    // a respawn's 'dn' would go out before the pong
     check(!a.dn.some((d) => d.id === you), 'a parked dragon can\'t respawn fresh (no length reset)');
     a.ws.send(JSON.stringify({ t: 'unpark' }));
     // Both players get the same 'dn' broadcast, but B's copy can land a few
     // ms after A's, so wait for both before checking.
-    let back = null;
-    for (let i = 0; i < 40 && !(back && b.dn.some((d) => d.id === you)); i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
+    await waitFor(() => a.dn.some((d) => d.id === you) && b.dn.some((d) => d.id === you));
+    const back = a.dn.find((d) => d.id === you);
     check(back && Math.abs(back.s[8] - massBefore) < 2 && b.dn.some((d) => d.id === you), `unpark flies back in with its length (${massBefore} → ${back?.s[8]})`);
 
     // Lifecycle: when both leave (and their dragons' 3 s in the sky after
     // leaving are up), the room gets a 12 h expiry.
     a.ws.close(); b.ws.close();
-    let empty = false;
-    for (let i = 0; i < 25 && !empty; i++) {
-        await sleep(200);
-        r = await (await api('/api/rooms')).json();
-        empty = r.rooms.some((x) => x.id === room.id && x.humans === 0);
-    }
+    const empty = await waitFor(async () => (await (await api('/api/rooms')).json()).rooms.some((x) => x.id === room.id && x.humans === 0), 15000, 200);
     check(empty, 'empty user room still listed (lives 12 h after last leave)');
     t = await totals();
     const rm = t.today.room, ends = Object.entries(rm.cause).filter(([, n]) => n);
