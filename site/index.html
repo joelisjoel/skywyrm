@@ -35,7 +35,7 @@
         <div id="toasts"></div>
         <div id="hud-warn">⚠ WALL</div>
         <div id="voice-caption"><div class="zh"></div><div class="py"></div><div class="en"></div></div>
-        <div id="hud-assist"><span class="badge">BEGINNER</span> steering you clear</div>
+        <div id="hud-assist">🛟 steering you clear</div>
         <div id="hud-stats">
             <div class="hud-len"><span id="hud-len">0</span><small>m</small><span id="hud-kills"></span></div>
             <div id="hud-lives" class="pearls"></div>
@@ -78,7 +78,6 @@
                     <label><input type="radio" name="create-arena" value="sky" checked> <b>Skyhold</b></label>
                     <label><input type="radio" name="create-arena" value="orb"> <b>The Orb</b></label>
                 </div>
-                <label class="opt"><input type="checkbox" id="create-beginner" checked> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
                 <div id="create-error" class="err"></div>
                 <div class="menu-row">
                     <button type="submit" class="cta small">Create &amp; join</button>
@@ -93,7 +92,6 @@
                 <label><input type="radio" name="arena" value="sky"> <b>Skyhold</b><span>gravity · open sky · storm wall</span></label>
                 <label><input type="radio" name="arena" value="orb"> <b>The Orb</b><span>zero-G sphere · no up or down</span></label>
             </div>
-            <label class="opt"><input type="checkbox" id="solo-beginner"> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
             <button id="play" class="cta">PLAY SOLO</button>
         </section>
         <div class="menu-row">
@@ -121,7 +119,6 @@
         </div>
         <div class="tab-body" data-body="server">
             <p class="note">Room rules. In multiplayer the room sets these for everyone in it.</p>
-            <label class="opt big"><input type="checkbox" id="opt-beginner"> <span><span class="badge">BEGINNER</span><small>Steered clear of walls and the cloud sea</small></span></label>
             <label class="opt-range"><span>Starting dragons</span><input type="range" id="srv-start" min="0" max="30" step="1"><b id="srv-start-v"></b></label>
             <label class="opt-range"><span>Max dragons</span><input type="range" id="srv-max" min="1" max="40" step="1"><b id="srv-max-v"></b></label>
             <label class="opt-range"><span>New dragon every</span><input type="range" id="srv-every" min="5" max="120" step="5"><b id="srv-every-v"></b></label>
@@ -210,7 +207,7 @@
     <button id="tune-btn" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=35"></script>
+    <script type="module" src="js/main.js?v=36"></script>
 </body>
 
 </html>

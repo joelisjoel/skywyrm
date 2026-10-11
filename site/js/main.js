@@ -32,7 +32,7 @@ const settings = { beginner: true, wideView: true, mirror: true, invertY: false,
 try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     Object.assign(settings, saved);
-    if (!(saved.v >= 2)) { settings.beginner = true; settings.v = 2; }    // Beginner is the default: switch it back on once
+    settings.beginner = true;                                            // Beginner is the only mode now
 } catch { /* defaults */ }
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
 
@@ -118,7 +118,7 @@ function startPlay() {
     newGame();
     // First few runs: nearby bots leave you alone for 45 s (spec §6.8).
     world.gentleTime = settings.runs <= 3 ? 45 : 0;
-    player.wallAssist = settings.beginner;
+    player.wallAssist = true;
     beginnerRules();
     world.spawn(player, T.spawnMass);
     managePopulation(world);
@@ -318,7 +318,6 @@ function renderRooms(rooms) {
         row.className = 'room';
         const info = document.createElement('div');
         const nm = document.createElement('div'); nm.className = 'rn'; nm.textContent = r.name;
-        if (r.beginner) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'BEGINNER'; nm.appendChild(b); }
         const meta = document.createElement('div'); meta.className = 'rm';
         meta.textContent = (r.arena === 'orb' ? 'The Orb · zero-G' : 'Skyhold · gravity') + (r.permanent ? ' · always on' : '');
         info.append(nm, meta);
@@ -358,7 +357,7 @@ $('create-form').onsubmit = async (ev) => {
     $('create-error').textContent = '';
     try {
         const arena = (document.querySelector('input[name=create-arena]:checked') || {}).value === 'orb' ? 'orb' : 'sky';
-        const room = await createRoom(SERVER_BASE, { name: check.value, arena, beginner: $('create-beginner').checked });
+        const room = await createRoom(SERVER_BASE, { name: check.value, arena, beginner: true });
         $('create-form').hidden = true; $('create-open').hidden = false; $('create-name').value = '';
         joinRoom(room.id);
     } catch (e) {
@@ -430,11 +429,9 @@ const bindCheck = (id, key, after) => {
     const el = $(id); el.checked = !!settings[key];
     el.onchange = () => { settings[key] = el.checked; saveSettings(); after && after(); };
 };
-// Solo beginner: walls steer you clear and bots stay gentler (like beginner rooms).
-function beginnerRules() { if (online) return; if (settings.beginner) world.rules.botAggrMax = 0.5; else delete world.rules.botAggrMax; }
-const syncBeginner = () => { $('opt-beginner').checked = $('solo-beginner').checked = settings.beginner; if (player && !online) player.wallAssist = settings.beginner; beginnerRules(); };
-bindCheck('opt-beginner', 'beginner', syncBeginner);
-bindCheck('solo-beginner', 'beginner', syncBeginner);
+// Beginner is the only mode: walls and the cloud sea steer you clear (no
+// dying on walls you can't see) and bots stay gentler, solo and online.
+function beginnerRules() { if (online) return; world.rules.botAggrMax = 0.5; }
 bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
 bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
 bindCheck('opt-voice', 'voice', () => audio.setVoice(settings.voice));
@@ -642,7 +639,7 @@ function tick(nowMs) {
         const t0 = performance.now();
         if (player && player.alive && state === 'play') input.read(player.input);
         else if (player) { const i = player.input; i.sx = i.sy = i.roll = 0; i.boost = i.brake = i.fire = false; }
-        if (player && online.room) player.wallAssist = !!online.room.beginner || state !== 'play';   // autopilot while folding wings
+        if (player && online.room) player.wallAssist = true;              // every room steers you clear of walls
         online.update(dt);
         const steps = Math.max(1, Math.ceil(dt / (1 / 60)));
         for (let i = 0; i < steps; i++) world.step(dt / steps);

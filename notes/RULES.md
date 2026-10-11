@@ -13,7 +13,7 @@ Each newer mechanic is a **rule**: a number in `docs/wyrm/js/tunables.js`
 | `botMoods` | 1 | Bot personalities (grazer / sunbather / hunter / kingslayer); 0 = classic bots |
 | `aggrStart` | 0.25 | Bot aggression when a room wakes… |
 | `aggrRampMin` | 15 | …rising to full over this many minutes |
-| `botAggrMax` | 1 | Aggression cap (beginner rooms and solo Beginner use 0.5) |
+| `botAggrMax` | 1 | Aggression cap. Every room and solo play are now beginner, so they use 0.5 |
 | `perks` | 1 | Profile perks apply; 0 = everyone plays stock |
 | `lengthSpeed` | 0.5 | Longer dragons fly faster. This is the extra cruise and boost speed at 100 m long: ×1.5 at 100 m and ×1.8 at 200 m, with nothing extra for a newborn. Heat adds on top. 0 = off |
 | `lengthSpeedExp` | 0.62 | Shape of the length curve: bonus = `lengthSpeed` × ((length − 12 m) ÷ 88 m)^`lengthSpeedExp` |

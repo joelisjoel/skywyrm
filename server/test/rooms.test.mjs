@@ -25,8 +25,8 @@ try {
     // Lobby: three permanent rooms.
     let r = await (await api('/api/rooms')).json();
     check(r.rooms.length === 3 && r.rooms.every((x) => x.permanent), 'three permanent rooms listed');
-    check(r.rooms[0].beginner && r.rooms[1].beginner && !r.rooms[2].beginner && !r.rooms.some((x) => /beginner/i.test(x.name)),
-        'beginner servers first; "beginner" is a badge, not part of a name');
+    check(r.rooms.every((x) => x.beginner) && !r.rooms.some((x) => /beginner/i.test(x.name)),
+        'every server is a beginner server; "beginner" is not part of a name');
 
     // Create: name checks.
     const bad = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Skyhold', arena: 'sky' }) });
@@ -40,12 +40,12 @@ try {
     check(created.status === 201 && room.name === "bJoel'sb Den" && room.arena === 'orb' && room.beginner, `room created and sanitised → "${room?.name}"`);
     const dupe = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: "bjoel'sb den" }) });
     check(dupe.status === 409, 'duplicate name (case-insensitive) rejected');
-    await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Third One' }) });
+    await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Third One', beginner: false }) });
     await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fourth One' }) });
     const limited = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name: 'Fifth One' }) });
     check(limited.status === 429, 'per-IP creation limit (3/hour) enforced');
     r = await (await api('/api/rooms')).json();
-    check(r.rooms.find((x) => x.name === 'Third One')?.beginner === true, 'beginner is on unless the creator turns it off');
+    check(r.rooms.find((x) => x.name === 'Third One')?.beginner === true, 'every new server is beginner, even if asked otherwise');
 
     // Two players join the created room.
     const join = (name) => new Promise((resolve, reject) => {

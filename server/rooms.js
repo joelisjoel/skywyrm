@@ -9,7 +9,7 @@ import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPer
 export const DEFAULT_ROOMS = [
     { id: 'skyhold-beginners', name: 'Skyhold Nest', arena: 'sky', beginner: true },
     { id: 'the-orb', name: 'The Orb', arena: 'orb', beginner: true },
-    { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: false },
+    { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: true },
 ];
 export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold (Beginners)', 'Skyhold Beginners', 'Nest', 'Orb']);
 
@@ -297,7 +297,7 @@ export class Registry {
             if (m.expireAt && m.expireAt < now) { this.store.remove(m.id); continue; }
             const name = checkName(m.name, 'room', RESERVED_ROOM_NAMES);
             if (!name.ok) { this.store.remove(m.id); continue; }
-            const meta = { id: m.id, name: name.value, arena: m.arena === 'orb' ? 'orb' : 'sky', beginner: !!m.beginner,
+            const meta = { id: m.id, name: name.value, arena: m.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
                 permanent: false, createdAt: m.createdAt || now, expireAt: m.expireAt || now + LIMITS.emptyTtlMs };
             this.rooms.set(meta.id, new Room(meta, this));
         }
@@ -323,7 +323,7 @@ export class Registry {
         if (!name.ok) return { error: name.reason, status: 400 };
         const lower = name.value.toLowerCase();
         if ([...this.rooms.values()].some((r) => r.meta.name.toLowerCase() === lower)) return { error: 'A server with that name already exists', status: 409 };
-        const meta = { id: newId(), name: name.value, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: body.beginner !== false,   // on unless turned off
+        const meta = { id: newId(), name: name.value, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
             permanent: false, createdAt: now, expireAt: now + LIMITS.emptyTtlMs };
         const room = new Room(meta, this);
         this.rooms.set(meta.id, room);
