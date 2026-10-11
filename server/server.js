@@ -63,6 +63,8 @@ const stats = new Stats(store, log);
 await stats.init();
 const registry = new Registry(store, log, stats);
 await registry.init();
+// A stray promise rejection is logged (rate-limited) instead of ending the process.
+process.on('unhandledRejection', (e) => registry.logError('unhandled rejection', e));
 
 // ------------------------------------------------ HTTP
 function send(res, status, body, origin, cache = 'no-store') {
@@ -152,6 +154,7 @@ class Client {
         // Drop frames for clients that can't keep up rather than buffering forever.
         if (this.ws.readyState === 1 && this.ws.bufferedAmount < 512 * 1024) this.ws.send(s);
     }
+    close(code, reason) { try { this.ws.close(code, reason); } catch { /* already closed */ } }
 }
 
 function onConnect(ws, room, ip) {
@@ -168,6 +171,13 @@ function onConnect(ws, room, ip) {
         let m;
         try { m = JSON.parse(data.toString('utf8')); } catch { if (++strikes > 5) ws.close(4002, 'bad messages'); return; }
         if (!m || typeof m !== 'object' || typeof m.t !== 'string') { if (++strikes > 5) ws.close(4002, 'bad messages'); return; }
+        // A bug while handling a message closes only the socket that sent it
+        // (1011, logged like a room error), rather than crashing the process
+        // and every room. The room carries on: one crafted message mustn't
+        // be able to throw everyone out.
+        try { handle(m); } catch (e) { registry.logError(`room ${room.meta.id} message`, e); client.close(1011, 'room error'); }
+    });
+    function handle(m) {
         if (!joined) {
             if (m.t !== 'hello') return;
             const r = room.join(client, typeof m.name === 'string' ? m.name.slice(0, 64) : '', { perks: m.perks, skin: typeof m.skin === 'string' ? m.skin.slice(0, 16) : '', caps: m.caps });
@@ -180,12 +190,14 @@ function onConnect(ws, room, ip) {
         else if (m.t === 'park') room.park(client);
         else if (m.t === 'unpark') room.unpark(client);
         else if (m.t === 'ping' && typeof m.c === 'number') client.send({ t: 'pong', c: m.c });
-    });
+    }
     ws.on('close', (code) => {
         clearTimeout(helloTimer);
         // 1000/1005: the game closed the socket (back to the menu); 1001: the
         // tab closed. Anything else (1006, our 40xx) is a dropped connection.
-        if (joined) room.leave(client, code === 1000 || code === 1001 || code === 1005 ? 'quit' : 'disconnect');
+        // (client.room is set even if a hello failed halfway through join.)
+        const cause = code === 1000 || code === 1001 || code === 1005 ? 'quit' : 'disconnect';
+        if (client.room) { try { room.leave(client, cause); } catch (e) { registry.logError(`room ${room.meta.id} leave`, e); } }
         const n = (conns.get(ip) || 1) - 1;
         if (n <= 0) conns.delete(ip); else conns.set(ip, n);
     });
