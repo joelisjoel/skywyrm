@@ -57,7 +57,8 @@ export class Renderer {
         this.ownDepth.renderOrder = 1;                                    // after the other solids
         this.scene.add(this.ownDepth);
         // Dorsal crest: a flame-like fin on the back of every other segment
-        // (and a fan at the tail tip), in each dragon's second colour.
+        // (and a fan at the tail tip when tail bites are off: the edible tip
+        // has its feathers instead), in each dragon's second colour.
         this.fins = new THREE.InstancedMesh(finGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2,
             side: THREE.DoubleSide }), MAX_BEADS / 2 + 400);
         this.fins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -649,6 +650,12 @@ export class Renderer {
                 const f = b / d.nBeads;
                 let s = r * (f > 0.85 ? 1 - (f - 0.85) / 0.15 * 0.6 : 1) * (b < 6 ? 0.7 + 0.05 * b : 1);
                 if (b === nb - 1) s *= 0.05;                                   // the tube closes to a point
+                // The edible tail tip (rule tailBite) narrows to a slender
+                // stalk carrying gold feathers (below), so the part you can
+                // bite stands out. Drawing only: the bite hitbox is still
+                // r × tailColScale round every bead.
+                const tipK = b - tip;                                          // 0, 1, … on the edible tip
+                if (tipK >= 0) s *= tipK === 0 ? 0.62 : 0.42;
                 // Your own body shrinks away near the camera so it never
                 // blocks the view in a turn.
                 if (!isOther) {
@@ -686,6 +693,37 @@ export class Renderer {
                         nPlume++;
                     }
                 }
+                // Tip feathers: a pair on each edible bead, swept back, and a
+                // tuft at the very end (a fan of five plus two standing up),
+                // glowing amber gold with the tip's shimmer. Plume instances:
+                // no extra draw.
+                if (tipK >= 0 && nPlume < plumeCap - 8) {
+                    let fade = ghost;
+                    if (!isOther) {                                                         // your own fade near the camera
+                        const cx = x - cp.x, cy = y - cp.y, cz = z - cp.z;
+                        fade *= Math.max(0, Math.min(1, (Math.sqrt(cx * cx + cy * cy + cz * cz) - 4) / 6));
+                    }
+                    if (fade > 0.02) {
+                        const glow = fade * (1.35 + 0.4 * Math.sin(time * 9 - b * 0.9));   // pulses with the shimmer, blooming at its peak
+                        const fr = glow, fg = 0.34 * glow, fb = 0.02 * glow;                // deep amber gold: richer than any crest
+                        const fl = Math.sin(time * 6 + b * 1.3) * 0.12;
+                        if (b < nb - 1) {
+                            const L = r * (1.1 + 0.25 * tipK);
+                            for (let side = -1; side <= 1; side += 2) {
+                                _a.copy(wT).multiplyScalar(-0.72).addScaledVector(wR, side * 0.62).addScaledVector(wU, 0.28 + fl).normalize();
+                                _s.copy(wU).addScaledVector(wR, side * 0.8);
+                                this.tipFeather(nPlume++, x + wR.x * side * s * 0.7, y + wR.y * side * s * 0.7, z + wR.z * side * s * 0.7, _a, _s, L, 1.7, fr, fg, fb);
+                            }
+                        } else {
+                            for (let q = 0; q < 7; q++) {
+                                const up = q >= 5, th = up ? (q === 5 ? -0.28 : 0.28) : (q - 2) * 0.5 + fl;
+                                _a.copy(wT).multiplyScalar(-Math.cos(th)).addScaledVector(wR, Math.sin(th)).addScaledVector(wU, up ? 0.95 : 0.22).normalize();
+                                const L = r * (up ? 2 : 3 - 0.4 * Math.abs(q - 2));
+                                this.tipFeather(nPlume++, x, y, z, _a, up ? wR : wU, L, up ? 1.4 : 1.6, fr, fg, fb);
+                            }
+                        }
+                    }
+                }
                 // Legs: front pair from Drake, back pair from Wyvern, paddling
                 // as the dragon swims.
                 if (d.tier >= 1 && nLeg < MAX_HEADS * 2 && (b === legF || (b === legB && d.tier >= 2)) && s > 0.05) {
@@ -703,9 +741,10 @@ export class Renderer {
                     nLeg++;
                 }
                 // Crest: a fin every other segment, rising from the back and
-                // swept toward the tail; a three-fin fan at the very tip.
+                // swept toward the tail; a three-fin fan at the very tip. None
+                // on an edible tip, which has its feathers instead.
                 const last = b === nb - 1;
-                if (((b & 1) === 0 && b > 1 && b < nb - 2 || last) && nFin < finCap - 3 && s > 0.05) {
+                if (tipK < 0 && ((b & 1) === 0 && b > 1 && b < nb - 2 || last) && nFin < finCap - 3 && s > 0.05) {
                     const fh = s * (last ? 1.9 : 0.95 * (1 - 0.35 * b / nb)), fl = seg * 1.6 * (s / r);
                     for (let q = 0; q < (last ? 3 : 1); q++) {
                         const tilt = last ? (q - 1) * 0.75 : 0, ct = Math.cos(tilt), st = Math.sin(tilt);
@@ -1219,6 +1258,23 @@ export class Renderer {
             u.src.value = B.texture; u.dir.value.set(0, spread / A.height);
             r.setRenderTarget(A); r.render(this.postScene, this.warpCam);
         }
+    }
+
+    // One tail-tip feather, as a plume instance: base at (x, y, z), quill
+    // along the unit axis a, its broad side turned toward `face` (curling
+    // that way), L long and `wide` × a flank plume's width.
+    tipFeather(i, x, y, z, a, face, L, wide, cr, cg, cb) {
+        const M = this.plumes.instanceMatrix.array, C = this.plumes.instanceColor.array, k = i * 16;
+        _bw.crossVectors(a, face);
+        if (_bw.lengthSq() < 1e-8) _bw.set(1, 0, 0).cross(a);
+        _bw.normalize();
+        _cn.crossVectors(_bw, a);
+        const w = L * wide;
+        M[k] = _bw.x * w; M[k + 1] = _bw.y * w; M[k + 2] = _bw.z * w; M[k + 3] = 0;
+        M[k + 4] = a.x * L; M[k + 5] = a.y * L; M[k + 6] = a.z * L; M[k + 7] = 0;
+        M[k + 8] = _cn.x * L; M[k + 9] = _cn.y * L; M[k + 10] = _cn.z * L; M[k + 11] = 0;
+        M[k + 12] = x; M[k + 13] = y; M[k + 14] = z; M[k + 15] = 1;
+        C[i * 3] = cr; C[i * 3 + 1] = cg; C[i * 3 + 2] = cb;
     }
 
     emit(x, y, z, vx, vy, vz, life, heat, hue = 0) {
