@@ -7,11 +7,11 @@
          server (net-config.js) plus localhost for local testing. The importmap below is allowed by its
          hash: scripts/check-assets.mjs checks it, so if you edit the importmap run `npm run assets:fix`. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-PshKy/GFzf0N39/jpTnj9u0U28oI0s7vxX65HsQ+deM='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://wyrm-server-420365023329.us-west1.run.app wss://wyrm-server-420365023329.us-west1.run.app http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Skywyrm — fly a Chinese dragon</title>
     <meta name="description" content="Skywyrm: fly a Chinese dragon through the clouds. Eat, grow, and don't touch their tails. Free, in your browser.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=26">
     <script type="importmap">
         {
             "imports": {
@@ -100,6 +100,7 @@
             <button class="open-controls">🎮 Controls</button>
         </div>
         <a id="privacy-link" href="privacy.html">Privacy · no ads, no tracking</a>
+        <div class="more-below" aria-hidden="true">more ▾</div>
     </div>
 
     <div id="pause" class="panel">
@@ -128,15 +129,15 @@
             <p class="note">Just for you, on this device.</p>
             <label class="opt big"><input type="checkbox" id="opt-wide"> <span><b>Wide view</b><small>See to your sides: the screen edges bend to show what's beside and behind you</small></span></label>
             <label class="opt"><input type="checkbox" id="opt-mirror"> <span>Rear-view mirror<small>A mirror at the top of the screen shows what's behind you</small></span></label>
-            <label class="opt"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>↑ / ↓ keys: up = nose down, like a flight sim (the mouse isn't affected)</small></span></label>
-            <label class="opt"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
+            <label class="opt no-touch"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>↑ / ↓ keys: up = nose down, like a flight sim (the mouse isn't affected)</small></span></label>
+            <label class="opt no-touch"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
             <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
             <label class="opt-range"><span>Graphics</span>
                 <select id="opt-gfx"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low (faster)</option></select><b></b></label>
             <label class="opt"><input type="checkbox" id="opt-motion"> <span>Reduce motion<small>Less camera roll, no FOV kick</small></span></label>
-            <label class="opt"><input type="checkbox" id="opt-music"> <span>Music <small>(N) The soundtrack builds as the action heats up</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-music"> <span>Music <small><span class="no-touch">(N)</span> The soundtrack builds as the action heats up</small></span></label>
             <label class="opt"><input type="checkbox" id="opt-voice"> <span>Dragon voice<small>Your dragon shouts in Mandarin at big moments (with pinyin + English captions)</small></span></label>
-            <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute all sound <small>(M)</small></span></label>
+            <label class="opt"><input type="checkbox" id="opt-mute"> <span>Mute all sound <small class="no-touch">(M)</small></span></label>
             <div id="last-problem" class="note problem" hidden>
                 <b>Last problem</b> <span class="when"></span>
                 <pre></pre>
@@ -159,19 +160,19 @@
         <h2>Controls</h2>
         <div class="keys">
             <div><b>Touch</b></div><div>put a finger on the sky: your dragon turns toward it · lift to fly straight · bolt button (or a second finger) to boost · chevrons to brake · flame for dragonfire · ❚❚ to pause</div>
-            <div><b>Mouse</b></div><div>steer — the further from centre, the harder you turn</div>
-            <div><b>Click / W / Space</b></div><div>boost (burns length)</div>
-            <div><b>Right-click / S</b></div><div>brake — tighter turns</div>
-            <div><b>A / D</b></div><div>roll</div>
-            <div><b>Arrow keys</b></div><div>steer without the mouse</div>
-            <div><b>C</b></div><div>look back (also: wide view &amp; mirror in Settings → Player)</div>
+            <div class="no-touch"><b>Mouse</b></div><div class="no-touch">steer — the further from centre, the harder you turn</div>
+            <div class="no-touch"><b>Click / W / Space</b></div><div class="no-touch">boost (burns length)</div>
+            <div class="no-touch"><b>Right-click / S</b></div><div class="no-touch">brake — tighter turns</div>
+            <div class="no-touch"><b>A / D</b></div><div class="no-touch">roll</div>
+            <div class="no-touch"><b>Arrow keys</b></div><div class="no-touch">steer without the mouse</div>
+            <div class="no-touch"><b>C</b></div><div class="no-touch">look back (also: wide view &amp; mirror in Settings → Player)</div>
             <div><b>Body temp</b></div><div>the sun at the centre and crowds warm you up — hotter = faster, with a bigger thrust tank</div>
             <div><b>Thrust</b></div><div>boost runs on a ~10 s tank that refills when you're not boosting</div>
-            <div><b>E / F</b></div><div>breathe — grab a crystal first: red fire burns through a tail, blue ice slows everyone in the cone, violet lightning stuns a line of dragons, green acid spits a cloud that melts tails. Crystals stack (up to 5): one breath spends them all, reaching farther and wider, and the last colour you ate decides what you breathe</div>
-            <div><b>Esc / P</b></div><div>pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
-            <div><b>N</b></div><div>music on / off</div>
-            <div><b>M</b></div><div>mute all sound</div>
-            <div class="dev-only"><b>`</b></div><div class="dev-only">tuning panel</div>
+            <div class="no-touch"><b>E / F</b></div><div class="no-touch">breathe — grab a crystal first: red fire burns through a tail, blue ice slows everyone in the cone, violet lightning stuns a line of dragons, green acid spits a cloud that melts tails. Crystals stack (up to 5): one breath spends them all, reaching farther and wider, and the last colour you ate decides what you breathe</div>
+            <div class="no-touch"><b>Esc / P</b></div><div class="no-touch">pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
+            <div class="no-touch"><b>N</b></div><div class="no-touch">music on / off</div>
+            <div class="no-touch"><b>M</b></div><div class="no-touch">mute all sound</div>
+            <div class="dev-only no-touch"><b><kbd>`</kbd></b></div><div class="dev-only no-touch">tuning panel (the key left of 1)</div>
         </div>
         <button class="cta close-overlay">Done</button>
     </div>
@@ -195,7 +196,7 @@
             <div><span>time alive</span><b id="card-time"></b></div>
             <div><span>best rank</span><b id="card-rank"></b></div>
         </div>
-        <button id="again" class="cta">Play again <small>(Space)</small></button>
+        <button id="again" class="cta">Play again <small class="no-touch">(Space)</small></button>
         <button id="menu-btn">Menu</button>
     </div>
 
@@ -210,7 +211,7 @@
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=53"></script>
+    <script type="module" src="js/main.js?v=54"></script>
 </body>
 
 </html>

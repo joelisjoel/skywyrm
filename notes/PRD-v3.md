@@ -461,7 +461,11 @@ device.
   of its element). Shield, magnet, chilled and stunned gauges appear only
   while active; on phones they stack above the others, clear of the radar.
 - **Radar** at the bottom centre, with a 60 m range. It shows above and below,
-  power-ups, acid clouds, pearls, the centre and the leader.
+  power-ups, acid clouds, pearls, the centre and the leader. On an upright
+  phone it sits above the stats, bottom left.
+- Stats text has a soft shadow so it reads on bright cloud. Touch screens hide
+  keyboard and mouse hints (the fire gauge's `E`, key names in Controls and
+  Settings) and the keyboard and mouse settings.
 - **Top:** leaderboard, kill feed, and toasts.
 - **Over the world:**
   - names over dragons within 50 m
@@ -544,6 +548,12 @@ device.
 - **Mobile:** iPhone and Android browsers.
   - The touch UI turns on automatically.
   - Below 640 px wide, the leaderboard shrinks to the top 5 and the mirror hides.
+  - On its side (under 500 px tall) the leaderboard also shrinks to the top 5,
+    the radar is smaller, and the menu has two columns with Play solo on top.
+  - Menus and the run card hide the leaderboard and kill feed on phones. A menu
+    that is taller than the screen scrolls and shows "more ▾".
+  - The page fills the screen past notches (`viewport-fit=cover`) and keeps the
+    HUD, buttons and menus inside the safe area.
 - **Graphics:**
   - High: up to 2× pixel density, bloom, and full-rate wide view.
   - Low: 1× pixel density, no bloom, and wide view updated every other frame.

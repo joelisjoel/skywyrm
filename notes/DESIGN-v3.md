@@ -728,6 +728,21 @@ The improvement loop's numbers, kept without identifying anyone
   - One canvas overlay for names, the steering reticle, off-screen arrows and
     the radar.
   - `project()` matches the wide-view warp so markers line up.
+- **Phone layout** (`style.css`):
+  - Phones are below 640 px wide (upright) or below 500 px tall (on its side).
+    Both get the compact stats and a top-5 leaderboard, and menus hide the
+    leaderboard and feed.
+  - Upright, the radar sits above the stats, which grow when timed gauges
+    stack above the main row (`hud.js` keeps their height in `--stats-h`). On
+    its side it is 132 × 90 px at the bottom centre, toasts and the feed stay
+    clear of the leaderboard and mirror, and the menu is a two-column grid.
+  - `viewport-fit=cover`, with `--safe-*` tokens from `env(safe-area-inset-*)`
+    on everything near an edge.
+  - Panels scroll when they're taller than the screen. Settings and Controls
+    scroll their list and keep Done in view. A scrolling menu or list gets
+    `data-more` (`scrollHint` in `main.js`), which shows "more ▾" or a fade.
+  - `.no-touch` marks keyboard and mouse hints and settings, hidden when
+    `body[data-touch]` is set.
 
 ### 5.4 Audio
 - **Sound effects** (`audio.js`):
@@ -1126,7 +1141,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **Saved stats never shown:** best length, best kills and games played.
 - **Graphics:** the auto drop to Low isn't remembered between visits.
 - **Death screen:** it can't be left during the respawn countdown.
-- **Fire gauge:** shows an `E` badge on touch devices too.
 
 ### 10.3 Stale docs and comments
 - None known. `MULTIPLAYER.md`, `RULES.md`, the voice README and the file
