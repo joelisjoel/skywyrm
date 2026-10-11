@@ -7,7 +7,9 @@
     "serve": "node scripts/serve.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "stamps": "node scripts/check-stamps.mjs",
-    "stamps:fix": "node scripts/check-stamps.mjs --fix"
+    "stamps:fix": "node scripts/check-stamps.mjs --fix",
+    "assets": "node scripts/check-assets.mjs",
+    "assets:fix": "node scripts/check-assets.mjs --fix"
   },
   "devDependencies": {
     "playwright": "1.62.1",

@@ -26,14 +26,17 @@ are in `notes/MULTIPLAYER.md` (partly stale, see DESIGN-v3 §10.3).
   a per-room rule (`World.rule(k)`) so they can be turned off.
 - `site/js/render.js` holds the dragon look: GPU tube bodies with a
   procedural scale shader, heads, jaws and ornaments.
-- three.js is pinned to 0.163.0 (importmap → esm.sh). Keep the
-  devDependency on the same version.
+- three.js is pinned to 0.163.0 and self-hosted: `site/vendor/three-0.163.0.module.min.js`
+  is a copy of the devDependency's build (`npm run assets` checks it). Nothing
+  loads from other sites; the page's Content-Security-Policy enforces that.
+- Adding Chinese text? Add the characters to the font subset (`site/fonts/README.md`).
 
 ## Before pushing
 
 ```sh
 npm run stamps:fix        # bump ?v=N on every changed module, in every importer
 npm run stamps            # check only (what CI runs)
+npm run assets            # CSP hashes, vendored three.js, font subset (assets:fix updates hashes)
 npm run smoke             # loads and flies; screenshots land in smoke-shots/
 (cd server && npm test)   # sim + rooms
 ```
