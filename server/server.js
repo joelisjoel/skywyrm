@@ -2,12 +2,15 @@
 //   GET  /healthz            → "ok"
 //   GET  /api/rooms          → { rooms: [...] }
 //   POST /api/rooms          → create { name, arena, beginner } → { room }
+//   POST /api/run            → 204: one solo life's anonymous numbers (stats.js)
+//   GET  /api/stats          → { days: [...] }: public daily play totals, newest first
 //   WS   /ws?room=<id>       → play (first message must be { t: 'hello', name })
 // Runs on Cloud Run (PORT, K_SERVICE set) or locally: `node server.js`.
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Registry } from './rooms.js';
 import { makeStore } from './store.js';
+import { Stats, cleanRun } from './stats.js';
 import { T, DEFAULTS } from '../site/js/shared.js';
 
 const PORT = +process.env.PORT || 8080;
@@ -34,6 +37,17 @@ function ipOf(req) {
 const MAX_CONN_PER_IP = 6;
 const conns = new Map();   // ip → count
 
+// Solo run notes (POST /api/run): 20 an hour per address. The address is
+// held only here, in memory, until its hour is up; never stored or logged.
+const RUNS_PER_IP_PER_HOUR = 20;
+const runNotes = new Map();   // ip → { n, since }
+function runAllowed(ip) {
+    const now = Date.now();
+    let e = runNotes.get(ip);
+    if (!e || now - e.since >= 3600 * 1000) runNotes.set(ip, (e = { n: 0, since: now }));
+    return ++e.n <= RUNS_PER_IP_PER_HOUR;
+}
+
 // Optional server-side tuning without a code change, e.g. on Cloud Run:
 // WYRM_TUNE={"popMax":20,"sunHeat":80}. Only known numeric keys apply.
 if (process.env.WYRM_TUNE) {
@@ -45,14 +59,16 @@ if (process.env.WYRM_TUNE) {
 }
 
 const store = await makeStore(log);
-const registry = new Registry(store, log);
+const stats = new Stats(store, log);
+await stats.init();
+const registry = new Registry(store, log, stats);
 await registry.init();
 
 // ------------------------------------------------ HTTP
-function send(res, status, body, origin) {
+function send(res, status, body, origin, cache = 'no-store') {
     const headers = {
         'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'no-store',
+        'cache-control': cache,
         'x-content-type-options': 'nosniff',
         'vary': 'Origin',
     };
@@ -93,6 +109,20 @@ const server = createServer(async (req, res) => {
                 return r.error ? send(res, r.status || 400, { error: r.error }, origin) : send(res, 201, r, origin);
             }
         }
+        // A solo life's anonymous numbers. Sent as text/plain so the browser
+        // needs no preflight; the page ignores every answer.
+        if (url.pathname === '/api/run' && req.method === 'POST') {
+            if (!originOk(origin)) return send(res, 403, { error: 'Forbidden' }, origin);
+            if (!/^(text\/plain|application\/json)/i.test(String(req.headers['content-type'] || ''))) return send(res, 415, { error: 'JSON only' }, origin);
+            if (+req.headers['content-length'] > 512) return send(res, 413, { error: 'Too big' }, origin);
+            if (!runAllowed(ipOf(req))) return send(res, 429, { error: 'Too many' }, origin);
+            let run;
+            try { run = cleanRun(JSON.parse(await readBody(req, 512))); } catch (e) { return send(res, e.message === 'too big' ? 413 : 400, { error: 'Bad request' }, origin); }
+            if (!run) return send(res, 400, { error: 'Bad request' }, origin);
+            stats.run('solo', run);
+            return send(res, 204, null, origin);
+        }
+        if (url.pathname === '/api/stats' && req.method === 'GET') return send(res, 200, { days: stats.list() }, origin, 'public, max-age=60');
         send(res, 404, { error: 'Not found' }, origin);
     } catch (e) {
         log('http error', e.message);
@@ -151,9 +181,11 @@ function onConnect(ws, room, ip) {
         else if (m.t === 'unpark') room.unpark(client);
         else if (m.t === 'ping' && typeof m.c === 'number') client.send({ t: 'pong', c: m.c });
     });
-    ws.on('close', () => {
+    ws.on('close', (code) => {
         clearTimeout(helloTimer);
-        if (joined) room.leave(client);
+        // 1000/1005: the game closed the socket (back to the menu); 1001: the
+        // tab closed. Anything else (1006, our 40xx) is a dropped connection.
+        if (joined) room.leave(client, code === 1000 || code === 1001 || code === 1005 ? 'quit' : 'disconnect');
         const n = (conns.get(ip) || 1) - 1;
         if (n <= 0) conns.delete(ip); else conns.set(ip, n);
     });
@@ -168,8 +200,22 @@ setInterval(() => {
     lastTick = now;
     while (acc >= 1 / 30) { registry.tick(); acc -= 1 / 30; }
 }, 1000 / 60);
-setInterval(() => registry.sweep(), 60 * 1000);
+setInterval(() => {
+    registry.sweep();
+    const now = Date.now();
+    for (const [ip, e] of runNotes) if (now - e.since >= 3600 * 1000) runNotes.delete(ip);
+    stats.flush();                // saves today's totals, at most once a minute, if they changed
+}, 60 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => log(`skywyrm server listening on :${PORT} (${PROD ? 'cloud run' : 'dev'})`));
 
-process.on('SIGTERM', () => { log('SIGTERM: shutting down'); server.close(); setTimeout(() => process.exit(0), 500); });
+// Count the lives a shutdown cuts off and save the totals before exiting
+// (Cloud Run allows 10 s; never wait more than 5).
+process.on('SIGTERM', () => {
+    log('SIGTERM: shutting down');
+    server.close();
+    registry.endLives('disconnect');
+    const bye = () => process.exit(0);
+    stats.flush().then(() => setTimeout(bye, 500), bye);
+    setTimeout(bye, 5000);
+});

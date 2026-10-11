@@ -1,5 +1,6 @@
-// Integration test: boots the server, exercises the lobby API, two players
-// in one room, pose validation, events, and room lifecycle bookkeeping.
+// Integration test: boots the server, exercises the lobby API, solo run
+// notes and the public totals, two players in one room, pose validation,
+// events, and room lifecycle bookkeeping.
 // Run: cd server && npm test   (needs `npm install` at the repo root first, for three)
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +47,36 @@ try {
     check(limited.status === 429, 'per-IP creation limit (3/hour) enforced');
     r = await (await api('/api/rooms')).json();
     check(r.rooms.find((x) => x.name === 'Third One')?.beginner === true, 'every new server is beginner, even if asked otherwise');
+
+    // Solo run notes (POST /api/run) and the public totals (GET /api/stats).
+    const note = { v: 1, mode: 'solo', arena: 'orb', len: 42.4, secs: 95.6, kills: 2, cause: 'body' };
+    const runNote = (body, headers = {}) => api('/api/run', { method: 'POST', headers: { 'content-type': 'text/plain', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+    const totals = async (origin = ORIGIN) => { const res = await api('/api/stats', { headers: { origin } }); return { res, today: (await res.json()).days[0] }; };
+    let res = await runNote(note);
+    check(res.status === 204 && res.headers.get('access-control-allow-origin') === ORIGIN, 'a solo run note (text/plain, so no preflight) is accepted: 204 with CORS');
+    let t = await totals();
+    const solo = t.today.solo;
+    check(t.res.headers.get('cache-control') === 'public, max-age=60' && t.today.day === new Date().toISOString().slice(0, 10) && solo.runs === 1 && solo.secs === 96
+        && solo.maxLen === 42 && solo.len['25-50'] === 1 && solo.cause.body === 1 && solo.arena.orb === 1, 'GET /api/stats shows it in today\'s solo totals (cached 60 s)');
+    check(JSON.stringify(Object.keys(t.today)) === '["day","solo","room","peakHumans","roomsCreated"]' && t.today.roomsCreated === 3,
+        'the totals hold only counts (3 rooms created today), nothing per player');
+    res = await runNote({ ...note, arena: 'sky', len: 1e9, secs: -50, kills: 99999, cause: 'eaten by a grue', name: 'Ember Drake' }, { 'content-type': 'application/json' });
+    t = await totals();
+    check(res.status === 204 && t.today.solo.runs === 2 && t.today.solo.maxLen === 2000 && t.today.solo.len['200+'] === 1 && t.today.solo.kills === 502
+        && t.today.solo.secs === 96 && t.today.solo.cause.other === 1, 'out-of-range fields are clamped (2000 m, 500 kills, 0 s) and an unknown cause counts as other');
+    const refused = await Promise.all([runNote({ ...note, arena: 'moon' }), runNote({ ...note, mode: 'room' }), runNote({ ...note, len: '42' }), runNote('not json')]);
+    check(refused.every((x) => x.status === 400), 'a note with an unknown world, a non-solo mode, a non-number or bad JSON is refused (400)');
+    res = await runNote({ ...note, pad: 'x'.repeat(600) });
+    check(res.status === 413, 'a note over 512 bytes is refused (413)');
+    res = await runNote(note, { origin: 'https://evil.example' });
+    check(res.status === 403 && !res.headers.get('access-control-allow-origin'), 'a note from a foreign origin is refused (403)');
+    // So far 2 accepted + 4 refused count towards this address's 20 an hour.
+    const more = [];
+    for (let i = 0; i < 14; i++) more.push((await runNote(note)).status);
+    res = await runNote(note);
+    t = await totals('https://evil.example');
+    check(more.every((s) => s === 204) && res.status === 429 && t.today.solo.runs === 16, 'per-address limit: the 21st note in an hour gets 429');
+    check(t.res.status === 200 && !t.res.headers.get('access-control-allow-origin'), 'the totals are public; CORS headers only for the game\'s own pages');
 
     // Two players join the created room.
     const join = (name) => new Promise((resolve, reject) => {
@@ -131,6 +162,10 @@ try {
     await sleep(400);
     r = await (await api('/api/rooms')).json();
     check(r.rooms.some((x) => x.id === room.id && x.humans === 0), 'empty user room still listed (lives 12 h after last leave)');
+    t = await totals();
+    const rm = t.today.room, ends = Object.entries(rm.cause).filter(([, n]) => n);
+    check(rm.runs === 2 && ends.reduce((s, [, n]) => s + n, 0) === 2 && rm.arena.orb === 2 && rm.secs > 0 && t.today.peakHumans === 2 && t.today.solo.runs === 16,
+        `both players' lives counted under room (${ends.map(([k, n]) => `${k} ${n}`).join(', ')}); peak 2 players today`);
     console.log(`\n${ok} checks passed`);
 } catch (e) {
     console.error('FAILED:', e.message, '\n--- server log ---\n' + out);

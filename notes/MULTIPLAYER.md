@@ -61,7 +61,8 @@ Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
   - It **scales to zero**, so it costs nothing while nobody is playing.
   - Set **max instances = 1**: every room lives in one process. That's
     plenty for hundreds of players.
-- **Firestore** holds only the room list: names, settings, and expiry.
+- **Firestore** holds only the room list (names, settings, and expiry) and
+  the anonymous daily play totals (`stats`, 30 days; see DESIGN-v3 §4.7).
   That lets user-created rooms survive a server restart for their 12 hours.
   Game state stays in memory (it's a snake game, so nothing needs saving).
 - **Movement is client-trusted but server-checked**, for v1.

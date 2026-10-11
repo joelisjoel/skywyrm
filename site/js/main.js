@@ -1,7 +1,7 @@
 // Wyrm prototype — game loop and flow: menu (attract mode) → play →
 // death-cam → run card → play again (spec §5, §12). Single-player vs
 // bots, PC-first, to judge flight feel and 3D encounter density.
-import { T, DEFAULTS, loadTune, saveTune, TIERS } from './tunables.js?v=18';
+import { T, DEFAULTS, loadTune, saveTune, TIERS, lengthFor } from './tunables.js?v=18';
 import { World, Dragon, hazardDist } from './sim.js?v=18';
 import { managePopulation, targetBots } from './bots.js?v=18';
 import { Renderer } from './render.js?v=30';
@@ -94,6 +94,20 @@ function bankLife(time) {
     }
     renderProfile();
     return res;
+}
+// Play totals (privacy.html): when a solo life ends, one anonymous note to
+// the game server with the world, peak length, seconds flown, kills and how
+// it ended. No name, id or cookie. Online lives are counted by the server
+// itself. Every failure (offline, an older server) is ignored.
+const endCause = (e) => (e.killer ? (e.cause === 'head' ? 'headon' : 'body') : e.cause === 'the menu' ? 'quit' : 'wall');
+function reportLife(cause) {
+    if (online || !SERVER_BASE || !player || player.reported === player.bornAt) return;   // once per life
+    player.reported = player.bornAt;
+    const run = { v: 1, mode: 'solo', arena: world.arena.key, len: Math.round(lengthFor(player.peakMass)),
+        secs: Math.round(world.time - player.bornAt), kills: player.kills, cause };
+    try {
+        fetch(SERVER_BASE + '/api/run', { method: 'POST', mode: 'cors', keepalive: true, headers: { 'content-type': 'text/plain' }, body: JSON.stringify(run) }).catch(() => {});
+    } catch { /* ignore */ }
 }
 const livesTotal = () => (world ? world.rule('lives') : T.lives);
 const livesLeft = () => (livesTotal() > 0 ? livesTotal() - game.deaths : Infinity);
@@ -239,6 +253,7 @@ function onPlayerDeath(e) {
     game.rank = Math.min(game.rank, player.bestRank);
     deathInfo.final = livesLeft() <= 0;
     bankLife(online ? at - (player.bornWall || at) : world.time - player.bornAt);
+    reportLife(endCause(e));
     deathInfo.respawnAt = at + world.rule('respawnDelay');
     setState('dead');
     $('respawn-jade').textContent = `+${deathInfo.jade} 玉 jade`;
@@ -398,7 +413,7 @@ input.holdButton($('t-fire'), 'fire');
 $('t-pause').addEventListener('pointerdown', (e) => { e.preventDefault(); pause(); });
 $('quit').onclick = () => {
     if (online) leaveOnline();
-    else if (player && player.alive) world.kill(player, null, 'the menu');
+    else if (player && player.alive) { world.kill(player, null, 'the menu'); reportLife('quit'); }
     setState('menu');
     refreshLobby();
 };

@@ -53,12 +53,12 @@ on phones and computers with no install, no account and no tracking.
 |---|---|---|---|
 | 1 | It's fun for the kids | They come back to it on their own, ask for features and play online together | ✅ |
 | 2 | Push AI-assisted building end to end and ship to production | Live on its own domain, with small PRs, CI and auto-deploys | ✅ skywyrm.io; site and server deploy from `main` |
-| 3 | A small, genuine player base (stretch) | Judged by eye from room counts in the lobby, since nothing is tracked by design | ⬜ not pursued yet |
+| 3 | A small, genuine player base (stretch) | Anonymous daily totals at `/api/stats`: lives played, time flown, peak players online (§11). Nobody is tracked | ⬜ not pursued yet; the numbers are now counted |
 
 **Non-goals.**
 - Accounts or passwords.
 - Chat of any kind.
-- Analytics or tracking.
+- Analytics or tracking of players. Only anonymous daily totals are counted (§11).
 - Ads, or purchases of any kind.
 - Native apps.
 - A realistic flight sim.
@@ -402,8 +402,21 @@ device.
 
 - **Nothing personal is collected:**
   - no accounts, chat, ads or cookies
-  - no analytics or tracking code
+  - no analytics companies or tracking code, and no player or device ids
 - Progress lives in the browser's local storage.
+- **Anonymous play totals** ✅ (approved by Joel, so the game can be improved
+  with real numbers):
+  - Online, the server counts each human life as it ends in a room (death,
+    leaving or a dropped connection).
+  - Solo, the browser sends one note when each life ends: the world, peak
+    length, seconds flown, kills and how it ended. No id, no cookie, no name.
+  - The server adds these into totals per UTC day, with solo and online kept
+    apart, plus the peak number of players online and rooms created. It keeps
+    30 days.
+  - The totals are public at `<server>/api/stats`.
+  - The server uses IP addresses only in memory, to rate-limit, and doesn't
+    store or log them.
+  - Nothing beyond this is collected.
 - **Names are filtered on both the browser and the server.** The filter:
   - allows only letters, numbers and simple punctuation
   - blocks links and e-mail addresses
@@ -416,7 +429,9 @@ device.
 - The game server's own logs record created room names, but not player names
   or IP addresses. Google Cloud's standard request logs do record IP
   addresses, and keep them for 30 days by default.
-- ⬜ There is no privacy page yet (§14).
+- ✅ **Privacy page** (`skywyrm.io/privacy.html`, linked from the menu): plain
+  words for kids and parents covering what is counted, what isn't, IP
+  addresses, who hosts what, and where grown-ups can ask (the repo's issues).
 
 ---
 
@@ -453,7 +468,6 @@ device.
 - **Worlds:** The Grid and The Warrens.
 - **Persistent boards:** daily and all-time.
 - **Input:** emotes and gamepad.
-- **Pages:** a privacy page.
 
 ### 13.2 Issues found while writing v3
 These are listed roughly by how much a player would notice.
@@ -490,8 +504,7 @@ Each decision has a recommended default, so work can start on that default.
    link back to the player) before replays. Or leave sharing out entirely.
 3. **Portals, ads and revenue.** Recommend staying out while the game is
    kid-first. Ads would require consent tooling and a COPPA review.
-4. **Privacy page.** Recommend a short one before sharing the link beyond
-   friends and family.
+4. **Privacy page.** ✅ Done, together with the anonymous play totals (§11).
 5. **Dev tools in production.** Recommend hiding the ⚙ tuning panel and FPS
    counter unless `?dev=1` is in the URL.
 6. **Hardcore mode.** Beginner is the only mode now. Recommend adding a
