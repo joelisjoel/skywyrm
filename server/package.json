@@ -1,8 +1,8 @@
 {
-  "name": "wyrm-server",
+  "name": "skywyrm-server",
   "private": true,
   "type": "module",
-  "description": "Multiplayer rooms for Wyrm (dendroslabs.com/wyrm). Runs the shared sim from docs/wyrm/js.",
+  "description": "Multiplayer rooms for Skywyrm (skywyrm.io). Runs the shared sim from site/js.",
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",

@@ -1,6 +1,6 @@
 // Integration test: boots the server, exercises the lobby API, two players
 // in one room, pose validation, events, and room lifecycle bookkeeping.
-// Run: cd wyrm-server && npm test   (needs three at the repo root: npm i --no-save three@0.163.0)
+// Run: cd server && npm test   (needs `npm install` at the repo root first, for three)
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

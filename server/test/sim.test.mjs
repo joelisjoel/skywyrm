@@ -1,6 +1,6 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
-import { World, Dragon, T, managePopulation, aggression, cleanPerks } from '../../docs/wyrm/js/shared.js';
+import { World, Dragon, T, managePopulation, aggression, cleanPerks } from '../../site/js/shared.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };

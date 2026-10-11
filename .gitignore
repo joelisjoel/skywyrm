@@ -1,0 +1,4 @@
+node_modules
+package-lock.json
+smoke-shots/
+.DS_Store

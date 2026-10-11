@@ -1,0 +1,15 @@
+{
+  "name": "skywyrm",
+  "private": true,
+  "type": "module",
+  "description": "Skywyrm: fly a Chinese dragon through the clouds. A 3D .io-style browser game.",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "stamps": "node scripts/check-stamps.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "three": "0.163.0"
+  }
+}

@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Registry } from './rooms.js';
 import { makeStore } from './store.js';
-import { T, DEFAULTS } from '../docs/wyrm/js/shared.js';
+import { T, DEFAULTS } from '../site/js/shared.js';
 
 const PORT = +process.env.PORT || 8080;
 const PROD = !!process.env.K_SERVICE;
@@ -16,7 +16,7 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // Only these pages may use the server. Localhost is allowed off Cloud Run
 // (dev) or when ALLOW_LOCALHOST=1.
-const ALLOWED = new Set((process.env.ALLOWED_ORIGINS || 'https://dendroslabs.com,https://www.dendroslabs.com')
+const ALLOWED = new Set((process.env.ALLOWED_ORIGINS || 'https://skywyrm.io,https://www.skywyrm.io')
     .split(',').map((s) => s.trim()).filter(Boolean));
 const allowLocal = !PROD || process.env.ALLOW_LOCALHOST === '1';
 function originOk(origin) {
@@ -170,6 +170,6 @@ setInterval(() => {
 }, 1000 / 60);
 setInterval(() => registry.sweep(), 60 * 1000);
 
-server.listen(PORT, '0.0.0.0', () => log(`wyrm-server listening on :${PORT} (${PROD ? 'cloud run' : 'dev'})`));
+server.listen(PORT, '0.0.0.0', () => log(`skywyrm server listening on :${PORT} (${PROD ? 'cloud run' : 'dev'})`));
 
 process.on('SIGTERM', () => { log('SIGTERM: shutting down'); server.close(); setTimeout(() => process.exit(0), 500); });

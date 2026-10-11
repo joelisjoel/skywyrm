@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Cache-stamp checker. Phones cache aggressively, so every module under
-// docs/ that pages reference with a ?v=N query must have its stamp bumped
+// site/ that pages reference with a ?v=N query must have its stamp bumped
 // in EVERY referencing file whenever the module's content changes.
 // This script enforces both halves of that contract:
 //
@@ -42,7 +42,7 @@ function collectStamps(readFile, listFiles) {
     return stamps;
 }
 
-const trackedDocs = () => git('ls-files', '--', 'docs')
+const trackedDocs = () => git('ls-files', '--', 'site')
     .split('\n').filter((f) => /\.(html|m?js|css)$/.test(f));
 
 const current = collectStamps(
@@ -55,7 +55,7 @@ const base = collectStamps(
     (f) => {
         try { return git('show', `${BASE}:${f}`); } catch { return null; }
     },
-    () => git('ls-tree', '-r', '--name-only', BASE, '--', 'docs')
+    () => git('ls-tree', '-r', '--name-only', BASE, '--', 'site')
         .split('\n').filter((f) => /\.(html|m?js|css)$/.test(f)),
 );
 

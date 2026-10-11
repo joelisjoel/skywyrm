@@ -3,7 +3,7 @@
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
 import { randomBytes } from 'node:crypto';
-import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../docs/wyrm/js/shared.js';
+import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPerks, skinById } from '../site/js/shared.js';
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [

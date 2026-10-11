@@ -1,5 +1,7 @@
 # Wyrm multiplayer: architecture and Google Cloud setup
 
+> Moved from `dendroslabs/dendroslabs.github.io`: the game is now in `site/` and the server in `server/` (formerly `docs/wyrm/` and `wyrm-server/`).
+
 Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
 
 ---
@@ -214,7 +216,7 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 
 - **Deploys are automatic.** Every merge to `main` rebuilds and redeploys
   the server in about 3 minutes. Later we can limit rebuilds to
-  `wyrm-server/**` and `docs/wyrm/js/**` under Cloud Build → Triggers →
+  `server/**` and `site/js/**` under Cloud Build → Triggers →
   Included files.
 - **Logs:** Cloud Run → `wyrm-server` → **Logs**.
 - **Roll back:** Cloud Run → `wyrm-server` → **Revisions** → pick an older

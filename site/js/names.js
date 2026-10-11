@@ -11,7 +11,7 @@ const BLOCKED = ['fuck', 'shit', 'cunt', 'bitch', 'nigger', 'nigga', 'faggot', '
     'penis', 'vagina', 'kkk', 'isis', 'kys'];
 
 // Words that impersonate staff or the built-in rooms.
-const RESERVED = ['admin', 'moderator', 'mod ', 'official', 'staff', 'system', 'server', 'dendros', 'wyrm team'];
+const RESERVED = ['admin', 'moderator', 'mod ', 'official', 'staff', 'system', 'server', 'skywyrm', 'wyrm team'];
 
 export const LIMITS = { player: 16, room: 24 };
 

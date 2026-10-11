@@ -1,0 +1,71 @@
+# Checks on every pull request and push; on main, the site publishes to
+# GitHub Pages only after they pass (a broken build never reaches players).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the stamp check compares against the base branch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check cache stamps
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-stamps.mjs origin/${{ github.base_ref }}
+
+      - name: Install
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test (the game loads and flies)
+        run: node scripts/smoke-test.mjs
+
+      - name: Multiplayer server tests
+        working-directory: server
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-shots
+          path: smoke-shots/
+          if-no-files-found: ignore
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

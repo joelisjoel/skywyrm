@@ -10,7 +10,7 @@ import { Input } from './input.js?v=20';
 import { Hud } from './hud.js?v=19';
 import { Audio } from './audio.js?v=10';
 import { TunePanel } from './tune-panel.js?v=18';
-import { checkName } from './names.js?v=8';
+import { checkName } from './names.js?v=9';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=1';
@@ -25,6 +25,22 @@ const cam = new ChaseCam(renderer.camera);
 const input = new Input(canvas);
 const hud = new Hud();
 const audio = new Audio();
+// Moving house: the old address (dendroslabs.com/wyrm) hands this
+// browser's progress over in the link fragment (#carry=…, which is never
+// sent to any server). It's taken once, only on a device with no Skywyrm
+// progress yet, and then wiped from the address bar.
+(function carryOver() {
+    const m = /[#&]carry=([A-Za-z0-9_-]{1,8000})/.exec(location.hash);
+    if (!m) return;
+    try {
+        const bin = atob(m[1].replace(/-/g, '+').replace(/_/g, '/'));
+        const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+        const keep = (key, val) => { if (val && typeof val === 'object' && !Array.isArray(val) && !localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(val)); };
+        keep('wyrm.profile.v1', data.p);
+        keep('wyrm.settings.v1', data.s);
+    } catch { /* a bad link: ignore it */ }
+    history.replaceState(null, '', location.pathname + location.search);
+})();
 const profile = new Profile();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
