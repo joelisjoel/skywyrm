@@ -32,7 +32,7 @@ export const DEFAULTS = {
     lenBase: 8,             // L = lenBase + lenPerMass·m
     lenPerMass: 0.4,
     lenCap: 400,
-    radiusBase: 0.6,        // r = radiusBase + radiusGrow·min(1, m/2000)
+    radiusBase: 0.6,        // r = radiusBase + radiusGrow·min(1, m/2000), × the girth factor (rule girth)
     radiusGrow: 1.4,
     beadSpacing: 0.7,       // × r
     boostCost: 4,           // mass/s
@@ -136,6 +136,8 @@ export const DEFAULTS = {
     pearlMass: 30,          // mass for catching one
     pearlRespawn: 8,        // s until a new one appears elsewhere (±25%)
     pearlDrift: 2.5,        // m/s, on long curving paths
+    girth: 1,               // bigger dragons are fatter: extra body radius at 100 m long (1 = ×2), see radiusFor (0 = off)
+    girthExp: 0.585,        // curve: 0.585 gives ×3 at 300 m when it's ×2 at 100 m
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -150,6 +152,7 @@ export const DEFAULTS = {
     fovBoost: 84,
     fovSpeed: 4,            // deg wider per ×1 of speed multiplier above ×2 (+8° at ×4)
     camLagMax: 8,           // m the chase camera may trail its spot at speed (×2.4 boost: 7.5 m; ×4 would be 12.5 m)
+    camGirth: 0.8,          // a fat dragon's camera backs off and rises by (its girth factor)^camGirth (0 = never)
     wideCorner: 122,        // deg from forward shown at the screen corners (wide view; was 150, 30% less warp)
     wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
 
@@ -217,6 +220,7 @@ export const PANEL = [
     ['fovBoost', 50, 120, 1, 'Camera'],
     ['fovSpeed', 0, 10, 0.5, 'Camera'],
     ['camLagMax', 2, 30, 0.5, 'Camera'],
+    ['camGirth', 0, 1.2, 0.05, 'Camera'],
     ['wideCorner', 60, 178, 1, 'Camera'],
     ['wideExpo', 1, 6, 0.1, 'Camera'],
     ['swimAmp', 0, 1.5, 0.05, 'Look'],
@@ -270,6 +274,8 @@ export const PANEL = [
     ['pearlMass', 0, 100, 1, 'Rules'],
     ['pearlRespawn', 1, 60, 1, 'Rules'],
     ['pearlDrift', 0, 10, 0.1, 'Rules'],
+    ['girth', 0, 2, 0.05, 'Rules'],
+    ['girthExp', 0.2, 1.2, 0.01, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over
@@ -299,7 +305,17 @@ export function resetTune() {
 
 // Derived helpers shared by sim, bots and render.
 export const lengthFor = (m) => Math.min(T.lenCap, T.lenBase + T.lenPerMass * m);
-export const radiusFor = (m) => T.radiusBase + T.radiusGrow * Math.min(1, m / 2000);
+// Body radius. With rule girth, bigger dragons are fatter: the radius is
+// multiplied by 1 + girth·x^exp, x = (L − L0) / (100 m − L0), L the length
+// for this mass and L0 a newborn's (12 m). Defaults: ×1 for a newborn,
+// ×2 at 100 m, ×3 at 300 m, ×3.4 at full length. girth 0 = the old radius.
+// The sim passes the room's rule values (World.radius).
+export const radiusFor = (m, girth = T.girth, exp = T.girthExp) => {
+    const r = T.radiusBase + T.radiusGrow * Math.min(1, m / 2000);
+    if (!(girth > 0)) return r;
+    const L0 = lengthFor(T.spawnMass), x = Math.max(0, lengthFor(m) - L0) / (100 - L0);
+    return r * (1 + girth * Math.pow(x, exp));
+};
 
 // Heat helpers shared by sim and HUD.
 export const thrustCap = (temp) => T.thrustBase * (1 + T.tempThrust * temp / 100);

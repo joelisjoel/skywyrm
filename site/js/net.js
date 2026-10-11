@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=24';
-import { World, Dragon, ELEMENTS } from './sim.js?v=24';
-import { MOODS } from './bots.js?v=24';
+import { T, DEFAULTS, tierFor } from './tunables.js?v=25';
+import { World, Dragon, ELEMENTS } from './sim.js?v=25';
+import { MOODS } from './bots.js?v=25';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -245,7 +245,8 @@ export class NetGame {
         const w = new World(m.room.arena, 'client');
         if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
         if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time…
-        if (!('elements' in m.tune)) w.rules.elements = 0;         // …and only fire
+        if (!('elements' in m.tune)) w.rules.elements = 0;         // …and only fire…
+        if (!('girth' in m.tune)) w.rules.girth = 0;               // …and thin dragons (its hitboxes)
         // After a reconnect the server may hand back the same dragon
         // (`resumed`): keep its object, so the game's references and this
         // life's stats carry on. Otherwise (a fresh dragon, or a server that
@@ -320,7 +321,7 @@ export class NetGame {
 
     applyState(d, s) {
         d.mass = s[8]; d.len = s[9];
-        d.r = radiusFor(d.mass);
+        d.r = this.world.radius(d.mass);
         d.tier = tierFor(d.mass);
         if (d.mass > d.peakMass) d.peakMass = d.mass;
         const f = s[10];

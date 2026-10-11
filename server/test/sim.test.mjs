@@ -7,6 +7,7 @@ import { Room } from '../rooms.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
+const lengthOf = (m) => Math.round(Math.min(T.lenCap, T.lenBase + T.lenPerMass * m));
 
 // Two dragons far from walls; `a` flies into a point on `b`'s tail.
 function setup(beadFromEnd) {
@@ -604,6 +605,76 @@ const X = { x: 1, y: 0, z: 0 };
     };
     const picks = [trial(), trial(), trial()];
     check(picks.every((p) => p === 'pearl'), `a big bot picks the pearl over a crystal the same distance away (${picks.join(', ')})`);
+}
+
+// Girth (rule girth): bigger dragons are fatter, and collide that way.
+{
+    const thin = (m) => T.radiusBase + T.radiusGrow * Math.min(1, m / 2000);   // the radius before the rule
+    const massAt = (L) => (L - T.lenBase) / T.lenPerMass;
+    const on = new World('orb', 'local'), off = new World('orb', 'local');
+    off.rules.girth = 0;
+    for (const [L, want] of [[12, 1], [100, 2], [300, 3]]) {
+        const m = massAt(L), k = on.radius(m) / thin(m);
+        check(Math.abs(k - want) < 0.01, `girth: at ${L} m long the radius is ×${k.toFixed(3)} (${on.radius(m).toFixed(2)} m)`);
+    }
+    const sizes = [10, 60, 230, 730, 980, 2000];
+    const d = new Dragon('G', false), e = new Dragon('H', false);
+    let same = sizes.every((m) => off.radius(m) === thin(m));
+    for (const m of sizes) {
+        off.spawn(d, m);
+        same = same && d.r === thin(m) && d.beadSpacing === Math.max(0.2, T.beadSpacing * thin(m));
+        d.mass = m + 40; off.upkeep(d, 1 / 30);
+        same = same && d.r === thin(m + 40);
+    }
+    check(same, 'girth 0: the old radius and bead spacing at every size, at spawn and as it grows');
+    on.spawn(e, massAt(300));
+    check(Math.abs(e.r / thin(e.mass) - 3) < 0.01 && Math.abs(e.beadSpacing - T.beadSpacing * e.r) < 1e-9, `girth 1: a 300 m dragon spawns ${e.r.toFixed(2)} m thick, beads ${e.beadSpacing.toFixed(2)} m apart`);
+
+    // A dragon of `mass` whose head is at `head`, its tail streaming straight out along +z.
+    const lay = (w, dr, mass, head) => {
+        w.spawn(dr, mass);
+        dr.protect = 0;
+        dr.pos.copy(head); dr.quat.set(0, 0, 0, 1); dr.updateFrame();
+        dr.pathHead = -1; dr.pathCount = 0;
+        for (let k = Math.ceil((dr.len + 2) / 0.5); k >= 0; k--) dr.pushPath(head.x, head.y, head.z + k * 0.5);
+        dr.rebuildBeads();
+        return dr;
+    };
+    // Put a's head `gap` m beside bead `bead` of b (negative = from the end); what happens?
+    const meet = (girth, aMass, bMass, bead, gap) => {
+        const w = new World('orb', 'local');
+        w.rules.girth = girth;
+        const a = new Dragon('A', false), b = new Dragon('B', false);
+        lay(w, b, bMass, new Vector3(-5.4, 0.5, 0));
+        lay(w, a, aMass, new Vector3(0, 100, 100));
+        const i = (bead < 0 ? b.nBeads + bead : bead) * 3;
+        a.pos.set(b.beads[i] + gap, b.beads[i + 1], b.beads[i + 2]);
+        w.buildHash();
+        w.collide();
+        return w.events.some((x) => x.type === 'bite') ? 'bite' : a.alive ? 'miss' : 'death';
+    };
+    // How far from the tip bead a head still bites, by 2 cm steps.
+    const reach = (girth, aMass, bMass) => { let g = 0; while (meet(girth, aMass, bMass, -1, g + 0.02) === 'bite') g += 0.02; return g; };
+    for (const [aMass, bMass] of [[10, 730], [230, 230], [730, 20]]) {
+        const r0 = reach(0, aMass, bMass), r1 = reach(1, aMass, bMass);
+        check(r0 > 0.5 && r1 >= r0, `girth keeps tail-bite reach (L ${lengthOf(aMass)} m biting L ${lengthOf(bMass)} m: ${r0.toFixed(2)} m → ${r1.toFixed(2)} m)`);
+    }
+    // A bite takes what it did without the rule, though a fat tip is longer.
+    const bitten = (girth) => {
+        const w = new World('orb', 'local');
+        w.rules.girth = girth;
+        const a = new Dragon('A', false), b = new Dragon('B', false);
+        lay(w, b, 730, new Vector3(-5.4, 0.5, 0)); lay(w, a, 10, new Vector3(0, 100, 100));
+        const i = (b.nBeads - 1) * 3;
+        a.pos.set(b.beads[i] + 0.3, b.beads[i + 1], b.beads[i + 2]);
+        w.buildHash(); w.collide();
+        return 730 - b.mass;
+    };
+    check(bitten(0) > 1 && bitten(1) === bitten(0), `girth: a bite still costs the victim ${bitten(1).toFixed(1)} mass`);
+    // Fat bodies reach past the 4 m hash cells: 5.5 m from a 300 m body
+    // (head + tail reach 6 m) is a hit with the rule on, clear with it off.
+    check(meet(1, 730, 730, 60, 5.4) === 'death' && meet(0, 730, 730, 60, 5.4) === 'miss',
+        'girth: a head 5.4 m from a fat 300 m body hits it (the hash cells grow); thin, it passes');
 }
 
 console.log(`\n${ok} sim checks passed`);
