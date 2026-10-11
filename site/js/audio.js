@@ -167,6 +167,16 @@ export class Audio {
         else if (kind === 'acid') { for (let i = 0; i < 4; i++) this.tone(350 + i * 120, 0.09, 'sine', 0.06, i * 0.05, 800 + i * 150); }
         this.sting(kind);
     }
+    // Flaming pearl: a bright bell run up the pentatonic and a shimmer.
+    pearl() {
+        [0, 3, 5, 7, 10, 12].forEach((n, i) => {
+            const f = 587.33 * 2 ** (n / 12);
+            this.tone(f, 0.5, 'sine', 0.07, i * 0.06);
+            this.tone(f * 2, 0.35, 'triangle', 0.025, i * 0.06 + 0.01);
+        });
+        this.tone(2349.3, 1.1, 'sine', 0.04, 0.4);
+        this.whoosh(0.7, 1500, 6000, 0.12);
+    }
     // Chomp: a short crunch and a rising blip.
     bite() { this.whoosh(0.12, 2500, 400, 0.35); this.tone(392, 0.12, 'square', 0.06, 0, 784); this.tone(1174.66, 0.15, 'sine', 0.06, 0.06); }
     bitten() { this.whoosh(0.2, 800, 150, 0.3); this.tone(293.66, 0.25, 'sawtooth', 0.05, 0, 146.83); }

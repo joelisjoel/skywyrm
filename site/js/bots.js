@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=22';
-import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=22';
+import { T } from './tunables.js?v=23';
+import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=23';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -297,7 +297,8 @@ class Brain {
         return this.preyDir(d, o);
     }
 
-    // Power-ups (rule botTreasure). The bigger the bot, the more goal-
+    // Power-ups and pearls (rule botTreasure). Pearls count 2.5× and are
+    // noticed from 30% farther. The bigger the bot, the more goal-
     // directed: a hatchling only grabs a crystal within botTreasureNear and
     // is easily distracted on the way; a 200 m dragon notices one from
     // botTreasureFar, holds the goal much longer and flies straight at
@@ -309,18 +310,22 @@ class Brain {
         if (!world.rule('botTreasure')) { if (this.goal && this.goal.kind === 'treasure') this.goal = null; return null; }
         const drive = Math.min(1, Math.max(0, (d.len - 12) / 188));   // 0 hatchling … 1 from 200 m
         let g = this.goal && this.goal.kind === 'treasure' ? this.goal : null;
-        if (g && (!world.powerups.includes(g.t) || world.time > this.goalUntil || Math.random() < 0.05 * (1 - drive))) g = this.goal = null;
+        if (g && (!(world.powerups.includes(g.t) || world.pearls.includes(g.t)) || world.time > this.goalUntil || Math.random() < 0.05 * (1 - drive))) g = this.goal = null;
         if (!g && Math.random() < 0.2 + 0.6 * drive) {
             const near = world.rule('botTreasureNear'), reach = (near + (world.rule('botTreasureFar') - near) * drive) * (0.5 + A);
             const full = world.rule('fireCharge') ? Math.max(1, world.rule('fireChargeMax')) : 1;   // breath charges it can hold
             let best = null, bestScore = 0;
-            for (const t of world.powerups) {
-                if (ELEMENTS.includes(t.type) && d.fire >= full) continue;  // fire, ice, lightning, acid: charges already full
-                const dist = t.pos.distanceTo(d.pos);
-                if (dist > reach || (A < 0.75 && humanNearer(world, d, t.pos, dist * (1.75 - A)))) continue;
-                const sc = (_v.subVectors(t.pos, d.pos).dot(d.fwd) > -0.3 * dist ? 1 : 0.5) / (dist + 10);
-                if (sc > bestScore) { bestScore = sc; best = t; }
-            }
+            const look = (list, worth, far) => {
+                for (const t of list) {
+                    if (ELEMENTS.includes(t.type) && d.fire >= full) continue;  // fire, ice, lightning, acid: charges already full
+                    const dist = t.pos.distanceTo(d.pos);
+                    if (dist > reach * far || (A < 0.75 && humanNearer(world, d, t.pos, dist * (1.75 - A)))) continue;
+                    const sc = worth * (_v.subVectors(t.pos, d.pos).dot(d.fwd) > -0.3 * dist ? 1 : 0.5) / (dist + 10);
+                    if (sc > bestScore) { bestScore = sc; best = t; }
+                }
+            };
+            look(world.powerups, 1, 1);
+            look(world.pearls, 2.5, 1.3);
             if (best) { g = this.goal = { kind: 'treasure', t: best }; this.goalUntil = world.time + 1.5 + 8 * drive; }
         }
         if (!g) return null;

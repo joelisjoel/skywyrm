@@ -194,6 +194,11 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
 - **Ambient food:** about 2,000 orbs worth 1 each. 60% come in clusters, and they
   are denser near the centre.
 - **Loot** from deaths, boosting and burned tails lasts 45 s.
+- **Flaming pearls** (rule `pearls`): 3 glowing pearls drift slowly (about
+  2.5 m/s) through the sky on long, curving paths. Catching one is worth
+  **+30 mass**, with a bell chime, a "FLAMING PEARL" toast and a burst of
+  sparks. A new one appears somewhere else about 8 s later. They show on the
+  radar, pinned to its rim when far away.
 
 ### 5.8 Power-ups ✅
 
@@ -276,10 +281,11 @@ action and clear of the walls, the cloud sea and the sun.
 
 - **Aggression** rises the longer a room has been busy. It is capped at half
   (beginner rules) and reaches that cap after about 5 minutes.
-- **Power-ups:** bots go for crystals, and the bigger they are the more
-  goal-directed: a hatchling only grabs one within about 18 m and wanders
-  off easily; a 200 m dragon spots one up to 150 m away and flies straight
-  for it. In beginner rooms a bot leaves a crystal to a player who is
+- **Power-ups and pearls:** bots go for crystals, and the bigger they are
+  the more goal-directed: a hatchling only grabs one within about 18 m and
+  wanders off easily; a 200 m dragon spots one up to 150 m away and flies
+  straight for it. They want pearls most (2.5× as much, from 30% farther).
+  In beginner rooms a bot leaves a crystal or pearl to a player who is
   nearly as close.
 
 ### 5.10 Leaderboard and big moments 🟡
@@ -445,7 +451,7 @@ device.
   of its element). Shield, magnet, chilled and stunned gauges appear only
   while active; on phones they stack above the others, clear of the radar.
 - **Radar** at the bottom centre, with a 60 m range. It shows above and below,
-  power-ups, acid clouds, the centre and the leader.
+  power-ups, acid clouds, pearls, the centre and the leader.
 - **Top:** leaderboard, kill feed, and toasts.
 - **Over the world:**
   - names over dragons within 50 m
@@ -454,7 +460,7 @@ device.
 
 ### 10.4 Sound
 - **Effects:** all synthesised live, with no sound files. Wind, a rising chime
-  for eating, whooshes, power-up sounds, and a sound for each breath (fire,
+  for eating, whooshes, power-up sounds, a bell run for a pearl, and a sound for each breath (fire,
   frost, lightning, acid) and for being frozen, zapped or caught in acid. The
   new elements have no voice lines.
 - **Music:** generated live in D minor at 118 BPM. It has three intensity levels

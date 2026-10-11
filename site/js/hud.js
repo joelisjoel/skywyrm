@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=22';
-import { MOOD_ICON } from './bots.js?v=22';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=23';
+import { MOOD_ICON } from './bots.js?v=23';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -207,7 +207,7 @@ export class Hud {
         c.beginPath(); c.ellipse(cx, cy, rx / 2, ry / 2, 0, 0, Math.PI * 2); c.stroke();
         c.beginPath(); c.moveTo(cx - rx, cy); c.lineTo(cx + rx, cy); c.moveTo(cx, cy - ry); c.lineTo(cx, cy + ry); c.stroke();
         _q.copy(p.quat).invert();
-        const draw = (pos, color, crown, ring, pin) => {
+        const draw = (pos, color, crown, ring, pin, pearl) => {
             const l = _v.copy(pos).sub(p.pos).applyQuaternion(_q);
             let k = 1, dist = l.length();
             if (dist > range) { if (!crown && !ring && !pin) return; k = range / dist * 0.98; }
@@ -215,7 +215,11 @@ export class Hud {
             const py = pz - l.y / range * ry * 1.3 * k;
             c.strokeStyle = color; c.fillStyle = color; c.lineWidth = 1.5;
             c.beginPath(); c.moveTo(px, pz); c.lineTo(px, py); c.stroke();
-            if (ring) {
+            if (pearl) {
+                c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
+                c.strokeStyle = 'rgba(255,170,60,0.9)'; c.lineWidth = 1.5;
+                c.beginPath(); c.arc(px, py, 6, 0, Math.PI * 2); c.stroke();
+            } else if (ring) {
                 c.lineWidth = 2; c.beginPath(); c.arc(px, py, 5, 0, Math.PI * 2); c.stroke();
             } else if (crown) {
                 c.font = '14px system-ui'; c.textAlign = 'center'; c.fillText('👑', px, py - 2);
@@ -233,6 +237,8 @@ export class Hud {
         }
         // Acid clouds: green rings, so you can fly round them.
         for (const c of world.clouds || []) draw(_v2.set(c.x, c.y, c.z), 'rgba(124,255,79,0.85)', false, true);
+        // Flaming pearls: a white dot in a gold ring, always shown (on the rim when far).
+        for (const pl of world.pearls) draw(pl.pos, '#FFF6E0', false, false, true, true);
         // The rich middle: a ring that sits on the rim when it's out of range.
         draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
         if (view.top && view.top !== p) draw(view.top.pos, '#FFD93D', true);
