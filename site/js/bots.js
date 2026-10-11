@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=20';
-import { Dragon, hazardDist } from './sim.js?v=20';
+import { T } from './tunables.js?v=21';
+import { Dragon, hazardDist } from './sim.js?v=21';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -197,6 +197,21 @@ class Brain {
         // Pre-avoid the boundary.
         _p.copy(d.pos).addScaledVector(d.fwd, 14);
         if (hazardDist(a, _p)[0] < 6) want.lerp(_v.copy(a.center).sub(d.pos).normalize(), 0.6).normalize();
+        // Gravity worlds: never dive deeper than we can pull out of. A fast
+        // dragon needs its turn radius × (1 − cos dive) to level out, plus a
+        // moment to react; below that, climb (braking for a tighter loop).
+        const dive = -d.fwd.y;
+        if (a.gravity && dive > 0.1) {
+            const R = d.speed / (T.turnCruise * DEG * (1 - T.sizeTurnPenalty * Math.min(1, d.mass / 2000)));
+            const need = R * (1 - Math.sqrt(1 - Math.min(1, dive * dive))) + d.speed * 0.3 + d.r + 8;
+            const h = d.pos.y - a.floor;
+            if (h < need) {
+                _v.set(d.fwd.x, 0, d.fwd.z);
+                if (_v.lengthSq() < 0.04) _v.set(d.up.x, 0, d.up.z);   // straight down: level out the way the back faces
+                want.copy(_v.normalize()).setY(0.5).normalize();
+                if (h < need * 0.6) { this.brake = true; this.boost = false; }
+            }
+        }
 
         // 2) Avoid: the straight path, the turn toward `want`, and `want`
         // itself must all be clear; otherwise take the feeler with the most
@@ -224,7 +239,7 @@ class Brain {
         }
         this.desired.copy(best);
         // Tight spot: brake for the smaller turn radius.
-        this.brake = cFwd < 7 && best.dot(d.fwd) < 0.9;
+        this.brake = this.brake || (cFwd < 7 && best.dot(d.fwd) < 0.9);
         if (this.brake || cFwd < look) this.boost = false;
     }
 

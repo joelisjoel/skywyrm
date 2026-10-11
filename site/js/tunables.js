@@ -122,7 +122,9 @@ export const DEFAULTS = {
     perks: 1,               // profile perks apply (0 = everyone plays stock)
     lengthSpeed: 0.5,       // longer = faster: extra speed at 100 m long (0 = off); see sizeSpeed()
     lengthSpeedExp: 0.62,   // curve: 0.62 gives +80% at 200 m when it's +50% at 100 m
-    lengthSpeedMax: 1,      // cap on the length bonus (+100% = double speed)
+    lengthSpeedLate: 1.35,  // extra bonus at full length (lenCap), bending the curve up from 200 m
+    lengthSpeedMax: 3,      // cap on the length bonus alone (the total is capped by speedCap)
+    speedCap: 4,            // cap on the whole cruise/boost multiplier, heat + length (0 = no cap)
     fireCharge: 1,          // fire crystals stack and one breath spends them all, bigger per charge (0 = one charge, classic)
     fireChargeMax: 5,       // most charges a dragon can store
     elements: 1,            // ice, lightning and acid crystals join fire; the last one eaten sets your breath (0 = only fire)
@@ -138,6 +140,8 @@ export const DEFAULTS = {
     camRollFollow: 0.35,
     fov: 72,
     fovBoost: 84,
+    fovSpeed: 4,            // deg wider per ×1 of speed multiplier above ×2 (+8° at ×4)
+    camLagMax: 8,           // m the chase camera may trail its spot at speed (×2.4 boost: 7.5 m; ×4 would be 12.5 m)
     wideCorner: 122,        // deg from forward shown at the screen corners (wide view; was 150, 30% less warp)
     wideExpo: 3,            // how late the edge warp kicks in (higher = flatter centre)
 
@@ -202,6 +206,8 @@ export const PANEL = [
     ['camRollFollow', 0, 1, 0.05, 'Camera'],
     ['fov', 50, 110, 1, 'Camera'],
     ['fovBoost', 50, 120, 1, 'Camera'],
+    ['fovSpeed', 0, 10, 0.5, 'Camera'],
+    ['camLagMax', 2, 30, 0.5, 'Camera'],
     ['wideCorner', 60, 178, 1, 'Camera'],
     ['wideExpo', 1, 6, 0.1, 'Camera'],
     ['swimAmp', 0, 1.5, 0.05, 'Look'],
@@ -240,7 +246,9 @@ export const PANEL = [
     ['perks', 0, 1, 1, 'Rules'],
     ['lengthSpeed', 0, 1.5, 0.05, 'Rules'],
     ['lengthSpeedExp', 0.2, 1.5, 0.02, 'Rules'],
+    ['lengthSpeedLate', 0, 3, 0.05, 'Rules'],
     ['lengthSpeedMax', 0, 3, 0.1, 'Rules'],
+    ['speedCap', 1, 6, 0.1, 'Rules'],
     ['fireCharge', 0, 1, 1, 'Rules'],
     ['fireChargeMax', 1, 9, 1, 'Rules'],
     ['elements', 0, 1, 1, 'Rules'],
@@ -280,12 +288,17 @@ export const thrustCap = (temp) => T.thrustBase * (1 + T.tempThrust * temp / 100
 export const speedBonus = (temp) => T.tempSpeed * temp / 100;
 // Reward for growing: extra cruise/boost speed by length in metres (what
 // the HUD shows). Zero for a newborn dragon, `k` at 100 m, rising on a
-// curve (`exp`) and capped at `max`. Defaults: +50% at 100 m, +80% at
-// 200 m, +100% from about 280 m. Callers pass the room's rule values.
-export const sizeSpeed = (m, k = T.lengthSpeed, exp = T.lengthSpeedExp, max = T.lengthSpeedMax) => {
+// curve (`exp`); past 200 m it bends upward (`late` more by full length,
+// lenCap) so the longest dragons keep getting faster. Capped at `max`.
+// Defaults: +50% at 100 m, +80% at 200 m, about +150% at 300 m and +260%
+// at 400 m (×4 with full heat, the speedCap). Callers pass the room's rule values.
+const LATE_FROM = 200;          // m: the late bend starts here (keeps +80% at 200 m)
+export const sizeSpeed = (m, k = T.lengthSpeed, exp = T.lengthSpeedExp, max = T.lengthSpeedMax, late = T.lengthSpeedLate) => {
     if (!(k > 0)) return 0;
-    const L0 = lengthFor(T.spawnMass), x = Math.max(0, lengthFor(m) - L0) / (100 - L0);
-    return Math.min(max, k * Math.pow(x, exp));
+    const L = lengthFor(m), L0 = lengthFor(T.spawnMass), x = Math.max(0, L - L0) / (100 - L0);
+    const span = T.lenCap - LATE_FROM;
+    const bend = late > 0 && span > 0 && L > LATE_FROM ? late * Math.pow(Math.min(1, (L - LATE_FROM) / span), 1.5) : 0;
+    return Math.min(max, k * Math.pow(x, exp) + bend);
 };
 
 export const TIERS = [

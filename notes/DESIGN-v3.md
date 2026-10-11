@@ -131,11 +131,15 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Auto-level runs at 120°/s with gravity. The zero-G assist runs at 60°/s and
     fades while you pitch.
 - **Speed:**
-  - `speedX = 1 + 0.4·temp/100 + sizeSpeed(m)` (`sim.js:329-332`).
-  - `sizeSpeed(m) = min(1, 0.5·((L−12)/88)^0.62)`, where L is the *target*
-    length (`tunables.js:243-247`).
+  - `speedX = min(speedCap, 1 + 0.4·temp/100 + sizeSpeed(m))`, with
+    `speedCap` 4 (`sim.js` `speedMult`).
+  - `sizeSpeed(m) = min(3, 0.5·((L−12)/88)^0.62 + 1.35·((L−200)/200)^1.5)`,
+    where L is the *target* length and the second term only counts above
+    200 m (`tunables.js` `sizeSpeed`).
   - `speedX` multiplies cruise and boost, not brake.
-  - The highest possible value is 2.4×.
+  - Before heat: ×1.5 at 100 m, ×1.8 at 200 m, ×2.5 at 300 m, ×3.6 at 400 m.
+    A full-length dragon at full heat reaches the ×4 cap: 64 m/s cruising,
+    104 m/s boosting.
 - **Heat** (`sim.js:922-934`):
   - Target = 10 + 60·exp(−(dist/0.35R)²) + 35·min(1, nearby/5), capped at 100.
   - "nearby" counts other dragons within 35 m.
@@ -249,8 +253,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `lives` | 3 | `perks` | 1 |
 | `respawnDelay` | 3 | `lengthSpeed` | 0.5 |
 | `botMoods` | 1 | `lengthSpeedExp` | 0.62 |
-| `fireCharge` | 1 | `lengthSpeedMax` | 1 |
+| `fireCharge` | 1 | `lengthSpeedMax` | 3 |
 | `fireChargeMax` | 5 | `elements` | 1 |
+| `speedCap` | 4 | `lengthSpeedLate` | 1.35 |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -270,6 +275,10 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   (0.6–1.0).
 - **Avoidance** probes the nose, the midpoint, the goal and 16 feelers on two
   cones (30° and 65°). The look distance is (7 + 0.55·speed)·(0.8 + 0.3·skill).
+- **Pull-out guard** (gravity worlds): a bot diving lower than it can level
+  out from, turn radius × (1 − cos dive) + 0.3 s of travel + r + 8 m, climbs
+  instead, and brakes below 60% of that. Without it, ×4 bots fly into the
+  cloud sea.
 - **Moods** (`bots.js:17-38`):
   - Grazer (hunt 0), sunbather (0.8), hunter (1.6), kingslayer (1).
   - Mood weights shift toward hunters and kingslayers as aggression A rises:
@@ -298,7 +307,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 - **The client is trusted for:** its own pose.
   - It flies its dragon locally and sends a pose 30 times a second.
   - The server's `World.applyNet` (`sim.js:532-561`) keeps a movement budget:
-    - top = (boost or cruise speed)·speedX + dive + 1
+    - top = (boost or cruise speed)·speedX + dive + 1, up to 111 m/s at ×4
     - refills at top·dt·1.15
     - capped at half a second's worth
   - Anything beyond the budget is clamped, and `me.c` tells the client to
@@ -312,6 +321,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
       within the assist's look-ahead, where the browser's wall assist may
       steer.
   - Bank is clamped to ±1.2. A quaternion is accepted only if its length² > 0.5.
+    The reported speed is clamped to 150 m/s, then to top.
 - **Other dragons** are drawn on the server's clock (`net.js` `ServerClock`,
   `poseAt`, `update`):
   - Each snapshot is placed at its `tm`, put back on the 1/30 s tick.
@@ -585,10 +595,10 @@ The improvement loop's numbers, kept without identifying anyone
 | Chase distance | 7 m, +0.02 m per metre of length, up to 16 m |
 | Height | 2.2 m |
 | Look-ahead | 10 m |
-| Position τ | 0.12 s |
+| Position τ | 0.12 s, stiffening at speed so the lag stays under 8 m (`camLagMax`) |
 | Rotation τ | 0.08 s |
 | Roll follow | 35% |
-| FOV | 72°, rising to 84° on boost |
+| FOV | 72°, rising to 84° on boost, plus 4° per × of speed above ×2 (+8° at ×4) |
 
   The death cam orbits the crash point, looking at the killer, and the attract
   cam orbits the arena centre.
@@ -887,7 +897,7 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (53 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients) |
+| `server/test/sim.test.mjs` (64 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients) |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (36 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
@@ -967,8 +977,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **Keen Pull's "40% farther" only scales the 2 m base,** not the whole pickup
   radius. Lodestone overrides it.
 - **Mutual head-on:** only one of the two dragons gets the kill.
-- **Brake ignores `speedX`,** so at high multipliers braking drops you from about
-  38 m/s to 10 m/s.
+- **Brake ignores `speedX`,** so at high multipliers braking drops you from up
+  to 64 m/s (×4) to 10 m/s.
 
 ### 10.2 UX
 - **Fonts:**
@@ -1022,6 +1032,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
 | Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedMax 1 · fireCharge 1 · fireChargeMax 5 · elements 1 |
-| Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · wideCorner 122 · wideExpo 3 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 |
+| Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 |

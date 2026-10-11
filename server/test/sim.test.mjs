@@ -1,6 +1,7 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
-import { World, Dragon, T, managePopulation, aggression, cleanPerks } from '../../site/js/shared.js';
+import { Vector3 } from 'three';
+import { World, Dragon, T, managePopulation, aggression, cleanPerks, quatFromForwardUp } from '../../site/js/shared.js';
 import { jadeFor } from '../../site/js/profile.js';
 import { Room } from '../rooms.js';
 
@@ -218,6 +219,87 @@ const X = { x: 1, y: 0, z: 0 };
         b1.fire = 4;
         check(holds && b1.brain.fireReady(w, b1), 'bold bots save charges for a bigger breath (a big fierce hunter waits for 4); timid ones breathe at once');
     }
+}
+// Speed caps out at ×4 (rule speedCap): past 200 m the length curve bends
+// upward, so a full-length (400 m) dragon at full heat reaches the cap.
+{
+    const massFor = (m) => (m - T.lenBase) / T.lenPerMass;
+    const w = new World('orb', 'local');
+    const mult = (metres, temp, rules = {}) => {
+        w.rules = { ...rules };
+        const d = new Dragon('X', false); w.spawn(d, massFor(metres)); d.temp = temp;
+        return w.speedMult(d);
+    };
+    const cold = [200, 250, 300, 350, 400].map((m) => mult(m, 0));
+    check(cold.every((v, i) => i === 0 || v > cold[i - 1] + 0.2), `speed keeps growing past 200 m: ${cold.map((v) => '×' + v.toFixed(2)).join(' → ')} (200 → 400 m)`);
+    check(Math.abs(cold[2] - 2.5) < 0.1 && Math.abs(cold[4] - 3.6) < 0.1, 'about ×2.5 at 300 m and ×3.6 at 400 m, before heat');
+    check(mult(400, 100) === 4 && mult(400, 100, { speedCap: 0 }) > 4, 'full heat at full length tops out at exactly ×4 (speedCap 0 lifts the cap)');
+    check(mult(1500, 100) === 4, 'mass past the length cap adds no more speed');
+    check(mult(300, 100, { speedCap: 2.5 }) === 2.5, 'a room can set a lower cap');
+    check(Math.abs(mult(400, 0, { lengthSpeedLate: 0, lengthSpeedMax: 1 }) - 2) < 1e-9, 'lengthSpeedLate 0 + lengthSpeedMax 1 is the old ×2 length curve');
+    // Boost stays proportional: ×4 of boost (zero-G, so no dive boost).
+    const d = new Dragon('F', false); w.rules = {}; w.spawn(d, 980);
+    for (let i = 0; i < 160; i++) { d.temp = 100; d.thrust = 10; d.input.boost = true; w.move(d, 1 / 40); }
+    check(Math.abs(d.speed - T.speedBoost * 4) < 0.5, `a ×4 dragon boosts at ${d.speed.toFixed(0)} m/s (×4 of ${T.speedBoost})`);
+}
+// The server lets a ×4 dragon fly its speed (poses at 30 Hz, sometimes
+// bunched two to a tick), but still clamps one going faster.
+{
+    const run = (speed) => {
+        const sv = new World('orb', 'server');
+        const d = new Dragon('H', false); d.human = true; d.remote = true;
+        sv.spawn(d, 980);
+        d.pos.set(-150, 0, 0); d.moveBudget = 0;
+        let x = -150, corrections = 0;
+        for (let i = 0; i < 90; i++) {
+            d.temp = 100; d.thrust = 10; d.input.boost = true;
+            x += speed / 30;
+            if (i % 6 !== 3) d.net = { x, y: 0, z: 0, qx: 0, qy: -0.7071, qz: 0, qw: 0.7071, speed, bank: 0, fresh: true };
+            sv.applyNet(d, 1 / 30);
+            if (d.corrected) { corrections++; d.corrected = false; }
+        }
+        return { corrections, speedX: d.speedX };
+    };
+    const legal = run(T.speedBoost * 4), cheat = run(T.speedBoost * 4 * 1.3);
+    check(legal.corrections === 0 && legal.speedX === 4, `a ×4 boost (${T.speedBoost * 4} m/s) is never corrected`);
+    check(cheat.corrections > 10, `30% faster than ×4 is clamped (${cheat.corrections} corrections in 3 s)`);
+}
+// The wall assist still saves a ×4 dragon boosting straight at the storm
+// wall or diving at the cloud sea.
+{
+    let saved = 0;
+    const dirs = [[1, 0, 0], [0, 0, -1], [0.7, -0.5, 0.5], [0, -1, 0.1], [-0.6, -0.8, 0], [0.5, 0.3, -0.8]];
+    for (const [x, y, z] of dirs) {
+        const w = new World('sky', 'local');
+        const p = new Dragon('P', false); p.wallAssist = true; w.player = p;
+        w.spawn(p, 980); p.protect = 0;
+        p.pos.set(x * 150, 90, z * 150);
+        const F = new Vector3(x, y, z).normalize();
+        quatFromForwardUp(F, new Vector3(0, 1, 0), p.quat); p.updateFrame(); p.vdir.copy(p.fwd); p.speed = 100;
+        p.pathHead = -1; p.pathCount = 0; p.lastPt.copy(p.pos);
+        for (let i = 0; i < 8 * 60 && p.alive; i++) {
+            p.temp = 100; p.thrust = 10; Object.assign(p.input, { sx: 0, sy: 0, boost: true, brake: false });
+            w.step(1 / 60);
+        }
+        if (p.alive) saved++;
+    }
+    check(saved === dirs.length, `the wall assist saves a ×4 dragon heading for the wall or the cloud sea (${saved}/${dirs.length})`);
+}
+// Fast bots don't fly into the cloud sea: they never dive deeper than they
+// can pull out of at their speed.
+{
+    const w = new World('sky', 'server');
+    w.botTarget = () => 25; w.ageStart = 0; w.rules.botAggrMax = 0.5;
+    w.spawnAmbient(T.orbTarget);
+    managePopulation(w, true);
+    let sea = 0, deaths = 0;
+    for (let i = 0; i < 60 * 30; i++) {
+        for (const d of w.dragons) if (d.alive) { d.temp = 100; if (d.mass < 900) d.mass = 900; }
+        w.step(1 / 30);
+        for (const e of w.events) if (e.type === 'death') { deaths++; if (e.cause === 'the cloud sea') sea++; }
+        managePopulation(w);
+    }
+    check(sea <= 1, `60 s of 25 hot ×4 bots in Skyhold: ${sea} of ${deaths} deaths in the cloud sea`);
 }
 
 // Jade: the podium bonus needs a real life, so start → leave → again can't farm it.

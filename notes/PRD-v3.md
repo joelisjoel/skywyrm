@@ -146,18 +146,22 @@ while the kid-safety rules stand. Reopening them is a decision for Joel (§14).
 - **The Orb (zero-G):** an optional assist slowly rolls "up" toward the centre.
 
 ### 5.3 Speed bonus from heat and length ✅
-Speed multiplier = 1 + **heat bonus** + **length bonus**.
+Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
 
 - **Heat bonus:** up to +0.4×, at 100°.
 - **Length bonus:**
   - +0.5× at 100 m
   - +0.8× at 200 m
-  - capped at +1.0×, at about 280 m
+  - then it climbs faster: +1.5× at 300 m and +2.6× at 400 m (full length)
+- **Cap:** a full-length dragon at full heat reaches ×4: 64 m/s cruising and
+  104 m/s boosting. It's a per-room rule (`speedCap`).
 - **Heat** comes from the sun at the centre of each world and from crowds of
   dragons nearby. It rises quickly (τ 3 s) and fades slowly (τ 7 s). Heat also
   enlarges the thrust tank.
-- The HUD shows the total, for example `DRAKE · 1.5× SPEED`.
+- The HUD shows the capped total, for example `DRAKE · 1.5× SPEED`.
 - The bonus applies to cruise and boost, not brake.
+- Above ×2 the camera widens a little (+8° at ×4) and follows more tightly,
+  so a fast dragon doesn't pull away from it.
 
 ### 5.4 Boost and thrust ✅
 - **Mass cost:** boosting burns 4 mass/s, and half of that drops behind you as

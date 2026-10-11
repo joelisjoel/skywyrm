@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=20';
+import { T, TIERS } from './tunables.js?v=21';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
