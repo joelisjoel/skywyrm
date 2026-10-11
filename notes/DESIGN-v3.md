@@ -482,7 +482,9 @@ The improvement loop's numbers, kept without identifying anyone
 - **Input** (`input.js`):
   - Mouse: offset from the screen centre inside a circle 0.30 × the shorter
     screen side, with deadzone 0.06 and expo 1.5.
-  - The neutral point re-zeroes at spawn.
+  - The neutral point re-zeroes at spawn (to a finger held through a
+    respawn, too) and glides home as the mouse or finger moves. Lifting the
+    finger clears it, so a lifted finger always flies straight.
   - Arrow keys steer at 0.7.
   - Pointer-lock virtual stick, as an option.
   - Touch: the first finger is the cursor, a second finger boosts, plus on-screen
