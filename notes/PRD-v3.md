@@ -413,7 +413,7 @@ device.
 
 | Setting | Default |
 |---|---|
-| Wide view (fisheye edges, 122° corners) | on |
+| Wide view (fisheye edges, 122° corners) | on (off on phones and tablets) |
 | Rear-view mirror | on |
 | Invert pitch (arrow keys only) | off |
 | Lock mouse | off |
@@ -425,7 +425,8 @@ device.
 | Graphics | Auto |
 
 - **Graphics** can be Auto, High or Low. Auto drops to Low if the game runs below
-  40 fps.
+  40 fps (or well below a slower screen's own rate, such as 30 Hz in Low Power
+  Mode), and remembers that until you change the setting.
 - The beginner switch was removed. Beginner is always on.
 
 ---
@@ -556,8 +557,12 @@ device.
     HUD, buttons and menus inside the safe area.
 - **Graphics:**
   - High: up to 2× pixel density, bloom, and full-rate wide view.
-  - Low: 1× pixel density, no bloom, and wide view updated every other frame.
-  - Auto starts on High and drops to Low once if the frame rate falls below 40 fps.
+  - Low: 1× pixel density, no bloom, no wide view, and the mirror updated every
+    other frame.
+  - Auto starts on High and drops to Low once if the frame rate falls below 40 fps
+    (or ¾ of a slower screen's rate), and remembers the drop.
+  - Wide view starts off on touch devices: it draws the scene six more times a
+    frame.
 - ⬜ There are no measured load-time or frame-rate targets yet, and no device
   test matrix.
 
@@ -601,9 +606,7 @@ These are listed roughly by how much a player would notice.
 6. **The shield is narrower than it looks.** It doesn't stop head-ons, walls or
    any breath (fire, ice, lightning or acid).
 7. Saved profile stats (best length, best kills, games played) are never shown.
-8. Auto graphics re-tests on every visit instead of remembering that it dropped
-   to Low.
-9. **Room-creation abuse:** one network could fill all 30 server slots in about
+8. **Room-creation abuse:** one network could fill all 30 server slots in about
    10 hours. A school or home network is limited to 16 players (it was 6;
    `MAX_CONN_PER_IP` on the server can raise it).
 

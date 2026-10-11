@@ -7,6 +7,7 @@ import { T, TIERS } from './tunables.js?v=23';
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
 const MAX_HEADS = 80;
+const HEAD_CAP = 128;            // heads drawn (each part is one instanced mesh)
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THREE.Color(0xB8DCFF);
 const LODE = 0x3D8BFF;           // lodestone blue
@@ -18,6 +19,7 @@ const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
 const _T2 = new THREE.Vector3(), _U2 = new THREE.Vector3(), _R2 = new THREE.Vector3();
 const _a = new THREE.Vector3(), _bw = new THREE.Vector3(), _cn = new THREE.Vector3();
+const _glow = new THREE.Color(), _frustum = new THREE.Frustum(), _sphere = new THREE.Sphere();
 
 export class Renderer {
     constructor(canvas) {
@@ -99,7 +101,7 @@ export class Renderer {
         this.shadows.frustumCulled = false;
         this.scene.add(this.shadows);
 
-        this.heads = new Map();           // dragon id → head group
+        this.heads = new Map();           // dragon id → head rig (pose and animation)
         // Chinese-dragon head parts, merged per material (built once, shared).
         this.headParts = dragonHeadParts();
         this.eyeMat = new THREE.MeshStandardMaterial({ color: 0xFFB43A, emissive: 0xFF8A10, emissiveIntensity: 1.6, roughness: 0.2 });
@@ -113,6 +115,43 @@ export class Renderer {
         this.pearlGeo = new THREE.SphereGeometry(1, 20, 14);
         this.gapeGeo = new THREE.ConeGeometry(1, 1, 12).translate(0, -0.5, 0).rotateX(Math.PI / 2);   // apex at 0, base at z = -1
         this.whiskerMat = new THREE.MeshStandardMaterial({ color: 0xF3E3BF, roughness: 0.4, metalness: 0.2 });
+        // All heads are drawn together, one instanced mesh per part, so a
+        // sky full of dragons costs the same ~20 draws as one. Each head's
+        // rig (headFor) is a small tree of sockets: the head, the hinged jaw,
+        // the swaying whiskers, the mouth wedge and the pearl; a part is
+        // drawn at its socket's world matrix. Skin and second colour are per
+        // dragon (instance colour), and so is the skin's glow (aGlow).
+        const P = this.headParts, skinMat = headSkinMaterial({ roughness: 0.35, metalness: 0.4 });
+        const accentMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 });
+        const part = (geo, mat, socket, show = null, tint = 0) => {
+            const m = new THREE.InstancedMesh(geo, mat, HEAD_CAP);
+            m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            if (tint) m.setColorAt(0, _white);
+            let glow = null;
+            if (mat === skinMat) {
+                glow = new THREE.InstancedBufferAttribute(new Float32Array(HEAD_CAP * 3), 3).setUsage(THREE.DynamicDrawUsage);
+                geo.setAttribute('aGlow', glow);
+            }
+            m.frustumCulled = false;
+            m.count = 0;
+            this.scene.add(m);
+            return { m, socket, show, tint, glow };
+        };
+        // What a dragon has earned, by tier (Hatchling 0 … Ancient 4): buds →
+        // antlers → long mane and beard → crown, gold antlers, glowing eyes → pearl.
+        const from = (k) => (t) => t >= k;
+        this.headDraws = [
+            part(P.skin, skinMat, 'g', null, 1), part(P.jawSkin, skinMat, 'jaw', null, 1),
+            part(P.mouth, this.mouthMat, 'g'), part(P.jawMouth, this.mouthMat, 'jaw'), part(this.gapeGeo, this.mouthMat, 'gape'),
+            part(P.accent, accentMat, 'g', null, 2), part(P.jawAccent, accentMat, 'jaw', null, 2),
+            part(P.maneLong, accentMat, 'g', from(2), 2), part(P.jawBeard, accentMat, 'jaw', from(2), 2),
+            part(P.eyes, this.eyeMat, 'g', (t) => t < 3), part(P.eyes, this.eyeGlowMat, 'g', from(3)), part(P.pupils, this.pupilMat, 'g'),
+            part(P.fangs, this.whiskerMat, 'g'), part(P.jawFangs, this.whiskerMat, 'jaw'),
+            part(P.whisker, this.whiskerMat, 'wl'), part(mirrorX(P.whisker.toNonIndexed()), this.whiskerMat, 'wr'),
+            part(P.buds, this.hornMat, 'g', (t) => t === 0), part(P.antlers, this.hornMat, 'g', (t) => t === 1 || t === 2),
+            part(P.antlers, this.goldMat, 'g', from(3)), part(P.crown, this.goldMat, 'g', from(3)),
+            part(this.pearlGeo, this.pearlMat, 'pearl', from(4)),
+        ];
 
         // Power-up crystals.
         // Each crystal gets a world-size glow and a constant-size star halo
@@ -456,6 +495,7 @@ export class Renderer {
     }
 
     setEnvironment(top, mid, hor) {
+        this.envColors = [top, mid, hor];
         const envScene = new THREE.Scene();
         const dome = skyDome(top, mid, hor, 50);
         dome.onBeforeRender = () => {};
@@ -466,6 +506,15 @@ export class Renderer {
         if (this.scene.environment) this.scene.environment.dispose();
         this.scene.environment = this.pmrem.fromScene(envScene, 0.04).texture;
         disposeTree(envScene);
+    }
+
+    // After a WebGL context loss and restore, three.js uploads geometry and
+    // textures again by itself, but the reflection map only ever lived on
+    // the GPU: bake it again (render targets are redrawn every frame anyway).
+    // The old generator's GPU objects went with the old context.
+    restore() {
+        this.pmrem = new THREE.PMREMGenerator(this.renderer);
+        if (this.envColors) this.setEnvironment(...this.envColors);
     }
 
     wallLines(pts, color) {
@@ -480,45 +529,50 @@ export class Renderer {
     headFor(d) {
         let h = this.heads.get(d.id);
         if (h) return h;
-        const P = this.headParts, g = new THREE.Group();
-        const mat = headSkinMaterial({ color: d.color, roughness: 0.35, metalness: 0.4 });
-        const mat2 = new THREE.MeshStandardMaterial({ color: d.color2, roughness: 0.5, metalness: 0.2 });
-        const eyes = new THREE.Mesh(P.eyes, this.eyeMat);
-        g.add(new THREE.Mesh(P.skin, mat), new THREE.Mesh(P.mouth, this.mouthMat), new THREE.Mesh(P.accent, mat2),
-            eyes, new THREE.Mesh(P.pupils, this.pupilMat), new THREE.Mesh(P.fangs, this.whiskerMat));
-        // Earned with length (see update): buds → antlers → long mane → crown, gold → pearl.
-        const buds = new THREE.Mesh(P.buds, this.hornMat), antlers = new THREE.Mesh(P.antlers, this.hornMat);
-        const crown = new THREE.Mesh(P.crown, this.goldMat), mane = new THREE.Mesh(P.maneLong, mat2);
-        const pearl = new THREE.Mesh(this.pearlGeo, this.pearlMat);
+        const P = this.headParts, g = new THREE.Object3D(), pearl = new THREE.Object3D();
         pearl.scale.setScalar(0.24);
-        g.add(buds, antlers, crown, mane, pearl);
-        // Whiskers sway from the nose.
-        const wl = new THREE.Mesh(P.whisker, this.whiskerMat), wr = new THREE.Mesh(P.whisker, this.whiskerMat);
+        // Whiskers sway from the nose (the right one's geometry is mirrored).
+        const wl = new THREE.Object3D(), wr = new THREE.Object3D();
         wl.position.set(-0.3, 0.1, -1.85); wr.position.set(0.3, 0.1, -1.85);
-        g.add(wl, wr);
         // Hinged lower jaw: opens to eat and to breathe fire.
-        const jaw = new THREE.Group(), beard = new THREE.Mesh(P.jawBeard, mat2);
+        const jaw = new THREE.Object3D();
         jaw.position.copy(P.hinge);
-        jaw.add(new THREE.Mesh(P.jawSkin, mat), new THREE.Mesh(P.jawMouth, this.mouthMat),
-            new THREE.Mesh(P.jawFangs, this.whiskerMat), new THREE.Mesh(P.jawAccent, mat2), beard);
-        g.add(jaw);
-        // The red inside of the open mouth: sits halfway between the jaws
-        // and swells to fill the gap as they part.
-        // A wedge from the hinge to the jaw tip, set halfway between the
-        // jaws and as tall as the gap, so the open mouth is solid red inside.
-        const gapeG = new THREE.Group(), gape = new THREE.Mesh(this.gapeGeo, this.mouthMat);
+        // The red inside of the open mouth: a wedge from the hinge to the jaw
+        // tip, set halfway between the jaws and as tall as the gap, so the
+        // open mouth is solid red inside.
+        const gapeG = new THREE.Object3D(), gape = new THREE.Object3D();
         gapeG.position.copy(P.hinge); gape.position.set(0, -0.1, 0);
-        gapeG.add(gape); g.add(gapeG);
-        h = { g, mat, mat2, wl, wr, eyes, buds, antlers, crown, mane, pearl, jaw, beard, gapeG, gape, open: 0, eatT: 0, lastMass: d.mass,
-            tier: -1, flap: Math.random() * 6 };
-        this.scene.add(g);
+        gapeG.add(gape);
+        g.add(wl, wr, jaw, gapeG, pearl);
+        h = { g, wl, wr, jaw, gapeG, gape, pearl, open: 0, eatT: 0, lastMass: d.mass, tier: -1, flap: Math.random() * 6 };
         this.heads.set(d.id, h);
         return h;
+    }
+
+    // Add one head to the instanced parts, at its sockets' world matrices.
+    drawHead(h, d, dim) {
+        for (const p of this.headDraws) {
+            const m = p.m, i = m.count;
+            if (i >= HEAD_CAP || (p.show && !p.show(h.tier))) continue;
+            h[p.socket].matrixWorld.toArray(m.instanceMatrix.array, i * 16);
+            if (p.tint) {
+                _c.set(p.tint === 1 ? d.color : d.color2).multiplyScalar(dim);
+                if (p.tint === 1 && d.chill > 0) _c.lerp(_ice, 0.6);            // frost whitens a chilled head
+                m.setColorAt(i, _c);
+            }
+            if (p.glow) _glow.toArray(p.glow.array, i * 3);
+            m.count = i + 1;
+        }
     }
 
     // ------------------------------------------------ per-frame update
     update(world, view, dt, time) {
         const player = view.player;
+        this.mirrorOn = this.view.mirror && view.state === 'play' && innerWidth >= 640;   // no room for it on a phone
+        // Side vision is for flying: menus and the death camera use the
+        // plain view, which spares the six extra cube-map renders, and so
+        // does Low quality.
+        this.wideNow = this.view.wide && this.quality !== 'low' && (view.state === 'play' || view.state === 'pause');
         const ph = player && player.alive ? player.pos : null;
         // Beads.
         this.bodies.n = 0; this.ownBody.n = 0;
@@ -692,13 +746,19 @@ export class Renderer {
         this.plumes.count = nPlume; this.plumes.instanceMatrix.needsUpdate = true; this.plumes.instanceColor.needsUpdate = true;
         this.beadCount = this.bodies.n + this.ownBody.n;
 
-        // Heads.
+        // Heads. Without the cube map only the main camera sees them, so the
+        // ones off screen are left out.
         let sh = 0;
         const arena = world.arena;
+        const cull = !(this.wideNow || this.mirrorOn);
+        if (cull) {
+            this.camera.updateMatrixWorld();
+            _frustum.setFromProjectionMatrix(_m.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+        }
+        for (const p of this.headDraws) p.m.count = 0;
         for (const d of world.dragons) {
             if (!d.alive) continue;
             const h = this.headFor(d);
-            h.g.visible = true;
             const t = d.tier;
             // Heads read bigger than the neck, and grow a little more with each
             // tier. Your own is drawn a little smaller so it never hides the way ahead.
@@ -733,17 +793,10 @@ export class Renderer {
             const sway = Math.sin(h.flap) * 0.25, trail = d.boosting ? 0.35 : 0;
             h.wl.rotation.set(sway * 0.5 + trail, -0.25 - sway * 0.4, 0); h.wr.rotation.set(-sway * 0.5 + trail, 0.25 + sway * 0.4, 0);
             if (t !== h.tier) {
-                // What a dragon has earned, by tier (Hatchling 0 … Ancient 4).
+                // What a dragon has earned (headDraws shows the parts by tier).
                 h.tier = t;
-                h.buds.visible = t === 0;
-                h.antlers.visible = t >= 1;
-                h.mane.visible = h.beard.visible = t >= 2;
-                h.crown.visible = t >= 3;
-                h.antlers.material = t >= 3 ? this.goldMat : this.hornMat;
-                h.eyes.material = t >= 3 ? this.eyeGlowMat : this.eyeMat;
-                h.pearl.visible = t >= 4;
                 const wk = 0.6 + 0.2 * t;           // whiskers lengthen with age
-                h.wl.scale.setScalar(wk); h.wr.scale.set(-wk, wk, wk);
+                h.wl.scale.setScalar(wk); h.wr.scale.setScalar(wk);
             }
             // Jaw: snaps open when the dragon eats (its mass goes up, which
             // works for bots and online players too) and gapes wide while
@@ -763,15 +816,14 @@ export class Renderer {
             h.gapeG.rotation.x = -gap / 2;
             h.gape.scale.set(0.26, 0.02 + 1.2 * Math.tan(gap / 2), 1.55);
             // The pearl floats ahead of the nose, bobbing and circling.
-            if (h.pearl.visible) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
-            h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
-            h.mat2.color.set(d.color2).multiplyScalar(d.protect > 0 ? 0.5 : 1);
+            if (t >= 4) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             // Hot dragons glow; the leader blazes gold. Frost whitens a
-            // chilled head; a stunned one flickers with lightning.
-            if (d.chill > 0) h.mat.color.lerp(_ice, 0.6);
-            if (d.stun > 0) h.mat.emissive.setRGB(0.7, 0.55, 1).multiplyScalar(0.5 + 0.5 * Math.sin(time * 40));
-            else if (d === view.top) h.mat.emissive.setHex(0xffc85a).multiplyScalar(0.45);
-            else h.mat.emissive.setRGB(1, 0.35, 0.05).multiplyScalar(Math.max(0, (d.temp - 25) / 75) * 0.7);
+            // chilled head (drawHead); a stunned one flickers with lightning.
+            if (d.stun > 0) _glow.setRGB(0.7, 0.55, 1).multiplyScalar(0.5 + 0.5 * Math.sin(time * 40));
+            else if (d === view.top) _glow.setHex(0xffc85a).multiplyScalar(0.45);
+            else _glow.setRGB(1, 0.35, 0.05).multiplyScalar(Math.max(0, (d.temp - 25) / 75) * 0.7);
+            h.g.updateMatrixWorld(true);
+            if (!cull || _frustum.intersectsSphere(_sphere.set(d.pos, hs * 3.5))) this.drawHead(h, d, d.protect > 0 ? 0.5 : 1);
             // Shadow.
             if (sh < MAX_HEADS) {
                 if (arena.kind === 'cylinder') {
@@ -789,12 +841,13 @@ export class Renderer {
         }
         this.shadows.count = sh;
         this.shadows.instanceMatrix.needsUpdate = true;
-        for (const [id, h] of this.heads) {
-            if (!seen.has(id)) {
-                if (!world.byId.has(id)) { this.scene.remove(h.g); h.mat.dispose(); h.mat2.dispose(); this.heads.delete(id); }
-                else h.g.visible = false;
-            }
+        for (const { m, glow } of this.headDraws) {
+            m.visible = m.count > 0;
+            m.instanceMatrix.needsUpdate = true;
+            if (m.instanceColor) m.instanceColor.needsUpdate = true;
+            if (glow) glow.needsUpdate = true;
         }
+        for (const id of this.heads.keys()) if (!seen.has(id) && !world.byId.has(id)) this.heads.delete(id);
 
         // Orbs.
         const om = this.orbs.instanceMatrix.array, oc = this.orbs.instanceColor.array;
@@ -1110,10 +1163,6 @@ export class Renderer {
         this.dustGeo.attributes.position.needsUpdate = true;
 
         this.camera.updateMatrixWorld();
-        this.mirrorOn = this.view.mirror && view.state === 'play' && innerWidth >= 640;   // no room for it on a phone
-        // Side vision is for flying: menus and the death camera use the
-        // plain view, which spares the six extra cube-map renders.
-        this.wideNow = this.view.wide && (view.state === 'play' || view.state === 'pause');
         {
             const r = this.renderer;
             r.setRenderTarget(this.mainRT);
@@ -1139,8 +1188,8 @@ export class Renderer {
     }
 
     // Graphics quality: 'high' (default) or 'low' — native pixel ratio, a
-    // 768 cube and bloom, vs pixel ratio 1, a 384 cube every other frame,
-    // no bloom and no MSAA.
+    // 768 cube and bloom, vs pixel ratio 1, no wide view (the mirror's 384
+    // cube is refreshed every other frame), no bloom and no MSAA.
     setQuality(q) {
         if (q === this.quality) return;
         this.quality = q;
@@ -1335,7 +1384,6 @@ export class Renderer {
     }
 
     clearHeads() {
-        for (const h of this.heads.values()) { this.scene.remove(h.g); h.mat.dispose(); h.mat2.dispose(); }
         this.heads.clear();
     }
 }
@@ -1509,13 +1557,15 @@ function cloudSea(arena, haze) {
 }
 
 // Tall karst pillars (Zhangjiajie-style) rising from the clouds outside
-// the storm wall, pines on top. Purely scenery.
+// the storm wall, pines on top. Purely scenery, so all the stone is merged
+// into one mesh and all the pines into another: two draws, not 156.
 function karstPillars(arena) {
     const g = new THREE.Group();
     const stone = new THREE.MeshStandardMaterial({ color: 0x4E4A45, roughness: 0.95, flatShading: true });
     const pine = new THREE.MeshStandardMaterial({ color: 0x1F3528, roughness: 0.9, flatShading: true });
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const rocks = [], pines = [], at = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
     for (let i = 0; i < 26; i++) {
         const a = rnd() * Math.PI * 2, dist = arena.radius * (1.7 + rnd() * 1.8);
         const h = 90 + rnd() * 300, r = 10 + rnd() * 22;
@@ -1526,16 +1576,15 @@ function karstPillars(arena) {
             pos.setX(v, pos.getX(v) * k); pos.setZ(v, pos.getZ(v) * k);
         }
         geo.computeVertexNormals();
-        const col = new THREE.Mesh(geo, stone);
-        col.position.set(Math.cos(a) * dist, arena.floor + h / 2 - 20, Math.sin(a) * dist);
-        g.add(col);
+        const x = Math.cos(a) * dist, z = Math.sin(a) * dist;
+        rocks.push([geo, at(x, arena.floor + h / 2 - 20, z)]);
         for (let t = 0; t < 5; t++) {
-            const tr = new THREE.Mesh(new THREE.ConeGeometry(2 + rnd() * 3, 7 + rnd() * 8, 6), pine);
+            const cone = new THREE.ConeGeometry(2 + rnd() * 3, 7 + rnd() * 8, 6);
             const ta = rnd() * Math.PI * 2, td = rnd() * r * 0.7;
-            tr.position.set(col.position.x + Math.cos(ta) * td, arena.floor + h - 20 + 4, col.position.z + Math.sin(ta) * td);
-            g.add(tr);
+            pines.push([cone, at(x + Math.cos(ta) * td, arena.floor + h - 20 + 4, z + Math.sin(ta) * td)]);
         }
     }
+    g.add(new THREE.Mesh(mergedIndexed(rocks), stone), new THREE.Mesh(mergedIndexed(pines), pine));
     return g;
 }
 
@@ -1782,12 +1831,13 @@ const BODY_BUMP = `
 }
 `;
 // Head skin: the same scales, smaller, wrapped around the snout's long axis.
+// Drawn instanced, one instance per head, with the glow per instance.
 function headSkinMaterial(opts) {
     const m = new THREE.MeshStandardMaterial(opts);
     m.onBeforeCompile = (sh) => {
-        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;')
-            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vRad = 0.5 * length(modelMatrix[0].xyz);');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;\nfloat scaleH = 0.0, scaleRough = 0.4;\n' + SCALES_GLSL)
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad;\nattribute vec3 aGlow; varying vec3 vGlow;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vRad = 0.5 * length(mat3(modelMatrix) * instanceMatrix[0].xyz); vGlow = aGlow;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying float vRad; varying vec3 vGlow;\nfloat scaleH = 0.0, scaleRough = 0.4;\n' + SCALES_GLSL)
             .replace('#include <color_fragment>', `#include <color_fragment>
             {
                 vec2 q = vec2(atan(vObj.x, vObj.y) / 6.2831853 * 14.0, vObj.z * 2.8);
@@ -1798,7 +1848,8 @@ function headSkinMaterial(opts) {
                 scaleH = h * det; scaleRough = rough;
             }`)
             .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = scaleRough;')
-            .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BODY_BUMP);
+            .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BODY_BUMP)
+            .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = vGlow;');
     };
     return m;
 }
@@ -1854,6 +1905,23 @@ function merged(parts) {
     const out = new THREE.BufferGeometry();
     out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    return out;
+}
+// The same, keeping the parts' indices so each vertex is shaded once (heads
+// and scenery: the same triangles for a fraction of the vertex work).
+function mergedIndexed(parts) {
+    const pos = [], nor = [], idx = [];
+    for (const [geo, mat4] of parts) {
+        const gg = geo.clone().applyMatrix4(mat4), base = pos.length / 3, n = gg.attributes.position.count;
+        pos.push(...gg.attributes.position.array); nor.push(...gg.attributes.normal.array);
+        if (gg.index) for (const i of gg.index.array) idx.push(base + i);
+        else for (let i = 0; i < n; i++) idx.push(base + i);
+        gg.dispose();
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    out.setIndex(idx);
     return out;
 }
 
@@ -2002,7 +2070,7 @@ function dragonHeadParts() {
         return [cyl, M(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(Y, d.normalize()), V3(r, len, r))];
     };
     const both = (f) => [f(1), f(-1)];                                      // left and right
-    const skin = merged([
+    const skin = mergedIndexed([
         blob(0, 0.12, 0.05, 0.76, 0.54, 0.9),                    // skull
         blob(0, 0.3, -0.38, 0.5, 0.28, 0.55),                     // forehead rising to the brows
         blob(0, 0.06, -1.0, 0.44, 0.3, 0.95, -0.05),              // long snout
@@ -2012,7 +2080,7 @@ function dragonHeadParts() {
         ...both((s) => blob(0.31 * s, 0.37, -0.56, 0.23, 0.11, 0.3)),      // brow overhang
         ...both((s) => blob(0.2 * s, 0.31, -1.93, 0.09, 0.08, 0.07, 0, lo)),   // nostrils
     ]);
-    const mouth = merged([
+    const mouth = mergedIndexed([
         blob(0, -0.18, -0.95, 0.32, 0.1, 0.75, 0.17),               // red inside the open jaws
         blob(0, -0.24, -0.45, 0.28, 0.18, 0.55),                    // throat: fills the gap when the jaw drops
     ]);
@@ -2027,7 +2095,7 @@ function dragonHeadParts() {
         }
         return out;
     };
-    const accent = merged([
+    const accent = mergedIndexed([
         ...both((s) => lick(V3(0.3 * s, 0.44, -0.58), V3(0.35 * s, 0.62, 0.7), 0.8, 0.1, 0.6)),     // flame brows
         ...both((s) => lick(V3(0.42 * s, 0.4, -0.48), V3(0.65 * s, 0.45, 0.62), 0.55, 0.075, 0.6)),
         ...both((s) => lick(V3(0.58 * s, -0.08, -0.08), V3(0.85 * s, -0.2, 0.5), 0.55, 0.16, 0.35)), // cheek frills
@@ -2035,7 +2103,7 @@ function dragonHeadParts() {
         blob(0, 0.21, -2.04, 0.09, 0.07, 0.05),                                                     // nose tip
     ]);
     // Long, flowing mane and beard (Wyvern and up).
-    const maneLong = merged([
+    const maneLong = mergedIndexed([
         ...ruff(11, 1.25, 0.2, 0.85, 0.5),
     ]);
     // The lower jaw hangs from a hinge under the cheeks and swings open to
@@ -2043,18 +2111,18 @@ function dragonHeadParts() {
     // to the hinge.
     const hinge = V3(0, -0.12, 0.2);                                  // tucked under the cheeks
     const atHinge = (g) => g.translate(-hinge.x, -hinge.y, -hinge.z);
-    const jawSkin = atHinge(merged([blob(0, -0.36, -0.72, 0.36, 0.13, 0.95, 0.3)]));
-    const jawMouth = atHinge(merged([blob(0, -0.28, -0.8, 0.24, 0.06, 0.66, 0.3)]));          // tongue
-    const jawFangs = atHinge(merged(both((s) => lick(V3(0.2 * s, -0.38, -1.3), V3(0, 1, -0.2), 0.22, 0.045))));
-    const jawAccent = atHinge(merged([lick(V3(0, -0.45, -0.62), V3(0, -0.7, 0.7), 0.45, 0.07)]));   // goatee
-    const jawBeard = atHinge(merged([-0.18, 0, 0.18].map((x) => lick(V3(x, -0.44, -0.66), V3(x, -0.75, 0.66), 0.95, 0.075))));
-    const eyes = merged(both((s) => blob(0.36 * s, 0.25, -0.58, 0.17, 0.15, 0.18)));
-    const pupils = merged(both((s) => blob(0.465 * s, 0.25, -0.715, 0.03, 0.11, 0.04, 0, lo)));
-    const fangs = merged([
+    const jawSkin = atHinge(mergedIndexed([blob(0, -0.36, -0.72, 0.36, 0.13, 0.95, 0.3)]));
+    const jawMouth = atHinge(mergedIndexed([blob(0, -0.28, -0.8, 0.24, 0.06, 0.66, 0.3)]));          // tongue
+    const jawFangs = atHinge(mergedIndexed(both((s) => lick(V3(0.2 * s, -0.38, -1.3), V3(0, 1, -0.2), 0.22, 0.045))));
+    const jawAccent = atHinge(mergedIndexed([lick(V3(0, -0.45, -0.62), V3(0, -0.7, 0.7), 0.45, 0.07)]));   // goatee
+    const jawBeard = atHinge(mergedIndexed([-0.18, 0, 0.18].map((x) => lick(V3(x, -0.44, -0.66), V3(x, -0.75, 0.66), 0.95, 0.075))));
+    const eyes = mergedIndexed(both((s) => blob(0.36 * s, 0.25, -0.58, 0.17, 0.15, 0.18)));
+    const pupils = mergedIndexed(both((s) => blob(0.465 * s, 0.25, -0.715, 0.03, 0.11, 0.04, 0, lo)));
+    const fangs = mergedIndexed([
         ...both((s) => lick(V3(0.24 * s, -0.08, -1.55), V3(0, -1, 0.05), 0.3, 0.06)),       // upper fangs
         ...both((s) => lick(V3(0.15 * s, -0.08, -1.76), V3(0, -1, 0), 0.16, 0.035)),
     ]);
-    const buds = merged(both((s) => lick(V3(0.24 * s, 0.48, -0.08), V3(0.25 * s, 0.85, 0.5), 0.34, 0.08)));
+    const buds = mergedIndexed(both((s) => lick(V3(0.24 * s, 0.48, -0.08), V3(0.25 * s, 0.85, 0.5), 0.34, 0.08)));
     // Deer antlers: a beam rising up and back, with two tines.
     const antlerSide = (s) => {
         const a = V3(0.26 * s, 0.46, -0.05), b = V3(0.46 * s, 1.1, 0.45), c = V3(0.6 * s, 1.42, 1.2);
@@ -2064,13 +2132,13 @@ function dragonHeadParts() {
             bone(V3(0.54 * s, 1.27, 0.85), V3(0.86 * s, 1.62, 0.78), 0.04),        // outer tine
         ];
     };
-    const antlers = merged([...antlerSide(1), ...antlerSide(-1)]);
+    const antlers = mergedIndexed([...antlerSide(1), ...antlerSide(-1)]);
     const crownSide = (s) => [
         bone(V3(0.5 * s, 1.2, 0.6), V3(0.42 * s, 1.75, 0.55), 0.038),
         bone(V3(0.58 * s, 1.38, 1.05), V3(0.55 * s, 1.85, 1.3), 0.034),
         bone(V3(0.6 * s, 1.42, 1.2), V3(0.98 * s, 1.5, 1.6), 0.034),
     ];
-    const crown = merged([...crownSide(1), ...crownSide(-1)]);
+    const crown = mergedIndexed([...crownSide(1), ...crownSide(-1)]);
     // Whisker: a thin tube curving out and back from the nose, then drooping.
     const curve = new THREE.CatmullRomCurve3([V3(0, 0, 0), V3(-0.4, -0.02, 0.25),
         V3(-0.85, -0.2, 0.95), V3(-1.1, -0.5, 1.8), V3(-1.15, -0.85, 2.7)]);

@@ -675,7 +675,9 @@ The improvement loop's numbers, kept without identifying anyone
     context loss.
   - Settings → Player → **Last problem** shows it, with Copy and Clear buttons.
 - **WebGL context loss:** the game calls `preventDefault`. On restore it forces
-  Low quality.
+  Low quality and rebuilds the reflection map (`Renderer.restore`), which only
+  ever lived on the GPU. A loss that comes back within 5 s is noted quietly,
+  with no crash toast.
 - **Reconnect** (`net.js`, `main.js` `onDrop`/`onRejoin`):
   - When an online connection drops with a dragon to keep (flying or
     folded), the picture holds still under a "Reconnecting…" pill (on the
@@ -775,7 +777,7 @@ The improvement loop's numbers, kept without identifying anyone
 | Key | Contents |
 |---|---|
 | `wyrm.profile.v1` | `{v, jade, games, lives, bestLength, bestKills, perks, skin}` |
-| `wyrm.settings.v1` | `{beginner, wideView, mirror, invertY, mouseLock, assist, reduceMotion, muted, music, voice, gfx, arena, name, runs, v}` |
+| `wyrm.settings.v1` | `{beginner, wideView, wideSet, mirror, invertY, mouseLock, assist, reduceMotion, muted, music, voice, gfx, autoLow, arena, name, runs, v}` |
 | `wyrm.tune.v2` | tunable overrides that differ from the defaults (solo only; read and written only by the dev panel) |
 | `wyrm.crash.v1` | the last problem |
 
@@ -786,7 +788,8 @@ The improvement loop's numbers, kept without identifying anyone
 ### 6.1 Frame pipeline
 1. **Main scene** → `mainRT`: HalfFloat, 4× MSAA on High, linear HDR.
 2. **Cube camera:** 6 faces, rendered when wide view or the mirror is on. 768²
-   every frame on High; 384² every other frame on Low.
+   every frame on High. Low has no wide view, and the mirror's 384² cube
+   renders every other frame.
 3. **Bloom:**
    - Bright-pass at ¼ resolution: threshold 0.85, soft knee.
    - Then two separable 5-tap Gaussian rounds.
@@ -802,15 +805,21 @@ The improvement loop's numbers, kept without identifying anyone
 **Other renderer settings:**
 - **Camera:** FOV 72°, near 0.1, far 3000.
 - **Pixel ratio:** up to 2 on High, 1 on Low.
+- **Wide view default:** on, except on touch devices. A choice made in Settings
+  is kept (`wideSet`), and so is an "off" saved before this default existed.
 - **Auto quality:** starts on High and drops to Low once if the frame rate stays
-  below 40 fps for a 5 s window. The drop isn't saved.
+  below min(40, ¾ × the screen's rate) for a 5 s window. The screen's rate is
+  the median gap between frames 15–90 after load (menu frames, which are
+  light), so a 30 Hz screen (iPhone Low Power Mode) drops only below 22 fps.
+  The drop is saved (`autoLow`) until Graphics is changed in Settings.
 
 ### 6.2 Environment
 - **Skyhold:**
   - **Sky:** a camera-following dome at radius 1500, with a low-sun sprite.
   - **Fog:** FogExp2 0xC99A6E at 0.0015.
   - **Cloud sea:** an fbm shader disc that fades into haze.
-  - **Karst pillars:** 26, each with pines (separate meshes, about 156 in total).
+  - **Karst pillars:** 26, each with pines, merged into one stone mesh and one
+    pine mesh (two draws).
   - **Ink-wash ridges:** 3 rings.
   - **Range rings:** at y = 0.3.
   - **Storm wall:** 72 lines plus an additive "qi curtain" cylinder. It
@@ -896,6 +905,18 @@ The improvement loop's numbers, kept without identifying anyone
 ### 6.5 Heads (`dragonHeadParts`, `render.js:1731-1837`)
 - **Parts:** built once from small helpers (`bone`, `lick`, `ruff`), merged per
   material, and shared by every head.
+- **Drawn instanced:** one `InstancedMesh` per part (`headDraws`, 21 of them)
+  draws that part for every head, so heads cost about 15 draws per scene
+  render however many dragons there are.
+  - Each head is a rig of sockets (`headFor`): the head, the hinged jaw, the
+    two whiskers, the mouth wedge and the pearl. A part is drawn at its
+    socket's world matrix; tier decides which parts are drawn.
+  - Skin and second colour come from the instance colour (frost-white while
+    chilled), and the skin's glow (leader gold, heat, the stun flicker) from a
+    per-instance `aGlow`.
+  - With no cube map to fill, heads off screen are left out.
+  - Head parts keep their indices (`mergedIndexed`): about 6,400 shaded
+    vertices a head instead of 24,000, for the same 8,280 triangles.
   - skull, snout, lion nose, brows, cheek frills, a 7-lick ruff
   - eyes with slit pupils, fangs
   - horn buds, deer antlers, a gold crown
@@ -973,12 +994,16 @@ The improvement loop's numbers, kept without identifying anyone
   - lightning arcs
   - dust
   - pearls (3: spheres, glow, twinkle)
-- **Not instanced:**
-  - Acid clouds: one draw each, at most 12.
-  - Heads: about 18 meshes each, so roughly 1,400 draws at 80 heads.
-  - Skyhold's karst pillars: about 156 meshes.
+  - heads (one per part, about 15)
+- **Merged:** Skyhold's karst pillars and pines (2).
+- **Not instanced:** acid clouds, one draw each, at most 12.
 - **Scene renders per frame:** with wide view or the mirror on, the scene
   renders 7 times (main + 6 cube faces).
+- **Measured** (`renderer.info` per frame, Skyhold in play, High, with a
+  crystal of each element, pearls and an acid cloud in view): with wide view
+  and the mirror, about 345 draws with 4 dragons and 385 with 25 (before
+  instanced heads and merged pillars: 574 and 991). With no cube map, as on an
+  upright phone, about 72 with 25 dragons (was 108).
 
 | Thing | Cap |
 |---|---|
@@ -986,6 +1011,7 @@ The improvement loop's numbers, kept without identifying anyone
 | Own body frames | 1,000 |
 | Orbs | 6,000 |
 | Heads (shadows, legs) | 80 |
+| Heads drawn | 128 |
 | Fins | 12,400 |
 | Plumes | 8,000 |
 | Beams | 240 |
@@ -1139,7 +1165,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 - **Fonts:**
   - Nunito is referenced but never loaded.
 - **Saved stats never shown:** best length, best kills and games played.
-- **Graphics:** the auto drop to Low isn't remembered between visits.
 - **Death screen:** it can't be left during the respawn countdown.
 
 ### 10.3 Stale docs and comments
