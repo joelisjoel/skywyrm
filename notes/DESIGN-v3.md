@@ -252,8 +252,19 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Anything beyond the budget is clamped, and `me.c` tells the client to
     hard-snap back (`net.js:154`).
   - Bank is clamped to ±1.2. A quaternion is accepted only if its length² > 0.5.
-- **Other dragons** are drawn 120 ms in the past, interpolated from up to 8
-  samples. Position may extrapolate to ×1.5 (`net.js:11,223-239`).
+- **Other dragons** are drawn on the server's clock (`net.js` `ServerClock`,
+  `poseAt`, `update`):
+  - Each snapshot is placed at its `tm`, put back on the 1/30 s tick.
+  - Server "now" is local time minus the smallest arrival lag of the last
+    2 s, eased over about 1 s. It jumps if the server is more than 0.25 s
+    ahead, and starts over if `tm` goes back (a restarted room).
+  - Dragons are drawn 120 ms behind that, blended between the snapshots
+    either side. Past the newest, they carry on from the last two for at
+    most 120 ms, then hold. After a stall the draw time waits at that edge
+    and the delay is learned afresh, so dragons carry on from where they
+    stopped instead of jumping ahead.
+  - Tails are laid through every snapshot passed, never along a guess, so
+    the drawn tail keeps to the server's.
 - **There is no client prediction or reconciliation** beyond that snap.
 
 ### 4.2 Rates

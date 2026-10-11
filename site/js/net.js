@@ -1,15 +1,76 @@
 // Multiplayer client for one room. Your own dragon flies here with no input
 // lag (sim mode 'client') and its pose is reported 30×/s; everything else —
 // other dragons, orbs, power-ups, deaths, heat, thrust — comes from the
-// server. Other dragons are drawn ~120 ms in the past so their motion is
-// smooth between snapshots.
+// server. Other dragons are drawn on the server's clock, a little behind
+// it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
 import { T, DEFAULTS, radiusFor, tierFor } from './tunables.js?v=18';
 import { World, Dragon } from './sim.js?v=18';
 import { MOODS } from './bots.js?v=18';
 
-const INTERP = 0.12;
+const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
+const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
+const CLOCK_WINDOW = 2;        // s of arrivals the server-clock estimate looks back over
+const CLOCK_EASE = 1;          // s: how slowly the estimate follows them
+const CLOCK_SNAP = 0.25;       // s: a server clock this far ahead of the estimate is jumped to
 const _qa = new Quaternion(), _qb = new Quaternion();
+
+// The server's clock, from the sim time (`tm`) on each snapshot. Arrival
+// minus tm is the network delay plus a fixed offset, and jitter or bunching
+// only ever make it bigger, so the smallest value in the last couple of
+// seconds (the quickest delivery) is the best guess at "server now". The
+// estimate eases toward it so jitter doesn't shake the timeline, jumps
+// forward if the server is well ahead, and starts over if the server clock
+// goes back (a room that restarted its world).
+class ServerClock {
+    constructor() { this.lag = null; this.min = 0; this.recent = []; this.last = -Infinity; }
+
+    // Note a snapshot's time; true when the server clock restarted.
+    note(tm, now) {
+        const R = this.recent, restarted = tm < this.last - 1;
+        this.last = tm;
+        if (restarted) R.length = 0;
+        R.push({ at: now, lag: now - tm });
+        while (now - R[0].at > CLOCK_WINDOW) R.shift();
+        this.min = Infinity;
+        for (const r of R) this.min = Math.min(this.min, r.lag);
+        if (this.lag === null || restarted || this.min < this.lag - CLOCK_SNAP) this.lag = this.min;
+        return restarted;
+    }
+
+    ease(dt) { if (this.lag !== null) this.lag += (this.min - this.lag) * Math.min(1, dt / CLOCK_EASE); }
+
+    // The server time to draw others at: INTERP_DELAY behind its now, but
+    // never more than EXTRAP_MAX past the newest snapshot. When it would be
+    // (the network or the server stalled), it waits there and learns the
+    // delay afresh, so the dragons carry on from where they stopped rather
+    // than jumping ahead.
+    drawTime(local) {
+        if (this.lag === null) return -Infinity;
+        const t = local - this.lag - INTERP_DELAY, edge = this.last + EXTRAP_MAX;
+        if (t <= edge) return t;
+        this.lag = this.min = local - INTERP_DELAY - edge;
+        this.recent.length = 0;
+        return edge;
+    }
+}
+
+// Where a dragon was at server time t, from its snapshots S (oldest first):
+// blended between the pair either side; before the first, the first; past
+// the newest, carried on from the last two for at most EXTRAP_MAX.
+function poseAt(S, t, d) {
+    const n = S.length;
+    let a = S[0], b = a, k = 0;
+    if (n > 1 && t > a.t) {
+        let i = 1;
+        while (i < n - 1 && S[i].t < t) i++;
+        a = S[i - 1]; b = S[i];
+        k = (Math.min(t, b.t + EXTRAP_MAX) - a.t) / (b.t - a.t);    // > 1 past the newest
+    }
+    d.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+    _qa.set(a.qx, a.qy, a.qz, a.qw); _qb.set(b.qx, b.qy, b.qz, b.qw);
+    d.quat.copy(_qa).slerp(_qb, k).normalize();
+}
 
 // Rooms list / create (HTTP).
 export async function fetchRooms(base) {
@@ -34,6 +95,7 @@ export class NetGame {
         this.sendAcc = 0; this.pingAcc = 0;
         this.gone = new Map();          // recently removed dragons (to name them in events)
         this.parked = false;            // wings folded (Esc): out of the sky, length kept
+        this.clock = new ServerClock();
         this.ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId));
         this.ws.onopen = () => this.send({ t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '' });
         this.ws.onmessage = (e) => { try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); } };
@@ -107,7 +169,7 @@ export class NetGame {
         const p = info.path || [];
         for (let k = 0; k + 2 < p.length; k += 3) d.pushPath(p[k], p[k + 1], p[k + 2]);
         if (!d.pathCount) d.lastPt.copy(d.pos);
-        d.samples = [];
+        d.samples = []; d.pathT = -Infinity;          // snapshots to draw from; server time the tail is laid up to
         d.len = s[9];
         d.rebuildBeads();
         if (d.id === this.you && this.player && d.alive) {
@@ -141,14 +203,25 @@ export class NetGame {
         const w = this.world;
         if (!w) return;
         const now = performance.now() / 1000;
+        // Server time. Its sim clock steps 1/30 s and tm is rounded to
+        // 0.01 s; put back on the tick, the blend between snapshots runs at
+        // an even speed (a time that isn't near a tick is taken as it is).
+        let tm = now;
+        if (typeof m.tm === 'number' && Number.isFinite(m.tm)) {
+            tm = Math.round(m.tm * 30) / 30;
+            if (Math.abs(tm - m.tm) > 0.006) tm = m.tm;
+        }
+        if (this.clock.note(tm, now)) for (const d of w.dragons) { d.samples = []; d.pathT = -Infinity; }   // the room restarted: a new timeline
         for (const s of m.d) {
             const d = w.byId.get(s[0]);
             if (!d) continue;
             this.applyState(d, s);
             if (d === this.player) continue;           // you fly yourself
             d.bankNet = s[11]; d.speed = s[12];
-            d.samples.push({ t: now, x: s[1], y: s[2], z: s[3], qx: s[4], qy: s[5], qz: s[6], qw: s[7] });
-            if (d.samples.length > 8) d.samples.shift();
+            const S = d.samples;
+            if (S.length && tm <= S[S.length - 1].t) continue;
+            S.push({ t: tm, x: s[1], y: s[2], z: s[3], qx: s[4], qy: s[5], qz: s[6], qw: s[7] });
+            if (S.length > 30) S.shift();
         }
         for (const op of m.o) {
             if (op[0] === 0) this.clearOrb(op[1]);
@@ -233,19 +306,22 @@ export class NetGame {
     update(dt) {
         const w = this.world;
         if (!w) return;
-        const rt = performance.now() / 1000 - INTERP;
+        this.clock.ease(dt);
+        const rt = this.clock.drawTime(performance.now() / 1000);
         for (const d of w.dragons) {
             if (d === this.player || !d.alive || !d.samples || !d.samples.length) continue;
-            const S = d.samples;
-            let a = S[0], b = S[S.length - 1];
-            for (let i = 0; i < S.length - 1; i++) if (S[i].t <= rt && S[i + 1].t >= rt) { a = S[i]; b = S[i + 1]; break; }
-            const k = b.t > a.t ? Math.max(0, Math.min(1.5, (rt - a.t) / (b.t - a.t))) : 1;
-            d.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
-            _qa.set(a.qx, a.qy, a.qz, a.qw); _qb.set(b.qx, b.qy, b.qz, b.qw);
-            d.quat.copy(_qa).slerp(_qb, Math.min(1, k)).normalize();
+            const S = d.samples, newest = S[S.length - 1];
+            // The tail goes through every snapshot the head has passed (even
+            // ones skipped after a stall) and never along a guess past the
+            // newest, so it keeps to the server's tail, the one that kills.
+            const upTo = Math.min(rt, newest.t);
+            for (const s of S) if (s.t > d.pathT && s.t <= upTo) { d.pos.set(s.x, s.y, s.z); w.recordPath(d); }
+            d.pathT = Math.max(d.pathT, upTo);
+            while (S.length > 2 && S[1].t <= d.pathT) S.shift();
+            poseAt(S, rt, d);
+            if (rt <= newest.t) w.recordPath(d);
             d.updateFrame(); d.vdir.copy(d.fwd);
             d.bank += ((d.bankNet || 0) - d.bank) * 0.3;
-            w.recordPath(d);
         }
         const p = this.player;
         this.sendAcc += dt;
