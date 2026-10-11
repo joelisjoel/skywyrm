@@ -13,8 +13,9 @@ export class Input {
         this.mouse = { x: innerWidth / 2, y: innerHeight / 2 };
         this.virt = { x: 0, y: 0 };        // pointer-lock virtual offset (px)
         // Neutral point (px from screen centre). Zeroed to wherever the
-        // cursor is when you spawn, so you don't start mid-turn; it glides
-        // back to the true centre as you move the mouse.
+        // cursor (or a held finger) is when you spawn, so you don't start
+        // mid-turn; it glides back to the true centre as you move, and a
+        // lifted finger clears it.
         this.neutral = { x: 0, y: 0 };
         this.keys = new Set();
         this.lmb = false; this.rmb = false;
@@ -41,19 +42,26 @@ export class Input {
         addEventListener('pointermove', (e) => {
             if (e.pointerType !== 'touch') return;
             touchSeen();
-            if (e.pointerId === this.touch.id) { this.mouse.x = e.clientX; this.mouse.y = e.clientY; }
+            if (e.pointerId === this.touch.id) {
+                // A finger held through a respawn starts at the neutral
+                // point; moving it lets the neutral glide home, as the mouse does.
+                this.relax(Math.hypot(e.clientX - this.mouse.x, e.clientY - this.mouse.y));
+                this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+            }
         });
         const lift = (e) => {
             if (e.pointerType !== 'touch') return;
             touchSeen();
             if (e.pointerId === this.touch.id) {            // steering finger up: fly straight
                 this.touch.id = null;
-                this.mouse.x = innerWidth / 2; this.mouse.y = innerHeight / 2;
+                this.centreFinger();
             }
             this.touch.extra.delete(e.pointerId);
         };
         addEventListener('pointerup', lift);
         addEventListener('pointercancel', lift);
+        // Turning the phone moves the screen centre: keep a lifted finger straight.
+        addEventListener('resize', () => { if (this.isTouch && this.touch.id === null) this.centreFinger(); });
 
         addEventListener('mousemove', (e) => {
             // Taps also send emulated mouse events; they mustn't steer.
@@ -69,13 +77,7 @@ export class Input {
             // Movement from successive positions (movementX isn't reliable everywhere).
             const mx = e.clientX - (this.lastX ?? e.clientX), my = e.clientY - (this.lastY ?? e.clientY);
             this.lastX = e.clientX; this.lastY = e.clientY;
-            const moved = document.pointerLockElement === canvas ? Math.hypot(e.movementX, e.movementY) : Math.hypot(mx, my);
-            const n = this.neutral, nm = Math.hypot(n.x, n.y);
-            if (nm > 0) {
-                const k = Math.max(0, 1 - 0.8 * moved / nm);
-                n.x *= k; n.y *= k;
-                if (Math.hypot(n.x, n.y) < 2) n.x = n.y = 0;
-            }
+            this.relax(document.pointerLockElement === canvas ? Math.hypot(e.movementX, e.movementY) : Math.hypot(mx, my));
         });
         canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) this.lmb = true;
@@ -97,6 +99,24 @@ export class Input {
     }
 
     circleRadius() { return T.steerCircle * Math.min(innerWidth, innerHeight); }
+
+    // The neutral point glides back to the true centre as the cursor (or
+    // steering finger) moves `moved` px.
+    relax(moved) {
+        const n = this.neutral, nm = Math.hypot(n.x, n.y);
+        if (nm > 0) {
+            const k = Math.max(0, 1 - 0.8 * moved / nm);
+            n.x *= k; n.y *= k;
+            if (Math.hypot(n.x, n.y) < 2) n.x = n.y = 0;
+        }
+    }
+
+    // No steering finger: the cursor sits at the centre with no neutral
+    // offset left over from a respawn, so the stick is centred.
+    centreFinger() {
+        this.mouse.x = innerWidth / 2; this.mouse.y = innerHeight / 2;
+        this.neutral.x = this.neutral.y = 0;
+    }
 
     // An on-screen button that counts as held while a finger is on it.
     holdButton(el, key) {
