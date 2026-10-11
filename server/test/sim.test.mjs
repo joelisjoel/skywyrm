@@ -1,6 +1,7 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
 import { World, Dragon, T, managePopulation, aggression, cleanPerks } from '../../site/js/shared.js';
+import { jadeFor } from '../../site/js/profile.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
@@ -115,6 +116,13 @@ function setup(beadFromEnd) {
     const d = new Dragon('N', true); sv.spawn(d, massFor(200)); d.temp = 0;
     const budget = (rules) => { sv.rules = rules; d.moveBudget = 0; d.boosting = false; sv.applyNet(d, 0.1); return d.moveBudget; };
     check(budget({}) > budget({ lengthSpeed: 0 }) * 1.5, 'the server allows a long dragon its extra speed');
+}
+
+// Jade: the podium bonus needs a real life, so start → leave → again can't farm it.
+{
+    const life = (time, rank) => jadeFor({ peak: 12, kills: 0, bites: 0, time, rank });
+    check(life(5, 1) - life(5, 50) === 0 && life(40, 1) - life(40, 50) === 60 && life(40, 3) - life(40, 50) === 25,
+        'the #1 / top-3 jade bonus counts only after 30 s of life');
 }
 
 console.log(`\n${ok} sim checks passed`);

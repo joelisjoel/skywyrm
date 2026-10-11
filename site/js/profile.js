@@ -29,7 +29,9 @@ export function rankFor(jade) {
 
 // Jade for one life: length, kills, bites, time, and a bonus for the podium.
 export function jadeFor(life) {
-    const podium = life.rank === 1 ? 60 : life.rank <= 3 ? 25 : 0;
+    // The podium bonus needs a real life (30 s+): a new dragon can top a
+    // young sky for a moment, and start → leave → again mustn't farm it.
+    const podium = life.time < 30 ? 0 : life.rank === 1 ? 60 : life.rank <= 3 ? 25 : 0;
     return Math.max(1, Math.round(life.peak + life.kills * 40 + life.bites * 10 + life.time / 6 + podium));
 }
 
