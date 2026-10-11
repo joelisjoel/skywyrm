@@ -1,9 +1,11 @@
-// Unit tests for the name filter (site/js/names.js), which the browser and
-// the server share. Run with `npm test`. The word lists below are the
-// acceptance test, so the blocked strings live only in this file.
+// Unit tests for the name filter and the room-name lists (site/js/names.js),
+// which the browser and the server share. Run with `npm test`. The word
+// lists below are the acceptance test, so the blocked strings live only in
+// this file.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { checkName, safePlayerName } from '../../site/js/shared.js';
+import { checkName, safePlayerName, ROOM_ADJECTIVES, ROOM_NOUNS, randomRoomName, isRoomName } from '../../site/js/shared.js';
+import { RESERVED_ROOM_NAMES } from '../rooms.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
@@ -50,5 +52,18 @@ check(checkName('', 'player').reason === 'Pick a name' && checkName('!!!', 'play
 check(checkName('Nest', 'room', ['Nest', 'The Orb']).reason === 'That name is reserved' && checkName('Nesting Orbit', 'room', ['Nest', 'The Orb']).ok,
     'extra reserved names (built-in rooms) match whole words');
 check(safePlayerName('kys') === 'Dragon' && safePlayerName('fu\u0441k') === 'Dragon' && safePlayerName('José') === 'Jose', 'the server falls back to "Dragon"');
+
+// Room names: generated from two word lists, never typed.
+const ROOMS = ROOM_ADJECTIVES.flatMap((a) => ROOM_NOUNS.map((n) => `${a} ${n}`));
+bad = ROOMS.filter((n) => { const r = checkName(n, 'room', RESERVED_ROOM_NAMES); return !r.ok || r.value !== n; });
+check(!bad.length && new Set(ROOMS).size === ROOMS.length, `all ${ROOMS.length} room names pass the room filter` + (bad.length ? `: failed ${bad.join(', ')}` : ''));
+const BUILT_IN = ['nest', 'orb', 'skyhold', 'server', 'admin', 'official', 'staff', 'system', 'mod', 'skywyrm', 'wyrm'];
+bad = [...ROOM_ADJECTIVES, ...ROOM_NOUNS].filter((w) => BUILT_IN.some((b) => w.toLowerCase().includes(b)));
+check(!bad.length, 'no room word is or contains a built-in or reserved name' + (bad.length ? `: ${bad.join(', ')}` : ''));
+const rolls = Array.from({ length: 200 }, () => randomRoomName());
+check(rolls.every(isRoomName) && randomRoomName(() => 0) === `${ROOM_ADJECTIVES[0]} ${ROOM_NOUNS[0]}` && randomRoomName(() => 0.999999) === `${ROOM_ADJECTIVES.at(-1)} ${ROOM_NOUNS.at(-1)}`,
+    'randomRoomName gives list names (and takes an rng)');
+check(![`${ROOM_ADJECTIVES[0].toLowerCase()} ${ROOM_NOUNS[0]}`, `${ROOM_ADJECTIVES[0]}  ${ROOM_NOUNS[0]}`, `${ROOMS[0]} Extra`, ROOM_ADJECTIVES[0],
+    'Skyhold', 'The Orb', '', null, 42, ['Jade', 'Peak']].some(isRoomName), 'isRoomName accepts only an exact list name');
 
 console.log(`\n${ok} name checks passed`);

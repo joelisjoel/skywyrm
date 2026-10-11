@@ -1,6 +1,6 @@
-// Safety checks for every user-writable string (player names, server
-// names). Shared by the browser (for instant feedback) and the game
-// server (the authority — its verdict is what everyone else sees).
+// Safety checks for player names, and the word lists server names are
+// generated from. Shared by the browser (for instant feedback) and the
+// game server (the authority — its verdict is what everyone else sees).
 // Strings are only ever rendered with textContent / fillText.
 //
 // Names are plain ASCII. Accents come off (José → Jose) and full-width or
@@ -164,4 +164,26 @@ export function checkName(raw, kind = 'player', extraReserved = []) {
 export function safePlayerName(raw, fallback = 'Dragon') {
     const r = checkName(raw, 'player');
     return r.ok ? r.value : fallback;
+}
+
+// Server names are generated, never typed, so nothing a player writes is
+// shown in every lobby: an adjective and a noun from these lists. No word
+// is or contains a built-in or reserved name, and every pair passes
+// checkName (see server/test/names.test.mjs).
+export const ROOM_ADJECTIVES = ['Jade', 'Ember', 'Misty', 'Golden', 'Lotus', 'Thunder', 'Silver', 'Azure', 'Bamboo', 'Willow',
+    'Plum', 'Peach', 'Moonlit', 'Starlit', 'Amber', 'Coral', 'Copper', 'Cloud', 'Snowy', 'Sunny', 'Phoenix', 'Crane', 'Tiger', 'Pine'];
+export const ROOM_NOUNS = ['Peak', 'Gate', 'Garden', 'Valley', 'Harbor', 'Bridge', 'Grove', 'Spire', 'Lantern', 'Isle', 'Cove',
+    'Falls', 'Pagoda', 'Temple', 'Meadow', 'River', 'Lake', 'Summit', 'Canyon', 'Terrace', 'Pavilion', 'Springs', 'Lagoon', 'Ridge'];
+const ADJ_SET = new Set(ROOM_ADJECTIVES), NOUN_SET = new Set(ROOM_NOUNS);
+
+export function randomRoomName(rng = Math.random) {
+    const pick = (list) => list[Math.floor(rng() * list.length)];
+    return `${pick(ROOM_ADJECTIVES)} ${pick(ROOM_NOUNS)}`;
+}
+
+// True only for an exact list name ("Jade Peak").
+export function isRoomName(s) {
+    if (typeof s !== 'string') return false;
+    const [adj, noun, ...rest] = s.split(' ');
+    return rest.length === 0 && ADJ_SET.has(adj) && NOUN_SET.has(noun);
 }

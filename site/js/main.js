@@ -10,7 +10,7 @@ import { Input } from './input.js?v=20';
 import { Hud } from './hud.js?v=19';
 import { Audio } from './audio.js?v=10';
 import { TunePanel } from './tune-panel.js?v=18';
-import { checkName } from './names.js?v=10';
+import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=18';
 import { serverUrl } from './net-config.js?v=8';
 import { Profile } from './profile.js?v=1';
@@ -378,21 +378,24 @@ async function refreshLobby() {
     } finally { lobbyBusy = false; }
 }
 
-$('create-open').onclick = () => { $('create-form').hidden = false; $('create-open').hidden = true; $('create-name').focus(); };
+// Server names come from a list (names.js) instead of being typed, so
+// nothing a player writes shows in everyone's lobby. 🎲 picks another.
+const rollRoomName = () => { $('create-name').textContent = randomRoomName(); };
+$('create-open').onclick = () => { rollRoomName(); $('create-form').hidden = false; $('create-open').hidden = true; };
+$('create-reroll').onclick = rollRoomName;
 $('create-cancel').onclick = () => { $('create-form').hidden = true; $('create-open').hidden = false; $('create-error').textContent = ''; };
 $('create-form').onsubmit = async (ev) => {
     ev.preventDefault();
-    const check = checkName($('create-name').value, 'room', ['Skyhold', 'Skyhold Nest', 'Skyhold (Beginners)', 'The Orb']);
-    if (!check.ok) { $('create-error').textContent = check.reason; return; }
     if (!takeName()) return;
     $('create-error').textContent = '';
     try {
         const arena = (document.querySelector('input[name=create-arena]:checked') || {}).value === 'orb' ? 'orb' : 'sky';
-        const room = await createRoom(SERVER_BASE, { name: check.value, arena, beginner: true });
-        $('create-form').hidden = true; $('create-open').hidden = false; $('create-name').value = '';
+        const room = await createRoom(SERVER_BASE, { name: $('create-name').textContent, arena, beginner: true });
+        $('create-form').hidden = true; $('create-open').hidden = false;
         joinRoom(room.id);
     } catch (e) {
         $('create-error').textContent = e.message;
+        rollRoomName();                     // an older server refuses a name already in use: offer another
     }
 };
 
