@@ -1,46 +1,43 @@
-# Wyrm multiplayer: architecture and Google Cloud setup
+# Skywyrm multiplayer: architecture and Google Cloud setup
 
-> Moved from `dendroslabs/dendroslabs.github.io`: the game is now in `site/` and the server in `server/` (formerly `docs/wyrm/` and `wyrm-server/`).
+> The game is in `site/` and the server in `server/` of `joelisjoel/skywyrm`.
+> Both moved here from `dendroslabs/dendroslabs.github.io` (`docs/wyrm/` and
+> `wyrm-server/`). How the netcode works in detail is in
+> [DESIGN-v3.md](DESIGN-v3.md); this page is the overview and the Google
+> Cloud setup.
 
-Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
+Sep 30, 2026, updated Oct 11, 2026. **Part 3 is the setup walkthrough**
+(done; kept so it can be repeated).
 
 ---
 
-## 1. What we have today
+## 1. Where it started
 
-```
- dendroslabs.com (GitHub Pages, static files from docs/)
- └── /wyrm/  index.html + js/ modules, three.js loaded from esm.sh
-       main.js ── game loop, menus, state machine (menu → play → death card)
-       sim.js ─── the whole game: flight, tails, collisions, orbs, power-ups, heat
-       bots.js ── bot pilots (same input struct as a human)
-       render.js, camera.js, hud.js, input.js, audio.js, tune-panel.js
- Everything runs in your browser. No backend, no accounts, nothing stored
- except your settings in localStorage.
-```
+Before multiplayer, the whole game ran in your browser: `sim.js` (flight,
+tails, collisions, orbs, power-ups, heat), bots, the renderer and the menus,
+with nothing stored except your settings in localStorage.
 
-- **Single-player only.** You play against bots that live in your own tab.
 - **`sim.js` has no DOM and no rendering.** It was built that way on purpose
   so the same file can run on a server. That's the key to the plan below.
-- **Existing Firebase:** the rest of the site uses Firebase project
-  `treehouse-hello` for visit counters and analytics. Wyrm doesn't use it,
-  and it should stay separate (§4).
+- **Existing Firebase:** the rest of dendroslabs.com uses Firebase project
+  `treehouse-hello` for visit counters and analytics. Skywyrm doesn't use
+  it, and it stays separate (§4).
 
-## 2. What we're building
+## 2. How it fits together
 
 ```
- Browser (dendroslabs.com/wyrm)                 Google Cloud (project "dendros-wyrm")
+ Browser (skywyrm.io, GitHub Pages)           Google Cloud (project "dendros-wyrm")
  ┌──────────────────────────────┐   HTTPS      ┌────────────────────────────────────┐
  │ Lobby: server list, create   │ ───────────► │ Cloud Run service "wyrm-server"     │
  │ Game: renders world, flies   │   WSS        │  Node.js, one process, all rooms    │
  │   your dragon, sends pose    │ ◄──────────► │  in memory: runs sim.js at 30 Hz,   │
- │   15×/s, draws what the      │  snapshots   │  bots, collisions, orbs, deaths     │
- │   server says                │   15×/s      │  GET/POST /api/rooms, /ws           │
+ │   30×/s, draws what the      │  snapshots   │  bots, collisions, orbs, deaths     │
+ │   server says                │   15×/s      │  /api/rooms, /api/stats, /ws        │
  └──────────────────────────────┘              └──────────────┬─────────────────────┘
-                                                              │ room list only
+                                                              │ room list + daily totals
                                                      ┌────────▼─────────┐
                                                      │ Firestore        │
-                                                     │ rooms/{id}       │
+                                                     │ rooms/, stats/   │
                                                      └──────────────────┘
 ```
 
@@ -48,9 +45,9 @@ Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
 
 | Journey | How |
 |---|---|
-| See the list of servers and how many players are on each | The start page calls `GET /api/rooms` every 10 s while it's on screen and shows name, world, beginner badge, and players (plus bots). |
-| There are always three servers | Three permanent rooms are built into the server: **Skyhold (Beginners)**, **Skyhold**, **The Orb**. They can never expire. |
-| Create a server and name it | A "Create server" form (name, world, beginner on/off) calls `POST /api/rooms`, then you join it. |
+| See the list of servers and how many players are on each | The start page calls `GET /api/rooms` every 10 s while it's on screen and shows name, world and players (plus bots). |
+| There are always servers to join | Two permanent rooms are built into the server: **Skyhold** and **The Orb**. They can never expire. Every room uses the gentler beginner bots. |
+| Create a server | The "Create server" form picks a name from a generated list (🎲 for another) and a world, calls `POST /api/rooms`, then you join it. Nobody types a server name. |
 | Servers live until 12 h after the last person leaves | When a room's last player leaves, it gets `expireAt = now + 12 h`, saved in Firestore. It's cleared if anyone joins. Expired rooms disappear from the list and are deleted. |
 
 ### Key choices
@@ -79,26 +76,29 @@ Sep 30, 2026 · Draft for Joel. **Part 3 is the walkthrough to follow.**
 
 ### Safety checks on everything users can type (your requirement)
 
-Two strings can be written by users: **player names** and **server
-names**. Both go through one shared `names.js` check, **run on the
-server** (the authority) and mirrored in the browser.
+Players type one string: their **player name**. It goes through the shared
+`site/js/names.js` check, **run on the server** (the authority) and mirrored
+in the browser. Server names come from a generated list (24 adjectives × 24
+nouns). The server keeps a list name it's sent if no live room has it, and
+gives anything else a random list name.
 
-- **Allowlist:** letters, numbers, spaces and `- _ . ' ! ? & #` only.
-  Everything else is dropped, including emoji, HTML/`<script>`, and
-  control characters.
-- **Removed:**
-  - invisible characters (zero-width, BOM)
-  - direction overrides (the Unicode tricks that flip text)
-  - stacked "zalgo" accents (more than 2 in a row)
-- **Unicode normalisation** (NFC), whitespace collapsed, trimmed.
-- **Length limits:** names up to 16 characters, server names up to 24.
+- **Plain ASCII only:** accents come off (José → Jose) and full-width or
+  fancy letters fold to plain ones (Unicode NFKD). After that only
+  letters, numbers, spaces and `- _ . ' ! ? & #` are kept. Everything
+  else is dropped, including other alphabets (so a Cyrillic "с" can't
+  pass for a Latin "c"), emoji, HTML/`<script>`, invisible characters,
+  direction overrides and control characters.
+- Whitespace is collapsed and trimmed.
+- **Length limit:** names up to 16 characters.
 - **Blocked:**
   - URLs, domains and e-mail addresses (spam)
   - reserved words that imitate staff ("admin", "moderator", "official", …)
-  - the three built-in room names
-  - a profanity list, including common leetspeak (`4`→a, `3`→e, `0`→o …)
-- **Server names:**
-  - must be unique, case-insensitive
+  - the built-in room names
+  - a profanity list, matched after folding look-alike letters, accents
+    and leetspeak (`4`→a, `3`→e, `0`→o …) to plain A–Z, with an allowlist
+    so innocent words aren't caught
+- **Created servers:**
+  - names are unique, case-insensitive
   - 3 per IP address per hour
   - at most 30 user rooms at once
 - **Rendering:** names are only ever drawn with `textContent` or canvas
@@ -107,7 +107,8 @@ server** (the authority) and mirrored in the browser.
   - Room IDs are random and generated by the server.
   - Messages are capped at 2 KB and rate-limited.
   - At most 16 connections per IP (the `MAX_CONN_PER_IP` variable changes it).
-  - Only `dendroslabs.com` (plus `localhost` for testing) may connect.
+  - Only `skywyrm.io` and `www.skywyrm.io` (plus `localhost` for testing)
+    may connect.
 
 ## 3. Walkthrough: set up Google Cloud
 
@@ -176,9 +177,11 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 2. Select **Cloud Build** (not Developer Connect) → **Set up with Cloud
    Build**.
    - Provider: **GitHub** → authenticate → install the Google Cloud Build
-     GitHub app **on `dendroslabs/dendroslabs.github.io` only**.
-   - Repository: `dendroslabs/dendroslabs.github.io` · Branch: `^main$`
+     GitHub app **on `joelisjoel/skywyrm` only**.
+   - Repository: `joelisjoel/skywyrm` · Branch: `^main$`
    - Build type: **Dockerfile**, source location: `/Dockerfile`
+   - Included files (Cloud Build → Triggers → the trigger → Edit):
+     `server/**`, `site/js/**`, `Dockerfile`
    - **Save.**
 3. Service name: `wyrm-server` · Region: **us-west1**.
 4. **Authentication:** Allow public access. It's a public game server;
@@ -190,10 +193,14 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 7. Expand **Container(s), Volumes, Networking, Security**:
    - **Container:** port `8080`, memory **512 MiB**, CPU **1**, request
      timeout **3600** seconds (the longest a game connection can stay
-     open; the game reconnects after that), max concurrent requests
+     open; the game then reconnects into the same dragon), max concurrent
+     requests
      **250**.
    - **Variables & Secrets → Add variable:**
-     - `ALLOWED_ORIGINS` = `https://dendroslabs.com,https://www.dendroslabs.com`
+     - `ALLOWED_ORIGINS` = `https://skywyrm.io,https://www.skywyrm.io`
+       (also the default when it's unset)
+     - Optional: `MAX_CONN_PER_IP` = connections allowed per IP
+       (default 16; a family on one Wi-Fi shares an IP)
      - Optional, any time later: `WYRM_TUNE` = JSON of game numbers,
        e.g. `{"popMax":20}`. This retunes the live server without a code
        change. Only known numeric settings are accepted.
@@ -215,10 +222,11 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 
 ### After setup: day-to-day
 
-- **Deploys are automatic.** Every merge to `main` rebuilds and redeploys
-  the server in about 3 minutes. Later we can limit rebuilds to
-  `server/**` and `site/js/**` under Cloud Build → Triggers →
-  Included files.
+- **Deploys are automatic.** A merge to `main` that touches `server/`,
+  `site/js/` or `Dockerfile` rebuilds and redeploys the server in about
+  3 minutes. GitHub Pages publishes `site/` separately, so the two can be a
+  few minutes apart; the wire format stays backward compatible for one
+  release to cover that.
 - **Logs:** Cloud Run → `wyrm-server` → **Logs**.
 - **Roll back:** Cloud Run → `wyrm-server` → **Revisions** → pick an older
   revision → **Manage traffic** → send 100% to it. The site itself rolls
@@ -252,5 +260,4 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 - Binary protocol, to use less bandwidth.
 - Full server authority with client prediction.
 - Multiple regions.
-- Accounts and persistent leaderboards.
-- Reconnecting into the same dragon after the 60-minute connection limit.
+- Persistent leaderboards (without accounts: Joel's kids play this).

@@ -1,7 +1,7 @@
-// Wyrm multiplayer server: HTTP room list/creation + WebSocket rooms.
+// Skywyrm multiplayer server: HTTP room list/creation + WebSocket rooms.
 //   GET  /healthz            → "ok"
 //   GET  /api/rooms          → { rooms: [...] }
-//   POST /api/rooms          → create { name, arena, beginner } → { room }
+//   POST /api/rooms          → create { name, arena } → { room } (name from the list in names.js)
 //   POST /api/run            → 204: one solo life's anonymous numbers (stats.js)
 //   GET  /api/stats          → { days: [...] }: public daily play totals, newest first
 //   WS   /ws?room=<id>       → play (first message must be { t: 'hello', name })

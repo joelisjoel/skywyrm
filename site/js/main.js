@@ -1,10 +1,10 @@
-// Wyrm prototype — game loop and flow: menu (attract mode) → play →
-// death-cam → run card → play again (spec §5, §12). Single-player vs
-// bots, PC-first, to judge flight feel and 3D encounter density.
+// Skywyrm game loop and flow: menu (attract mode, server list) → play,
+// solo vs bots or online (net.js) → death-cam → run card → play again.
+// Runs on PCs and phones.
 import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=23';
 import { World, Dragon, hazardDist } from './sim.js?v=23';
 import { managePopulation, targetBots } from './bots.js?v=23';
-import { Renderer } from './render.js?v=35';
+import { Renderer } from './render.js?v=36';
 import { ChaseCam } from './camera.js?v=23';
 import { Input } from './input.js?v=26';
 import { Hud } from './hud.js?v=24';
@@ -12,7 +12,7 @@ import { Audio } from './audio.js?v=14';
 import { TunePanel } from './tune-panel.js?v=24';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=26';
-import { serverUrl } from './net-config.js?v=8';
+import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
 

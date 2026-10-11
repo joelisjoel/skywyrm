@@ -1,5 +1,5 @@
 // Where the multiplayer server lives: Cloud Run service "wyrm-server" in
-// project dendros-wyrm (see 3d-snake/MULTIPLAYER.md). Set to '' to hide the
+// project dendros-wyrm (see notes/MULTIPLAYER.md). Set to '' to hide the
 // server list and offer solo play only.
 export const SERVER_URL = 'https://wyrm-server-420365023329.us-west1.run.app';
 
