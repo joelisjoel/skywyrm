@@ -45,8 +45,8 @@ const types = (ws) => ws.frames.map((m) => m.t);
     for (let i = 0; i < 30; i++) room.tick();
     room.join(c, 'Cy');
     for (let i = 0; i < 30; i++) room.tick();
-    room.leave(c);
-    for (let i = 0; i < 30; i++) room.tick();
+    room.leave(c, 'quit');                                // left: its 3 s in the sky, then dx
+    for (let i = 0; i < 100; i++) room.tick();
     const cId = c.dragon.id;
     check(snaps(b).length === 0 && b.ws.frames.some((m) => m.t === 'dn' && m.d.id === cId) && b.ws.frames.some((m) => m.t === 'dx' && m.id === cId),
         'in a room: a stalled client skips snapshots but still hears a dragon arrive (dn) and leave (dx)');
@@ -54,7 +54,7 @@ const types = (ws) => ws.frames.map((m) => m.t);
     b.ws.bufferedAmount = 0;                              // and catches up
     room.tick(); room.tick();
     const want = missed.flatMap((s) => s.o).concat(snaps(a).at(-1).o);
-    check(bBefore === aBefore && missed.length === 45 && want.length > 0 && JSON.stringify(snaps(b)[0].o) === JSON.stringify(want),
+    check(bBefore === aBefore && missed.length === 80 && want.length > 0 && JSON.stringify(snaps(b)[0].o) === JSON.stringify(want),
         `the next snapshot carries the ${want.length} food changes of the ${missed.length} it skipped`);
     room.tick(); room.tick();
     check(JSON.stringify(snaps(b)[1].o) === JSON.stringify(snaps(a).at(-1).o), 'then food changes are back to one snapshot\'s worth');

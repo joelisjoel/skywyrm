@@ -30,6 +30,7 @@ const TICK = 1 / 30;
 const SNAP_EVERY = 2;            // 15 snapshots/s
 const PARK_DELAY = 3;            // s of flight (still vulnerable) before folded wings take effect
 const PARK_MIN = 2;              // s parked before you can fly back in
+const HOLD_SECS = 30;            // s a dropped player's folded dragon waits for them to reconnect
 const MAX_UNSENT_ORBS = 20000;   // food changes kept for a client skipping snapshots
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -43,6 +44,11 @@ function freeRoomName(taken) {
     for (let k = 0; k < 50; k++) { const n = randomRoomName(); if (!taken.has(n)) return n; }
     const all = ROOM_ADJECTIVES.flatMap((a) => ROOM_NOUNS.map((n) => `${a} ${n}`)).filter((n) => !taken.has(n));
     return all[Math.floor(Math.random() * all.length)];
+}
+
+// Resume tokens: random, in memory only, new on every welcome.
+function newToken() {
+    return randomBytes(16).toString('base64url');  // 22 chars, 128 bits
 }
 
 // Flags packed into one number per dragon in snapshots (older clients
@@ -92,14 +98,17 @@ export class Room {
     constructor(meta, registry) {
         this.meta = meta;            // { id, name, arena, beginner, permanent, createdAt, expireAt }
         this.registry = registry;
-        this.clients = new Set();    // Client objects (see server.js)
+        this.clients = new Set();    // Client objects (see client.js)
+        this.held = new Map();       // resume token → seat of a player whose socket closed (see leave)
         this.world = null;
         this.activeSince = 0;
         this.emptySince = Date.now();
         this.tickCount = 0;
     }
 
-    get humans() { return this.clients.size; }
+    // Held seats count: the room keeps running, and keeps their place, for
+    // a player who is reconnecting.
+    get humans() { return this.clients.size + this.held.size; }
 
     summary() {
         const bots = this.world ? this.world.dragons.filter((d) => d.isBot && d.alive).length : 0;
@@ -130,60 +139,169 @@ export class Room {
         return Math.max(0, Math.min(ramp, T.popMax - this.humans));
     }
 
+    // A hello. `extras.resume` is the token from an earlier welcome: if it
+    // matches a seat held here (see leave), the player gets that dragon,
+    // and the life it's on, back instead of a fresh one.
     join(client, rawName, extras = {}) {
-        if (this.humans >= LIMITS.humansPerRoom) return { error: 'This server is full' };
+        const seat = this.seatFor(extras.resume);
+        if (!seat && this.humans >= LIMITS.humansPerRoom) return { error: 'This server is full' };
         const wasEmpty = this.humans === 0;
         this.ensureWorld();
         if (wasEmpty) {
             this.activeSince = this.world.ageStart = this.world.time;
             this.registry.occupied(this);
         }
-        const d = new Dragon(safePlayerName(rawName), false);
-        d.human = true; d.remote = true;
-        // Profile extras from the browser, re-checked here: known perk ids
-        // (at most two; the room's `perks` rule decides if they apply) and a
-        // known colour scheme.
-        d.perks = cleanPerks(extras.perks);
-        const skin = skinById(extras.skin);
-        if (skin) { d.color = skin.c1; d.color2 = skin.c2; }
+        const w = this.world;
+        let d = seat ? this.takeSeat(seat, client) : null;
+        const resumed = !!d;
+        if (!d) {
+            d = new Dragon(safePlayerName(rawName), false);
+            d.human = true; d.remote = true;
+            // Profile extras from the browser, re-checked here: known perk ids
+            // (at most two; the room's `perks` rule decides if they apply) and a
+            // known colour scheme.
+            d.perks = cleanPerks(extras.perks);
+            const skin = skinById(extras.skin);
+            if (skin) { d.color = skin.c1; d.color2 = skin.c2; }
+            w.spawn(d, T.spawnMass);
+        }
+        // What this browser understands (every hello, a resume's too): a
+        // resumed dragon keeps its element and charges.
         client.el = cleanCaps(extras.caps).includes('el');
         d.fireOnly = !client.el;
-        this.world.spawn(d, T.spawnMass);
         client.dragon = d;
         client.room = this;
+        client.token = newToken();
         this.clients.add(client);
-        this.startLife(client);
+        if (!resumed) this.startLife(client);                  // a resumed life carries on (takeSeat)
         this.registry.countHumans();
-        const w = this.world;
         const orbs = [];
         for (let i = 0; i < w.oHigh; i++) {
             if (w.oalive[i]) orbs.push(i, r2(w.ox[i]), r2(w.oy[i]), r2(w.oz[i]), r2(w.oval[i]), w.ocol[i], Math.round(w.ottl[i]));
         }
         client.send({
-            t: 'welcome', you: d.id,
+            t: 'welcome', you: d.id, resume: client.token, ...(resumed ? { resumed: 1 } : {}), ...(client.parked ? { parked: 1 } : {}),
             room: { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner },
             tune: { ...T }, rules: w.rules, time: r2(w.time),
             dragons: w.dragons.filter((x) => x.alive || x.human).map(dragonMeta),
             orbs, pu: this.powerups(!client.el), pl: this.pearls(),
         });
-        this.broadcast({ t: 'dn', d: dragonMeta(d) }, client);
+        if (!resumed || seat.back) this.broadcast({ t: 'dn', d: dragonMeta(d) }, client);
+        if (client.parkAt) client.send({ t: 'e', ev: [{ k: 'parking', in: r2(client.parkAt - w.time) }] });   // still folding its wings
         return { ok: true };
     }
 
-    // cause: 'quit' (the browser closed the socket) or 'disconnect'.
-    leave(client, cause = 'quit') {
+    // A socket closed. cause: 'quit' (the browser closed it) or
+    // 'disconnect', for the play totals. A dragon in the sky stays there,
+    // still hittable, for the fold-wings countdown (PARK_DELAY s):
+    // disconnecting never dodges a kill. Then:
+    //  - Not coming back (left on purpose or sent away; hold false): the
+    //    life is counted now, and the dragon drops its loot and goes, as a
+    //    leave always did.
+    //  - hold (a dropped connection: a network blip, Cloud Run's hourly cut,
+    //    a phone asleep): the dragon folds its wings and its seat, with the
+    //    life it's on, is held under the player's resume token for HOLD_SECS
+    //    (see holding, takeSeat). That life is counted only if the dragon
+    //    dies meanwhile or the seat is forgotten.
+    leave(client, cause = 'quit', { hold = false } = {}) {
         if (!this.clients.delete(client)) return;
-        this.endLife(client, cause);
-        const d = client.dragon;
-        if (d && this.world) {
-            if (d.alive) this.world.dropLoot(d, T.lootShare);
-            this.world.removeDragon(d);
-            this.broadcast({ t: 'dx', id: d.id });
+        if (!hold) this.endLife(client, cause);
+        const d = client.dragon, w = this.world;
+        if (d && w) {
+            // A held seat looks like a client to endLife: { dragon, life, parked }.
+            const seat = { dragon: d, life: client.life, cause, going: !hold, parked: null, ip: client.ip };
+            if (d.alive && !client.parked) {
+                d.input.boost = d.input.brake = d.input.fire = false; d.net = null;
+                this.held.set(client.token, { ...seat, grace: true, parkAt: client.parkAt, until: client.parkAt || w.time + PARK_DELAY });
+            } else if (client.parked && hold) {
+                this.held.set(client.token, { ...seat, grace: false, byChoice: true, parked: client.parked, until: w.time + HOLD_SECS });
+            } else if (!client.parked) {                         // dead: nothing to keep
+                w.removeDragon(d);
+                this.broadcast({ t: 'dx', id: d.id });
+            }
         }
-        if (this.humans === 0) {
-            this.emptySince = Date.now();
-            this.registry.emptied(this);
+        client.life = null;
+        this.checkEmpty();
+    }
+
+    checkEmpty() {
+        if (this.humans > 0) return;
+        this.emptySince = Date.now();
+        this.registry.emptied(this);
+    }
+
+    // The seat a resume token names: one held after a drop, or one whose old
+    // socket is still open here (the browser noticed the drop first). Tokens
+    // are per room, single-use and never logged.
+    seatFor(token) {
+        if (typeof token !== 'string' || !token) return null;
+        const h = this.held.get(token);
+        if (h) return h.going ? null : { hold: h, token };
+        for (const c of this.clients) if (c.token === token) return { client: c };
+        return null;
+    }
+
+    // Moves a seat (and the life it's on) to this new connection. Returns
+    // the dragon to carry on with, or null if there's nothing left to resume
+    // (it died, and that life was counted then).
+    takeSeat(seat, client) {
+        const w = this.world;
+        const gone = (d) => { client.parkAt = 0; client.parked = null; client.life = null; w.removeDragon(d); this.broadcast({ t: 'dx', id: d.id }); return null; };
+        if (seat.client) {
+            const old = seat.client;
+            this.clients.delete(old);
+            const d = old.dragon;
+            client.parkAt = old.parkAt; client.parked = old.parked; client.life = old.life;
+            old.dragon = null; old.token = null; old.parkAt = 0; old.parked = null; old.life = null;
+            old.close(4011, 'replaced');
+            return d.alive || client.parked ? d : gone(d);
         }
+        const h = seat.hold, d = h.dragon;
+        this.held.delete(seat.token);
+        client.life = h.life;
+        if (h.grace) {                                           // still in the sky
+            client.parkAt = h.parkAt;
+            return d.alive ? d : gone(d);
+        }
+        if (h.byChoice) {                                        // folded its own wings: still folded
+            client.parked = { mass: h.parked.mass, kills: h.parked.kills, since: w.time - PARK_MIN, resume: false };
+            return d;
+        }
+        w.spawn(d, h.parked.mass);                               // back like unpark: a safe spot, spawn protection
+        d.kills = h.parked.kills;
+        d.fire = h.parked.fire; d.element = h.parked.element;     // with the crystals it held
+        d.net = null; d.moveBudget = 0;
+        if (client.life) client.life.t0 = w.time;                // flying again; time folded isn't time played
+        seat.back = true;
+        return d;
+    }
+
+    // Held seats, each tick (after the deaths are counted): the countdown,
+    // then fold away (or go, for a player who isn't coming back), then
+    // forget after HOLD_SECS, which ends that life.
+    holding(w, pub, gone) {
+        let freed = false;
+        for (const [token, h] of this.held) {
+            const d = h.dragon;
+            if (h.grace && !d.alive) {                           // hit during the countdown: loot fell, life counted
+                this.held.delete(token); freed = true;
+                w.removeDragon(d);
+                gone.push(d.id);
+            } else if (h.grace && w.time >= h.until) {
+                w.removeDragon(d);
+                gone.push(d.id);
+                if (h.going) { w.dropLoot(d, T.lootShare); this.held.delete(token); freed = true; continue; }
+                if (h.life) { h.life.secs += w.time - h.life.t0; h.life.peak = Math.max(h.life.peak, d.peakMass); }
+                h.grace = false; h.byChoice = h.parkAt > 0;
+                h.parked = { mass: d.mass, kills: d.kills, fire: d.fire, element: d.element }; h.until = w.time + HOLD_SECS;
+                d.alive = false;
+                pub.push({ k: 'land', id: d.id });
+            } else if (!h.grace && w.time >= h.until) {
+                this.endLife(h, h.cause);                        // not back in time: that life is over
+                this.held.delete(token); freed = true;
+            }
+        }
+        if (freed) this.checkEmpty();
     }
 
     // Validate and store a pose report from this client's browser.
@@ -207,8 +325,9 @@ export class Room {
     }
 
     // Anonymous play totals (stats.js): each human life is counted once, as
-    // it ends: a death, or leaving while flying or parked. Time parked
-    // doesn't count as time played, and the peak survives a park.
+    // it ends: a death, leaving while flying or parked, or a dropped
+    // player's held seat being forgotten (a reconnect carries the life on).
+    // Time parked doesn't count as time played, and the peak survives a park.
     startLife(c) {
         c.life = { t0: this.world.time, secs: 0, peak: c.dragon.mass };
     }
@@ -222,8 +341,10 @@ export class Room {
             secs: Math.round(secs), kills: d.kills, cause });
     }
 
+    // Whose dragon this is: a client's, or a seat held for one (see leave).
     clientOf(d) {
         for (const c of this.clients) if (c.dragon === d) return c;
+        for (const h of this.held.values()) if (h.dragon === d) return h;
         return null;
     }
 
@@ -288,7 +409,7 @@ export class Room {
 
         // Events: public ones to everyone, personal ones to their owner.
         const pub = [];
-        const landed = [];
+        const landed = [], gone = [];
         this.parking(w, pub, landed);
         const mine = new Map();
         const to = (d, e) => { if (!d || !d.human) return; if (!mine.has(d)) mine.set(d, []); mine.get(d).push(e); };
@@ -314,9 +435,11 @@ export class Room {
                 case 'thrustEmpty': to(e.d, { k: 'empty' }); break;
             }
         }
+        this.holding(w, pub, gone);
         if (pub.length) this.broadcast({ t: 'e', ev: pub });
         for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev: c.el ? ev : ev.map(forOld) }); }
         for (const c of landed) { c.send({ t: 'e', ev: [{ k: 'parked' }] }); this.broadcast({ t: 'dx', id: c.dragon.id }); }
+        for (const id of gone) this.broadcast({ t: 'dx', id });
 
         // Then new and removed dragons (bots spawning / dying) — after the
         // events, so a death can still name its victim.
@@ -359,12 +482,13 @@ export class Room {
     // starts clean. Other rooms are untouched.
     reset() {
         const clients = [...this.clients];
-        for (const c of clients) { try { this.endLife(c, 'disconnect'); } catch { /* the world may be what broke */ } }
+        for (const c of [...clients, ...this.held.values()]) { try { this.endLife(c, 'disconnect'); } catch { /* the world may be what broke */ } }
         this.clients.clear();
+        this.held.clear();
         this.world = null;
         this.emptySince = Date.now();
         for (const c of clients) {
-            c.dragon = null; c.room = null; c.parkAt = 0; c.parked = null;
+            c.dragon = null; c.room = null; c.token = null; c.parkAt = 0; c.parked = null;
             c.close(1011, 'room error');
         }
         this.registry.emptied(this);
@@ -456,9 +580,19 @@ export class Registry {
         this.stats.humans(n);
     }
 
-    // Shutting down: everyone in a room is about to be cut off.
+    // Seats held for players from this IP, in every room. They count toward
+    // its connection limit (server.js), so dropping sockets over and over
+    // can't pile up held seats and fill a room.
+    heldBy(ip) {
+        let n = 0;
+        for (const r of this.rooms.values()) for (const h of r.held.values()) if (h.ip === ip) n++;
+        return n;
+    }
+
+    // Shutting down: everyone in a room, and every held seat, is about to be
+    // cut off.
     endLives(cause) {
-        for (const r of this.rooms.values()) for (const c of r.clients) r.endLife(c, cause);
+        for (const r of this.rooms.values()) for (const c of [...r.clients, ...r.held.values()]) r.endLife(c, cause);
     }
 
     // Runs fn for one room. If it throws, the error is logged and only that

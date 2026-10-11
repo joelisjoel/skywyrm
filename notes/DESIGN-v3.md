@@ -393,10 +393,10 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 | Direction | Message | Contents |
 |---|---|---|
-| C→S | `hello` | `{name, perks[], skin, caps[]}`. Must be the first message, within 5 s. `caps` (optional, up to 8 short strings) says what the browser understands: `el` = breath elements |
+| C→S | `hello` | `{name, perks[], skin, caps[], resume?}`. Must be the first message, within 5 s. `caps` (optional, up to 8 short strings) says what the browser understands: `el` = breath elements. `resume`: the token from the last `welcome`, when reconnecting (§4.4) |
 | C→S | `p` | `{x,y,z,qx,qy,qz,qw,s,bk,b,k,f}`: pose, speed, bank, boost, brake, fire |
 | C→S | `spawn`, `park`, `unpark`, `ping{c}` | |
-| S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu, pl}` |
+| S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu, pl}`. Also `resume` (a new token every time), `resumed: 1` when a `hello`'s token got its dragon back, `parked: 1` when that dragon is still folded (not in `dragons`) |
 | S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `pl`: pearls, `[id,x,y,z]` each (optional; new). `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), `el` (their element, when not fire), `ch` / `st` (s left chilled / stunned, when > 0), shield, magnet, kills and correction. `ac` (when any): acid clouds `[id,x,y,z,radius,s left,lifetime,spitter]` |
 | S→C | `dn` / `dx` | A dragon appears (meta plus a tail path at 1 cm precision, every other point, ≤600 points) / leaves |
 | S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `pearl` (`{id, g, x, y, z}`; new), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
@@ -423,6 +423,18 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | 4003 | room full |
 | 4008 | rate limit or binary frame |
 | 4009 | too slow: more than 4 MB queued for the socket (§4.6) |
+| 4010 | server restarting (SIGTERM, a deploy): reconnect now |
+| 4011 | replaced: the same resume token connected again (§4.4) |
+
+- **Codes the browser sends:** 1000 when the player leaves a room; 4001 when
+  it gives up on a socket that went silent and means to come back. Older pages
+  close with no code, which the server sees as 1005.
+- **Reconnect** (`net.js`): any close other than 4000, 4002, 4003 or 4008
+  retries after 0.5, 1, 2, 4 and 8 s, then every 8 s, for 30 s in all. Each
+  `hello` carries the resume token. A socket with nothing heard for 6 s is
+  dropped. A retry that can't connect checks `/api/rooms` and stops if the
+  room has gone. Against a server without tokens it simply rejoins with a
+  fresh dragon.
 
 - **Compatibility rule.**
   - The site (GitHub Pages) and the server (Cloud Run) deploy separately, and
@@ -445,6 +457,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     only) and the `pearl` event (their event switch has no default). Pearls
     are never put in `pu`. A new client on an old server gets no `pl` and
     shows no pearls.
+  - Old pages on this server: they never send `resume`, so they always get a
+    fresh dragon, and they ignore the new `welcome` fields and close codes.
 
 ### 4.4 Rooms (`server/rooms.js`)
 - **Defaults:** `the-orb` ("The Orb", orb) and `skyhold` ("Skyhold", sky).
@@ -482,7 +496,31 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     were generated) are dropped and deleted from the store.
 - **Join:** caps the room's humans, then runs `safePlayerName`, `cleanPerks`
   and `skinById`. It spawns at mass 10, sends `welcome` and broadcasts `dn`.
-- **Leave:** drops 80% of the dragon as loot and broadcasts `dx`.
+  A `hello` whose `resume` token matches a held seat gets that dragon back
+  instead (below).
+- **Leave** (a socket closes): a dragon in the sky stays there for the 3 s
+  park countdown, still hittable, so disconnecting never dodges a kill. A
+  dragon killed meanwhile drops its loot once, as any death does. Then:
+  - **Left on purpose** (close 1000 or 1005) or sent away (4002, 4008): it
+    drops 80% as loot and `dx` goes out.
+  - **Dropped** (any other close): it folds away like park (`land`, `dx`),
+    keeping its mass and kills, and its seat is held for 30 s under the
+    player's resume token.
+  - A dropped player's parked dragon is held as it is. A dead one is just
+    removed.
+- **Resume tokens** (`Room.held`): 16 random bytes, base64url. In memory
+  only, never logged, one room only, single use (every `welcome` brings a
+  new one), forgotten 30 s after the dragon folds. With a held token:
+  - within the 3 s the dragon simply carries on, and others never see it go;
+  - after that it flies back in like unpark (a safe spot, spawn protection,
+    `dn`) but keeping its crystal element and dragonfire charges, or stays
+    folded if the player had folded it;
+  - if the old socket is still open (the browser noticed the drop first), the
+    new one takes the dragon over and the old one is closed with 4011.
+  - Held seats count as humans: the room keeps ticking and keeps their place,
+    and bots fill around them.
+  - Each `hello`, a resume's too, carries `caps`, so what the new connection
+    is sent (and `d.fireOnly`) follows the browser now playing.
 - **Respawn:** refused while alive, while parked, or within 1 s of a death. The
   server doesn't enforce lives; the client counts them.
 - **Park** (online pause, `rooms.js:188-226`):
@@ -542,7 +580,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 - **Limits:**
   - 16 sockets per IP (429 beyond that), so a family or a classroom on one
     network can play together. `MAX_CONN_PER_IP` overrides it; anything but
-    a positive whole number falls back to 16.
+    a positive whole number falls back to 16. Seats held for that IP's
+    dropped players (§4.4) count toward it (`Registry.heldBy`).
   - 20 run notes per IP per hour (`POST /api/run`), counted in memory and
     swept every minute. The body is at most 512 bytes.
   - 2 KB maximum frame.
@@ -585,6 +624,11 @@ The improvement loop's numbers, kept without identifying anyone
   or parked (close code 1000, 1001 or 1005 is `quit`; anything else is
   `disconnect`), or on SIGTERM (`disconnect`). Time parked is left out, and
   the peak length survives a park.
+  - A dropped connection's seat (§4.4) is not an ended life: the life moves
+    with the seat and carries on if the player reconnects. It is counted when
+    the dragon dies in its 3 s countdown, when the seat is forgotten after
+    30 s (with the leave's cause), or on SIGTERM. A player who left on purpose
+    or was sent away is counted as they leave.
 - **Per day and source** (`solo`, `room`): `runs`, `secs`, `kills`, `maxLen`,
   a peak-length histogram (`0-15`, `15-25`, `25-50`, `50-100`, `100-200`,
   `200+` m; a new dragon is 12 m), counts by `cause` and by `arena`. Plus, per
@@ -633,6 +677,22 @@ The improvement loop's numbers, kept without identifying anyone
   - Settings → Player → **Last problem** shows it, with Copy and Clear buttons.
 - **WebGL context loss:** the game calls `preventDefault`. On restore it forces
   Low quality.
+- **Reconnect** (`net.js`, `main.js` `onDrop`/`onRejoin`):
+  - When an online connection drops with a dragon to keep (flying or
+    folded), the picture holds still under a "Reconnecting…" pill (on the
+    pause panel, if paused) and the client retries (§4.3).
+  - If you were dead, it waits and reconnects when your next life starts.
+  - Back in, the world (and the `ServerClock` timeline) is rebuilt from the
+    new `welcome`. A resumed dragon keeps its object and this life's stats.
+    A hidden tab has already folded its wings, so a drop while hidden comes
+    back folded. Otherwise the lost life is banked
+    and a toast says "Server updated — new life" (after a 4010) or
+    "Reconnected — new life".
+  - The client re-sends what it is doing: `unpark` when flying, `park` when
+    paused.
+  - After 30 s it gives up as before: the menu, with "Disconnected from the
+    server".
+  - Leaving a room (or giving up) banks the life you had there (`endLife`).
 - **Cache stamps:**
   - Every module import and stylesheet link carries `?v=N`.
   - When a file changes, its stamp must be bumped in *every* file that references it.
@@ -931,7 +991,8 @@ The improvement loop's numbers, kept without identifying anyone
 - Instances: min 0 and **max 1**. Every room lives in one process, so raising
   this would split rooms between instances.
 - 512 MiB of memory and 1 CPU.
-- Timeout 3600 s, which is what causes the 60-minute disconnect.
+- Timeout 3600 s, which ends every socket after 60 minutes. The game
+  reconnects through it (§4.4).
 - Concurrency 250.
 - Service account `wyrm-server`, with the Cloud Datastore User role.
 - URL: `https://wyrm-server-420365023329.us-west1.run.app`, hard-coded in
@@ -955,8 +1016,10 @@ The improvement loop's numbers, kept without identifying anyone
 - Kill switch: set max instances to 0.
 - Budget alert: $20 a month.
 - On SIGTERM the server closes, counts every room life it is about to cut off
-  as `disconnect`, saves the day's totals and exits 500 ms later (at most 5 s
-  after the signal; Cloud Run allows 10). Players aren't drained or warned.
+  (held seats included) as `disconnect`, closes every socket with 4010 so
+  browsers reconnect to the new revision at once, saves the day's totals and
+  exits 500 ms later (at most 5 s after the signal; Cloud Run allows 10).
+  Dragons don't survive a restart, so players start a new life.
 
 **History.** The game lived in `dendroslabs/dendroslabs.github.io` until Oct 11, 2026.
 It moved here with its history (rewritten with `git filter-repo`). The old copy
@@ -973,8 +1036,10 @@ at dendroslabs.com/wyrm has been removed.
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (37 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
 | `server/test/crash.test.mjs` (15 checks) | The crash guard: a `Registry` with fake clients, then the real server with bugs planted by `poison-room.mjs` (`node --import`). A throwing tick or sweep resets only its room (1011) and other rooms keep snapshotting; a throwing message closes only its sender (1011) while the rest of its room plays on; a reset counts the lives it cut off; a repeated error is logged once, an unhandled rejection is not fatal |
-| `server/test/limits.test.mjs` (4 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot |
+| `server/test/limits.test.mjs` (5 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot, seats held for dropped players count toward the limit |
 | `server/test/backpressure.test.mjs` (9 checks) | Fake sockets with a set queue size: over 512 KB only snapshots are skipped and `dn`/`dx`/`e` still arrive, the next snapshot carries the skipped food changes, over 4 MB the socket is closed (4009) |
+| `server/test/reconnect.test.mjs` (37 checks) | Resume tokens, ticked by hand in a `Registry`: back within 3 s carries on unseen, after that flies back in with its length and kills (`dn`), keeping its crystals, still folded if it was parked, takeover of a still-open socket (4011), used, forged, expired and other-room tokens get a fresh dragon, a kill during the 3 s drops loot once, leaving on purpose drops loot after 3 s. Play totals: a held or resumed life isn't counted, a forgotten seat, a death in the countdown and a shutdown each count it once. Then the real server: a reconnect over real sockets, tokens never logged, SIGTERM closes with 4010 |
+| `server/test/net.test.mjs` (10 checks) | The browser's `NetGame` run in Node against the real server: a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
@@ -1031,12 +1096,12 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | # | Risk | Notes |
 |---|---|---|
 | 1 | Room-creation denial of service | 3 creations per hour per IP and a 12 h lifetime for unjoined rooms. One address can fill all 30 slots in about 10 h. The per-IP counts reset on restart |
-| 2 | Shared networks | 16 sockets per IP (it was 6) still blocks the 17th player on one school or home network; `MAX_CONN_PER_IP` on Cloud Run raises it. The trade-off: one address can hold more player slots (16 of a room's 30) |
+| 2 | Shared networks | 16 sockets per IP (it was 6) still blocks the 17th player on one school or home network; `MAX_CONN_PER_IP` on Cloud Run raises it. The trade-off: one address can hold more player slots (16 of a room's 30). Seats held for a reconnect count toward the 16, so dropping sockets over and over can't fill a room |
 | 3 | Scripted clients | `Origin` can be forged and there is no auth. Pose is client-reported within the speed budget. Perks aren't checked against rank. Lives are client-only. Accepted for a kids' game |
 | 4 | Slow connections | Only snapshots are skipped under backpressure now, so `dn`, `dx` and `e` always arrive (§4.6). A stalled client's dragon hangs where its last pose put it, still hittable, until it catches up, its socket closes, or it falls 4 MB behind (4009) |
 | 5 | Client IP | Uses the last `X-Forwarded-For` entry. That's correct behind Cloud Run directly, but a load balancer in front would put every player behind one IP |
 | 6 | Capacity | One thread runs every room, with no tick-overrun metric. A room waking runs a synchronous 300-tick warm-up that stalls the other rooms |
-| 7 | Hourly disconnect | The 3600 s timeout ends every socket, with no reconnect |
+| 7 | Hourly disconnect | The 3600 s timeout still ends every socket, but the browser reconnects and the server holds the dragon for it (§4.4). Dragons live in memory only, so a server restart (a deploy) still costs everyone their current life. A dropped player who never comes back holds a seat for up to 33 s |
 | 8 | Third-party code | Fixed: three.js and the fonts are self-hosted and a CSP (meta tag) allows only this site and the game server. GitHub Pages can't send headers, so `frame-ancestors` isn't set |
 | 9 | Unpinned builds | Lockfiles are committed and the image installs with `npm ci`; GitHub Actions are pinned by SHA. The Docker base image (`node:22-slim`) is still a tag, so it picks up Node security patches |
 | 10 | Fake run notes | Anyone can post plausible solo notes (20 an hour per IP, more from many IPs) and skew the solo totals. Room totals are counted by the server and can't be faked this way. Read solo numbers as a trend, not exact counts |
@@ -1069,7 +1134,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   - "three permanent rooms" (there are two)
   - a beginner on/off switch in the create form (it was removed)
   - pose 15×/s (it is 30×/s)
-  - "the game reconnects" (it doesn't)
   - setup steps for `dendroslabs.com` and the old repo
 - **`notes/RULES.md`:** paths under `docs/wyrm/` and `wyrm-server/`, and a
   "Beginner" menu toggle.

@@ -85,6 +85,16 @@ function pointAt(S, t, out) {
     out.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
 }
 
+// Reconnecting. Closes the server meant (no hello, bad messages, full, rate
+// limit) end the session; any other drop retries with backoff, sending the
+// resume token from the last welcome so the server can hand the same dragon
+// back (server/rooms.js leave).
+const FINAL_CLOSES = new Set([4000, 4002, 4003, 4008]);
+const RETRY_DELAYS = [0.5, 1, 2, 4, 8];      // s before each attempt (then 8 s apart)
+const RETRY_FOR = 30;                         // s of trying before giving up
+const SILENT_MS = 6000;                       // nothing heard for this long: the socket is dead
+const RESTARTING = 4010;                      // the server is restarting (a deploy)
+
 // Rooms list / create (HTTP).
 export async function fetchRooms(base) {
     const r = await fetch(base + '/api/rooms', { cache: 'no-store' });
@@ -108,16 +118,101 @@ export class NetGame {
         this.sendAcc = 0; this.pingAcc = 0;
         this.gone = new Map();          // recently removed dragons (to name them in events)
         this.parked = false;            // wings folded (Esc): out of the sky, length kept
-        this.clock = new ServerClock();
-        this.ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId));
+        this.base = base; this.roomId = roomId;
+        this.url = base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId);
         // caps: what this browser understands beyond the original protocol ('el': breath elements).
-        this.ws.onopen = () => this.send({ t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '', caps: ['el'] });
-        this.ws.onmessage = (e) => { try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); } };
-        this.ws.onclose = (e) => { if (!this.closing) hooks.onClose(this.fullError || (this.world ? 'Disconnected from the server' : 'Could not reach the server')); };
+        this.hello = { t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '', caps: ['el'] };
+        this.token = null;              // resume token from the last welcome (kept in memory only)
+        this.retry = null;              // { since, n } while reconnecting
+        this.dormant = false;           // dropped while dead: reconnect when you fly again (wake)
+        this.restarted = false;         // the drop was a server restart (4010)
+        this.clock = new ServerClock();
+        this.connect();
+    }
+
+    connect() {
+        const ws = this.ws = new WebSocket(this.url);
+        let opened = false, done = false;
+        const lost = (code) => { if (!done && ws === this.ws) { done = true; this.dropped(code, opened); } };
+        ws.onopen = () => {
+            opened = true; this.heard = performance.now();
+            this.send(this.token ? { ...this.hello, resume: this.token } : this.hello);
+            if (this.retry) this.timeout(20000);                 // the welcome can be big on a slow phone
+        };
+        ws.onmessage = (e) => {
+            if (ws !== this.ws) return;
+            this.heard = performance.now();
+            try { this.onMessage(JSON.parse(e.data)); } catch (err) { console.warn('net', err); }
+        };
+        ws.onclose = (e) => lost(e.code);
+        ws.onerror = () => { if (!opened) lost(1006); };         // a failed connect (not every runtime follows it with close)
+        if (this.retry) this.timeout(8000);
+    }
+
+    // A reconnect attempt that hangs is abandoned (and the next one tried).
+    timeout(ms) {
+        clearTimeout(this.attemptTimer);
+        const ws = this.ws;
+        this.attemptTimer = setTimeout(() => { if (ws === this.ws && this.retry) this.abandon(); }, ms);
+    }
+
+    // Stop waiting on the current socket (it has gone quiet) and treat it as
+    // dropped. 4001 tells the server, if it hears, that we mean to come back.
+    abandon() {
+        const ws = this.ws, opened = ws.readyState === 1;
+        ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+        try { ws.close(4001, 'no data'); } catch { /* ignore */ }
+        this.dropped(1006, opened);
+    }
+
+    dropped(code, opened) {
+        if (this.closing) return;
+        clearTimeout(this.attemptTimer);
+        if (this.fullError || FINAL_CLOSES.has(code) || !this.world) {
+            return this.end(this.fullError || (this.world ? 'Disconnected from the server' : 'Could not reach the server'));
+        }
+        if (code === RESTARTING) this.restarted = true;
+        if (!this.retry) {
+            if (this.dormant) return;
+            if (!this.hooks.onDrop()) { this.dormant = true; return; }     // nothing to keep right now
+            // Dropped again soon after getting back in (a room that keeps
+            // failing): carry on the same backoff and 30 s, don't start over.
+            const now = performance.now() / 1000, c = this.calm && now < this.calm.until ? this.calm : null;
+            this.retry = c ? { since: c.since, n: c.n } : { since: now, n: 0 };
+        }
+        // An attempt that couldn't even connect: if the room has gone, stop.
+        if (!opened && this.retry.n > 0) {
+            fetchRooms(this.base).then((rooms) => { if (this.retry && !rooms.some((r) => r.id === this.roomId)) this.end('That server has closed'); }, () => {});
+        }
+        const left = RETRY_FOR - (performance.now() / 1000 - this.retry.since);
+        const wait = Math.min(RETRY_DELAYS[Math.min(this.retry.n, RETRY_DELAYS.length - 1)], left);
+        if (wait <= 0) return this.end('Disconnected from the server');
+        this.retry.n++;
+        this.retryTimer = setTimeout(() => { if (this.retry && !this.closing) this.connect(); }, wait * 1000);
+    }
+
+    // Reconnect now (after a drop while dead, when the next life starts).
+    wake() {
+        if (!this.dormant || this.closing) return;
+        this.dormant = false;
+        this.retry = { since: performance.now() / 1000, n: 1 };
+        this.connect();
+    }
+
+    get reconnecting() { return !!this.retry || this.dormant; }
+
+    end(reason) {
+        this.close();
+        this.retry = null; this.dormant = false;
+        this.hooks.onClose(reason);
     }
 
     send(m) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
-    close() { this.closing = true; try { this.ws.close(); } catch { /* ignore */ } }
+    close() {
+        this.closing = true;
+        clearTimeout(this.retryTimer); clearTimeout(this.attemptTimer);
+        try { this.ws.close(1000, 'bye'); } catch { /* ignore */ }
+    }
     takeEvents() { const e = this.events; this.events = []; return e; }
     // Only the game loop drains the queue, and a hidden tab doesn't run it.
     // So while hidden (or if the queue backs up) keep just what changes the
@@ -151,16 +246,34 @@ export class NetGame {
         if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
         if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time…
         if (!('elements' in m.tune)) w.rules.elements = 0;         // …and only fire
-        this.world = w; this.room = m.room; this.you = m.you;
+        // After a reconnect the server may hand back the same dragon
+        // (`resumed`): keep its object, so the game's references and this
+        // life's stats carry on. Otherwise (a fresh dragon, or a server that
+        // doesn't resume) it's a new one.
+        const keep = m.resumed && this.player && m.you === this.you ? this.player : null;
+        this.world = w; this.room = m.room; this.you = m.you; this.player = keep;
+        this.token = typeof m.resume === 'string' ? m.resume : null;
+        this.parked = !!(keep && m.parked);
+        if (keep) keep.alive = false;
+        this.gone.clear(); this.events = [];
+        this.clock = new ServerClock();                       // a new timeline (maybe a new server)
+        this.joining = true;
         for (const d of m.dragons) this.dragonNew(d);
+        this.joining = false;
         const o = m.orbs;
         for (let k = 0; k < o.length; k += 7) this.setOrb(o[k], o[k + 1], o[k + 2], o[k + 3], o[k + 4], o[k + 5], o[k + 6]);
         this.setPowerups(m.pu);
         this.setPearls(m.pl, typeof m.time === 'number' ? m.time : 0);
-        this.player = w.byId.get(m.you);
+        this.player = w.byId.get(m.you) || keep;              // a folded dragon isn't in the sky
         w.player = this.player;
         this.player.wallAssist = !!m.room.beginner;
-        this.hooks.onWelcome(w, this.player, m.room);
+        this.heard = performance.now();
+        if (!this.retry) return this.hooks.onWelcome(w, this.player, m.room);
+        const info = { resumed: !!keep, parked: this.parked, restarted: this.restarted };
+        clearTimeout(this.attemptTimer);
+        this.calm = { until: performance.now() / 1000 + 10, since: this.retry.since, n: this.retry.n };
+        this.retry = null; this.restarted = false;
+        this.hooks.onRejoin(w, this.player, info);
     }
 
     // A dragon appears (join, bot spawn) or respawns: full state + tail.
@@ -189,7 +302,7 @@ export class NetGame {
         d.samples = []; d.pathT = -Infinity;          // snapshots to draw from; server time the tail is laid up to
         d.len = s[9];
         d.rebuildBeads();
-        if (d.id === this.you && this.player && d.alive) {
+        if (d.id === this.you && this.player && d.alive && !this.joining) {
             const resumed = this.parked;
             this.parked = false;
             if (!resumed) { d.bornAt = w.time; d.peakMass = d.mass; d.kills = 0; d.bestRank = 99; }
@@ -398,6 +511,9 @@ export class NetGame {
         }
         this.pingAcc += dt;
         if (this.pingAcc > 2) { this.pingAcc = 0; this.send({ t: 'ping', c: performance.now() }); }
+        // Snapshots come 15×/s and pongs every 2 s: silence means the
+        // connection died without telling us (Wi-Fi gone, phone asleep).
+        if (this.ws.readyState === 1 && !this.retry && performance.now() - this.heard > SILENT_MS) this.abandon();
     }
 
     respawn() { this.send({ t: 'spawn' }); }

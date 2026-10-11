@@ -171,11 +171,16 @@ try {
     for (let i = 0; i < 40 && !(back && b.dn.some((d) => d.id === you)); i++) { await sleep(100); back = a.dn.find((d) => d.id === you); }
     check(back && Math.abs(back.s[8] - massBefore) < 2 && b.dn.some((d) => d.id === you), `unpark flies back in with its length (${massBefore} → ${back?.s[8]})`);
 
-    // Lifecycle: when both leave, the room gets a 12 h expiry.
+    // Lifecycle: when both leave (and their dragons' 3 s in the sky after
+    // leaving are up), the room gets a 12 h expiry.
     a.ws.close(); b.ws.close();
-    await sleep(400);
-    r = await (await api('/api/rooms')).json();
-    check(r.rooms.some((x) => x.id === room.id && x.humans === 0), 'empty user room still listed (lives 12 h after last leave)');
+    let empty = false;
+    for (let i = 0; i < 25 && !empty; i++) {
+        await sleep(200);
+        r = await (await api('/api/rooms')).json();
+        empty = r.rooms.some((x) => x.id === room.id && x.humans === 0);
+    }
+    check(empty, 'empty user room still listed (lives 12 h after last leave)');
     t = await totals();
     const rm = t.today.room, ends = Object.entries(rm.cause).filter(([, n]) => n);
     check(rm.runs === 2 && ends.reduce((s, [, n]) => s + n, 0) === 2 && rm.arena.orb === 2 && rm.secs > 0 && t.today.peakHumans === 2 && t.today.solo.runs === 16,
