@@ -1,4 +1,4 @@
-// Rooms: the three permanent servers + player-created ones. Each room runs
+// Rooms: the two permanent servers + player-created ones. Each room runs
 // the shared sim (mode 'server') while anyone is in it: bots, collisions,
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
@@ -7,11 +7,10 @@ import { World, Dragon, T, managePopulation, checkName, safePlayerName, cleanPer
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
 export const DEFAULT_ROOMS = [
-    { id: 'skyhold-beginners', name: 'Skyhold Nest', arena: 'sky', beginner: true },
     { id: 'the-orb', name: 'The Orb', arena: 'orb', beginner: true },
     { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: true },
 ];
-export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold (Beginners)', 'Skyhold Beginners', 'Nest', 'Orb']);
+export const RESERVED_ROOM_NAMES = DEFAULT_ROOMS.map((r) => r.name).concat(['Skyhold Nest', 'Skyhold (Beginners)', 'Skyhold Beginners', 'Nest', 'Orb']);
 
 export const LIMITS = {
     humansPerRoom: 30,

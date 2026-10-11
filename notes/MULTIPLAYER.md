@@ -204,7 +204,7 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 1. Cloud Run → `wyrm-server` → copy the **URL** at the top
    (`https://wyrm-server-xxxxxxxx-uw.a.run.app`).
 2. Open `<URL>/api/rooms` in your browser. You should see JSON listing
-   the three permanent rooms.
+   the two permanent rooms (Skyhold and The Orb).
    - The first request after an idle period takes a few seconds while the
      server wakes up. That's normal with scale-to-zero.
 3. **Send me that URL.** I'll point the game at it, test it end to end,

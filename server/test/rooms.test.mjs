@@ -22,9 +22,9 @@ let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
 
 try {
-    // Lobby: three permanent rooms.
+    // Lobby: two permanent rooms (Skyhold and The Orb).
     let r = await (await api('/api/rooms')).json();
-    check(r.rooms.length === 3 && r.rooms.every((x) => x.permanent), 'three permanent rooms listed');
+    check(r.rooms.length === 2 && r.rooms.every((x) => x.permanent) && r.rooms.some((x) => x.id === 'skyhold') && r.rooms.some((x) => x.id === 'the-orb'), 'two permanent rooms listed: Skyhold and The Orb');
     check(r.rooms.every((x) => x.beginner) && !r.rooms.some((x) => /beginner/i.test(x.name)),
         'every server is a beginner server; "beginner" is not part of a name');
 
