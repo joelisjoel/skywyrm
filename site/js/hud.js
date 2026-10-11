@@ -2,10 +2,10 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // toasts, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=19';
-import { MOOD_ICON } from './bots.js?v=19';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=20';
+import { MOOD_ICON } from './bots.js?v=20';
 
-const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 
 // Minimal status: ring gauges with line icons, no captions. Static SVG
@@ -16,7 +16,13 @@ const ICON = {
     fire: '<path d="M12 3c.6 3 4.5 5.2 4.5 10a4.5 4.5 0 0 1-9 0c0-2.4 1.3-3.8 2.4-4.8.1 1.7.9 2.8 2 3.2-.4-2.9-.8-5.2.1-8.4z"/>',
     shield: '<path d="M12 3.2 19 6v5.2c0 4.3-2.9 7.8-7 9.6-4.1-1.8-7-5.3-7-9.6V6z"/>',
     magnet: '<path d="M6 4h4v8a2 2 0 0 0 4 0V4h4v8a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>',
+    // Breath elements (the fire gauge and button wear the one you hold), and being chilled / stunned.
+    ice: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/>',
+    bolt: '<path d="M7 15a4 4 0 1 1 1.2-7.8A5 5 0 0 1 17.7 8.5 3.3 3.3 0 0 1 17 15"/><path d="m12.5 12-2.5 4.5h4L11.5 21"/>',
+    acid: '<path d="M12 3c3 4 6 7.4 6 11a6 6 0 0 1-12 0c0-3.6 3-7 6-11z"/><circle cx="10" cy="15" r="1.4"/><circle cx="13.6" cy="12.2" r="0.9"/>',
 };
+ICON.chill = ICON.ice; ICON.stun = ICON.bolt;
+const EL_COLOR = { fire: '#FF3A20', ice: '#8FE6FF', bolt: '#C9A0FF', acid: '#7CFF4F' };
 const RING = 2 * Math.PI * 17;
 function gauge(key) {
     const el = document.createElement('div');
@@ -74,9 +80,11 @@ export class Hud {
         };
         this.g = {};
         const box = document.getElementById('hud-gauges');
-        for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
+        for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet', 'chill', 'stun']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
         this.g.fire.el.insertAdjacentHTML('beforeend', '<kbd>E</kbd>');
         this.tFire = document.getElementById('t-fire');
+        this.fireIcon = this.g.fire.el.querySelector('.icon');
+        this.fireEl = 'fire'; this.chillMax = 0; this.stunMax = 0;
         this.lastBoard = 0;
         this.resize();
     }
@@ -219,10 +227,12 @@ export class Hud {
             if (!d.alive || d === p) continue;
             draw(d.pos, hex(d.color), false);
         }
-        // Power-ups by colour; red dragonfire crystals stay pinned to the rim.
+        // Power-ups by colour; breath crystals (fire, ice, lightning, acid) stay pinned to the rim.
         for (const pu of world.powerups) {
-            draw(pu.pos, { fire: '#FF3A20', shield: '#FFB060', magnet: '#4D9BFF' }[pu.type], false, false, pu.type === 'fire');
+            draw(pu.pos, EL_COLOR[pu.type] || { shield: '#FFB060', magnet: '#4D9BFF' }[pu.type] || '#fff', false, false, !!EL_COLOR[pu.type]);
         }
+        // Acid clouds: green rings, so you can fly round them.
+        for (const c of world.clouds || []) draw(_v2.set(c.x, c.y, c.z), 'rgba(124,255,79,0.85)', false, true);
         // The rich middle: a ring that sits on the rim when it's out of range.
         draw(world.arena.center, 'rgba(255,224,138,0.9)', false, true);
         if (view.top && view.top !== p) draw(view.top.pos, '#FFD93D', true);
@@ -260,8 +270,16 @@ export class Hud {
             // Charges stack (rule fireCharge): the ring is cut into one arc
             // per slot, lit for each charge held, and the gauge grows and
             // glows brighter with every one; phones show the count too.
+            // It wears the element you hold (rule elements): icon and colour.
             const max = world.rule('fireCharge') ? Math.max(1, Math.round(world.rule('fireChargeMax'))) : 1;
             const charge = Math.min(max, p.fire | 0), breathing = p.breath > 0;
+            const el = !world.rule('elements') ? 'fire' : breathing ? p.breathEl || 'fire' : charge ? p.element || 'fire' : 'fire';
+            if (el !== this.fireEl && ICON[el]) {
+                this.fireEl = el;
+                this.fireIcon.innerHTML = ICON[el];
+                g.fire.el.dataset.el = el;
+                if (this.tFire) { this.tFire.dataset.el = el; this.tFire.querySelector('svg').innerHTML = ICON[el]; }
+            }
             g.fire.el.dataset.state = breathing ? 'breathing' : charge ? 'ready' : 'empty';
             if (breathing || max < 2) g.fire.set(breathing ? p.breath / world.breathStats(p.breathLevel || 1).time : charge);
             else g.fire.slots(max, charge);
@@ -273,6 +291,13 @@ export class Hud {
             g.shield.set(p.shield / T.shieldTime);
             g.magnet.el.hidden = !(p.magnet > 0);
             g.magnet.set(p.magnet / T.magnetTime);
+            // Chilled (ice) or stunned (lightning): a draining gauge while it lasts.
+            this.chillMax = p.chill > 0 ? Math.max(this.chillMax, p.chill) : 0;
+            this.stunMax = p.stun > 0 ? Math.max(this.stunMax, p.stun) : 0;
+            g.chill.el.hidden = !(p.chill > 0);
+            g.chill.set(p.chill / (this.chillMax || 1));
+            g.stun.el.hidden = !(p.stun > 0);
+            g.stun.set(p.stun / (this.stunMax || 1));
         }
         this.el.fps.textContent = fps ? fps + ' fps' : '';
         this.el.warn.style.opacity = view.wallWarn > 0.4 && view.state === 'play' ? '1' : '0';

@@ -108,6 +108,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `sever` | `fireStart` | `fireMiss` |
 | `powerup` | `powerupSpawn` | `shieldPop` |
 | `thrustEmpty` | `tier` | `nearMiss` |
+| `chill` | `bolt` | `acid` |
+
+  `fireStart` carries `lv` (charges spent) and `el` (element); `fireMiss` carries `el`.
 
 ### 3.2 Dragons
 - **Body path:** a history of up to 1200 points, 0.5 m apart (600 m of path).
@@ -153,8 +156,10 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     `biteBeads × biteMult` = 25. Bites have a 0.5 s cooldown.
   - **Death:** any other bead, unless the shield absorbs the hit (shield → 0,
     1.5 s protection).
+  - Skipped while the head is stunned by lightning (`d.stun`): it can't
+    steer, so a body it's carried into doesn't count.
 - **Head-on:** the heavier dragon wins if it is more than 5% heavier; otherwise
-  both die. This is skipped if either dragon is protected.
+  both die. This is skipped if either dragon is protected or stunned.
 - **`kill`:** drops 80% of the dragon's mass as orbs worth about 6, with a 45 s
   TTL, and credits the killer. Bots respawn after 2–4 s.
 - **Spawn** (`sim.js:343-406`):
@@ -166,6 +171,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Steers along the surface reflection with an inward bias.
   - Cancels boost above 0.45 urgency and forces brake above 0.7.
   - It runs on the client only. Walls still kill.
+  - It also runs for any stunned dragon, bots included (the only steering a
+    stun allows).
 
 ### 3.4 Food and power-ups
 - **Food:**
@@ -178,7 +185,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Bots above mass 400 get half value.
 - **Power-ups** (`sim.js:833-863`):
   - The first appears at 10 s, then every 20 s ±25%, with at most 5.
-  - The type pool is `shield, magnet, fire, fire`.
+  - The type pool is `shield, magnet` plus two breath crystals
+    (`breathCrystal`): `fire`, or with rule `elements` and probability
+    `elementShare` 0.5 one of `ice`, `bolt` (lightning) or `acid`.
   - They are placed at food hotspots.
 - **Dragonfire** (`updateBreath`, `fireTarget`, `breathStats`):
   - Each fire crystal adds a charge, up to `fireChargeMax` 5 (rule
@@ -195,6 +204,38 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Bots (`Brain.fireReady`) breathe when a tail is in the cone and they hold
     1 + (hunter or kingslayer) + (mass > 150) + (aggr > 0.6) charges, capped
     at the max.
+- **Breath elements** (rule `elements`; `ELEMENTS` = fire, ice, bolt, acid):
+  - Charges are shared. A breath crystal sets `d.element` to its type, so the
+    last one eaten decides; `d.breathEl` is the element of the breath in
+    progress. With the rule off, or for a browser that only knows fire
+    (`d.fireOnly`, §4.3), it is always fire.
+  - Each scales with `breathStats`: `ts` = 1 + 0.25k (time) and `rs` =
+    1 + 0.25k (size).
+  - **Ice** (`frost`): the fire cone, for the full breath time. Every dragon
+    with its head or any bead in it gets `chill` = `chillTime` 2.5 s × ts.
+    While chilled (`move`): no boost, turn rate × `chillTurn` 0.6, target
+    speed × `chillSpeed` 0.5, applied at once.
+  - **Lightning** (`strike`): crackles for half the breath time until
+    `nearestPart` finds a head or bead within `boltRange` 1.5 × range, inside
+    a `boltAngle` 7° × (angle/30°) cone. Then it jumps to the nearest unstruck
+    dragon within `boltChain` 14 m, min(`boltChainMax` 3, 1 + ⌊k/2⌋) times.
+    Each struck dragon gets `stun` = `stunTime` 0.6 s × ts (stick and boost
+    dead, wall assist on) and sheds max(2, `boltShed` 4% × ts of its mass);
+    80% of that drops as food where it was struck.
+  - **Acid** (`spitAcid`, `updateClouds`): a cloud (`world.clouds`, at most 12)
+    of radius `acidRadius` 6 m × rs, lasting `acidTime` 6 s × ts, spat 2r + its
+    radius ahead at speed + 10 m/s and slowing with τ 0.5 s. Each tick any
+    other dragon with its head or every other bead within radius + r/2 loses
+    `acidRate` 4 × ts mass/s, never below spawn mass. 80% drops as 1.5-orbs
+    where it touches. The spitter is immune. `acid` events are rate-limited to
+    one per victim per 1.5 s.
+  - Spawn protection blocks every element; the shield doesn't (as with fire).
+  - `status` counts `chill` and `stun` down every step (in `client` mode,
+    for your own dragon, between snapshots).
+  - Bots (`Brain.breathTarget`): ice and lightning when their target is their
+    prey, bigger, or heading at them. Acid when a dragon's path meets the
+    cloud's path within 1.5 s, or one is within 25 m on their tail. Their
+    feelers treat other dragons' clouds as hazards (`World.inAcid`).
 
 ### 3.5 Rules layer and tunables
 - **`World.rule(k)`** returns `world.rules[k] ?? T[k]` (`sim.js:325`). Every newer
@@ -209,7 +250,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `respawnDelay` | 3 | `lengthSpeed` | 0.5 |
 | `botMoods` | 1 | `lengthSpeedExp` | 0.62 |
 | `fireCharge` | 1 | `lengthSpeedMax` | 1 |
-| `fireChargeMax` | 5 | | |
+| `fireChargeMax` | 5 | `elements` | 1 |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -252,7 +293,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - bots
   - collisions, deaths, bites and sever
   - food and growth
-  - power-ups
+  - power-ups, and what every breath does (cuts, chills, stuns, acid)
   - heat and thrust
 - **The client is trusted for:** its own pose.
   - It flies its dragon locally and sends a pose 30 times a second.
@@ -262,6 +303,14 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     - capped at half a second's worth
   - Anything beyond the budget is clamped, and `me.c` tells the client to
     hard-snap back (`net.js:154`).
+  - **Chill and stun are enforced here too**, `NET_GRACE` 0.25 s after they
+    start (while the news is in flight):
+    - chilled: no boost, and top is × `chillSpeed`
+    - stunned: no boost or brake; only progress along the old heading is
+      kept and the reported quaternion is ignored (a sideways claim > 1 m is
+      corrected), unless `wallAhead` says the straight line meets a wall
+      within the assist's look-ahead, where the browser's wall assist may
+      steer.
   - Bank is clamped to ±1.2. A quaternion is accepted only if its length² > 0.5.
 - **Other dragons** are drawn on the server's clock (`net.js` `ServerClock`,
   `poseAt`, `update`):
@@ -295,13 +344,13 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 | Direction | Message | Contents |
 |---|---|---|
-| C→S | `hello` | `{name, perks[], skin}`. Must be the first message, within 5 s |
+| C→S | `hello` | `{name, perks[], skin, caps[]}`. Must be the first message, within 5 s. `caps` (optional, up to 8 short strings) says what the browser understands: `el` = breath elements |
 | C→S | `p` | `{x,y,z,qx,qy,qz,qw,s,bk,b,k,f}`: pose, speed, bank, boost, brake, fire |
 | C→S | `spawn`, `park`, `unpark`, `ping{c}` | |
 | S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu}` |
-| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), shield, magnet, kills and correction |
+| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), `el` (their element, when not fire), `ch` / `st` (s left chilled / stunned, when > 0), shield, magnet, kills and correction. `ac` (when any): acid clouds `[id,x,y,z,radius,s left,lifetime,spitter]` |
 | S→C | `dn` / `dx` | A dragon appears (meta plus a tail path at 1 cm precision, every other point, ≤600 points) / leaves |
-| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss`, `empty`, `park*` |
+| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
 | S→C | `full` | The room is full |
 
 - **Flag bits** in `d`:
@@ -312,7 +361,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | 2 | boost | 64 | human |
 | 4 | brake | 128 | bot |
 | 8 | protect | 256 | magnet |
-| 16 | shield | | |
+| 16 | shield | 512 | chilled |
+| | | 1024 | stunned |
 
 - **WebSocket close codes:**
 
@@ -328,7 +378,17 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     phones cache the site.
   - So any protocol change must accept the previous message shape for at
     least one release.
-  - There is no version field.
+  - There is no version field. Newer browsers list what they understand in
+    `hello.caps`.
+  - Older browsers ignore event kinds, flag bits, `me` fields and snapshot
+    fields they don't know. Their renderer would throw on an unknown crystal
+    type, though, so a browser without `el` is sent `ice`, `bolt` and `acid`
+    crystals (in `pu` lists and its own `pu` events) as `fire`. Its dragon
+    breathes fire whatever it eats (`d.fireOnly`). It is still chilled and
+    stunned like everyone else, enforced by the server's budget, which it
+    feels as corrections.
+  - A newer browser on an older server treats rules the server's `tune`
+    lacks (`fireCharge`, `elements`) as off.
 
 ### 4.4 Rooms (`server/rooms.js`)
 - **Defaults:** `the-orb` ("The Orb", orb) and `skyhold` ("Skyhold", sky).
@@ -727,6 +787,17 @@ The improvement loop's numbers, kept without identifying anyone
 - **Power-up crystals** snap between shapes on a beat, like Tron's "Bit".
 - **Dragonfire:** a pooled additive cone sized by `breathStats` for the
   charges spent, plus 26 + 12k flame particles per frame.
+- **Breath elements:**
+  - Crystals: an ice shard, a violet lightning star and a green acid bubble,
+    as big and loud as fire's, each shedding its own particles.
+  - Ice: the same cone in frost blue, with snow. Lightning: sparks at the
+    mouth, then `zap` draws jagged, flickering ribbons (glow + core) from the
+    mouth through every dragon struck, following them for 0.45 s: one mesh
+    for all bolts, up to 360 quads. Acid: a spray, then one swirling, rim-lit
+    green ball per cloud (`acidMaterial`), with bubbles.
+  - Chilled dragons go frost-white and shed snow; stunned ones flicker violet
+    and crackle with sparks.
+  - Particle hues: 0 fire, 1 ice/lodestone blue, 2 acid green, 3 lightning.
 - **Particles:** a single additive Points cloud, 4,000 drawn and 6,000 simulated.
 - **Lodestone:** a rig of tori and glow sprites, plus up to 240 camera-facing
   tractor beams.
@@ -746,8 +817,10 @@ The improvement loop's numbers, kept without identifying anyone
   - shadows
   - particles
   - beams
+  - lightning arcs
   - dust
 - **Not instanced:**
+  - Acid clouds: one draw each, at most 12.
   - Heads: about 18 meshes each, so roughly 1,400 draws at 80 heads.
   - Skyhold's karst pillars: about 156 meshes.
 - **Scene renders per frame:** with wide view or the mirror on, the scene
@@ -814,7 +887,7 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (32 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up) |
+| `server/test/sim.test.mjs` (53 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m) with heat, `applyNet` allowing a long dragon its speed, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients) |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (36 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
@@ -947,8 +1020,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Boost and food | boostCost 4/s · boostDropShare 0.5 · boostMinMass 15 · orbTarget 2000 · orbClusterShare 0.6 · foodSpread 0.2 · foodUniformShare 0.15 · pickupBase 2 · lootShare 0.8 · lootTtl 45 · botGrowthCapMass 400 |
 | Heat and thrust | ambientTemp 10 · sunHeat 70 · sunRadius 0.35 · crowdHeat 35 · crowdRadius 35 · crowdFull 5 · tempRiseTau 3 · tempFallTau 7 · tempSpeed 0.4 · thrustBase 10 · tempThrust 0.6 · thrustRegen 0.4 |
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
-| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 |
+| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedMax 1 · fireCharge 1 · fireChargeMax 5 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedMax 1 · fireCharge 1 · fireChargeMax 5 · elements 1 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 |

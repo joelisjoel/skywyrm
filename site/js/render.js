@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=19';
+import { T, TIERS } from './tunables.js?v=20';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -11,6 +11,7 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vect
 const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THREE.Color(0xB8DCFF);
 const LODE = 0x3D8BFF;           // lodestone blue
 const MAX_BEAMS = 240;
+const MAX_ARCS = 360;            // lightning ribbon quads per frame
 const Zaxis = new THREE.Vector3(0, 0, 1);
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
 const _T = new THREE.Vector3(), _U = new THREE.Vector3(), _R = new THREE.Vector3();
@@ -120,15 +121,22 @@ export class Renderer {
             shield: new THREE.MeshBasicMaterial({ color: 0xFF9A3C }),
             magnet: new THREE.MeshBasicMaterial({ color: 0x2F6BFF }),
             fire: new THREE.MeshBasicMaterial({ color: 0xFF2A1A }),
+            ice: new THREE.MeshBasicMaterial({ color: 0x52D4FF }),
+            bolt: new THREE.MeshBasicMaterial({ color: 0xB884FF }),
+            acid: new THREE.MeshBasicMaterial({ color: 0x5CFF2A }),
         };
-        this.puColors = { shield: 0xFFB060, magnet: 0x4D9BFF, fire: 0xFF3A20 };
+        this.puColors = { shield: 0xFFB060, magnet: 0x4D9BFF, fire: 0xFF3A20, ice: 0x5CD8FF, bolt: 0xB57BFF, acid: 0x7CFF4F };
         this.puShellMat = new THREE.MeshBasicMaterial({ color: 0xFFD0A0, wireframe: true, transparent: true, opacity: 0.6 });
         this.puMeshes = [];
         // Like Bit in Tron: snap between shapes, flashing on every change.
         const ico = new THREE.IcosahedronGeometry(1, 0), octa = new THREE.OctahedronGeometry(1.25, 0);
         const spiky = stellate(new THREE.IcosahedronGeometry(0.8, 0), 1.9);
-        this.puShapes = { fire: [spiky, octa, spiky, ico], shield: [octa, ico], magnet: [ico, octa] };
-        this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2 };
+        // Breath elements: an ice shard, a lightning star, an acid bubble.
+        const shard = new THREE.OctahedronGeometry(1, 0).scale(0.55, 1.75, 0.55), star = stellate(new THREE.OctahedronGeometry(0.85, 0), 2.2);
+        const bubble = new THREE.IcosahedronGeometry(1.05, 1);
+        this.puShapes = { fire: [spiky, octa, spiky, ico], shield: [octa, ico], magnet: [ico, octa],
+            ice: [shard, octa, shard, ico], bolt: [star, spiky, star, octa], acid: [bubble, ico, bubble, octa] };
+        this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2, ice: 2.6, bolt: 4.2, acid: 2.4 };
 
         // The leader's blazing head (replaces the old light pillar): a very
         // bright additive halo + a warm point light + flame particles.
@@ -155,6 +163,19 @@ export class Renderer {
         this.fireCone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true,
             opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
         this.fireCones = [];
+        // Breath elements: lightning arcs (camera-facing ribbons, one draw
+        // for all) and acid clouds (a glowing, swirling ball each).
+        this.arcGeo = new THREE.BufferGeometry();
+        this.arcGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAX_ARCS * 18), 3));
+        this.arcGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(MAX_ARCS * 18), 3));
+        this.arcs = new THREE.Mesh(this.arcGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true,
+            blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+        this.arcs.frustumCulled = false;
+        this.scene.add(this.arcs);
+        this.bolts = [];
+        this.cloudGeo = new THREE.SphereGeometry(1, 24, 16);
+        this.cloudMat = acidMaterial();
+        this.cloudMeshes = [];
 
         // Lodestone: a blue glow on the head, two field rings spinning round
         // it, and tractor beams to every orb it is reeling in.
@@ -494,6 +515,7 @@ export class Renderer {
             const c1 = _c.set(d.color), r1 = c1.r, g1 = c1.g, b1 = c1.b;
             const c2 = _c.set(d.color2), r2 = c2.r, g2 = c2.g, b2 = c2.b;
             const ghost = d.protect > 0 ? 0.35 + 0.25 * Math.sin(time * 20) : 1;
+            const frost = d.chill > 0 ? 0.6 : 0, zap = d.stun > 0 ? 0.85 : 0;    // ice-white while chilled, flickering when stunned
             const isOther = d !== player;
             const tube = isOther ? this.bodies : this.ownBody, D = tube.data;
             if (tube.n + 2 >= tube.cap) continue;
@@ -632,6 +654,8 @@ export class Renderer {
                         cr += (1 - cr) * g; cg += (1 - cg) * g; cb += (1 - cb) * g;
                     }
                 }
+                if (frost) { cr += (0.8 - cr) * frost; cg += (0.94 - cg) * frost; cb += (1 - cb) * frost; }
+                if (zap) { const z = zap * (0.5 + 0.5 * Math.sin(time * 40 - b * 0.7)); cr += (1.1 - cr) * z; cg += (0.8 - cg) * z; cb += (1.7 - cb) * z; }
                 D[k + 12] = cr * ghost; D[k + 13] = cg * ghost; D[k + 14] = cb * ghost;
                 tube.n++;
             }
@@ -719,8 +743,11 @@ export class Renderer {
             if (h.pearl.visible) h.pearl.position.set(Math.sin(h.flap * 0.5) * 0.35, 0.1 + Math.cos(h.flap * 0.7) * 0.2, -2.7);
             h.mat.color.set(d.color).multiplyScalar(d.protect > 0 ? 0.5 : 1);
             h.mat2.color.set(d.color2).multiplyScalar(d.protect > 0 ? 0.5 : 1);
-            // Hot dragons glow; the leader blazes gold.
-            if (d === view.top) h.mat.emissive.setHex(0xffc85a).multiplyScalar(0.45);
+            // Hot dragons glow; the leader blazes gold. Frost whitens a
+            // chilled head; a stunned one flickers with lightning.
+            if (d.chill > 0) h.mat.color.lerp(_ice, 0.6);
+            if (d.stun > 0) h.mat.emissive.setRGB(0.7, 0.55, 1).multiplyScalar(0.5 + 0.5 * Math.sin(time * 40));
+            else if (d === view.top) h.mat.emissive.setHex(0xffc85a).multiplyScalar(0.45);
             else h.mat.emissive.setRGB(1, 0.35, 0.05).multiplyScalar(Math.max(0, (d.temp - 25) / 75) * 0.7);
             // Shadow.
             if (sh < MAX_HEADS) {
@@ -817,29 +844,34 @@ export class Renderer {
             g.visible = !!pu;
             if (!pu) return;
             const { crystal, shell, glow, star } = g.userData;
-            const fire = pu.type === 'fire';
+            const kind = this.puShapes[pu.type] ? pu.type : 'shield';                      // a type this build doesn't know
+            const breath = kind === 'fire' || kind === 'ice' || kind === 'bolt' || kind === 'acid';   // breath crystals: big and loud
             // Bit: hop to the next shape every beat; flash white + pop on the hop.
-            const shapes = this.puShapes[pu.type];
-            const beat = time * this.puRate[pu.type] + pu.spin * 0.37;
+            const shapes = this.puShapes[kind];
+            const beat = time * this.puRate[kind] + pu.spin * 0.37;
             const frac = beat - Math.floor(beat);
             crystal.geometry = shell.geometry = shapes[Math.floor(beat) % shapes.length];
             const flash = frac < 0.14 ? 1 : 0;
             const pop = 1 + 0.45 * Math.max(0, 1 - frac * 5);
             if (!crystal.material.userData.own) { crystal.material = crystal.material.clone(); crystal.material.userData.own = true; }
-            crystal.material.color.setHex(flash ? 0xffffff : this.puMats[pu.type].color.getHex());
+            crystal.material.color.setHex(flash ? 0xffffff : this.puMats[kind].color.getHex());
             g.position.copy(pu.pos);
             crystal.rotation.set(pu.spin * 0.7, pu.spin * 1.3, 0);
             shell.rotation.set(-pu.spin * 0.5, pu.spin * 0.9, pu.spin * 0.3);
-            crystal.scale.setScalar((fire ? 1.9 : 1.4) * pop);
-            shell.scale.setScalar((fire ? 2.8 : 2.0) * (2 - pop * 0.7));
-            glow.material.color.setHex(flash ? 0xffffff : this.puColors[pu.type]);
-            glow.scale.setScalar((fire ? 16 : 9) * pop);
-            star.material.color.setHex(flash ? 0xffffff : this.puColors[pu.type]);
-            star.scale.setScalar((fire ? 0.09 : 0.045) * pop);
-            if (fire) {
+            crystal.scale.setScalar((breath ? 1.9 : 1.4) * pop);
+            shell.scale.setScalar((breath ? 2.8 : 2.0) * (2 - pop * 0.7));
+            glow.material.color.setHex(flash ? 0xffffff : this.puColors[kind]);
+            glow.scale.setScalar((breath ? 16 : 9) * pop);
+            star.material.color.setHex(flash ? 0xffffff : this.puColors[kind]);
+            star.scale.setScalar((breath ? 0.09 : 0.045) * pop);
+            if (breath) {
+                // Embers rise from fire, snow drifts down from ice, sparks fly
+                // from lightning, bubbles rise from acid.
+                const bolt = kind === 'bolt', spread = bolt ? 9 : 2, up = { fire: 3, ice: -1.5, acid: 2 }[kind] || 0;
                 for (let k = 0; k < 2; k++) {
                     this.emit(pu.pos.x + (Math.random() - 0.5) * 3, pu.pos.y + (Math.random() - 0.5) * 3, pu.pos.z + (Math.random() - 0.5) * 3,
-                        (Math.random() - 0.5) * 2, 3 + Math.random() * 4, (Math.random() - 0.5) * 2, 0.6 + Math.random() * 0.5, 1);
+                        (Math.random() - 0.5) * spread, bolt ? (Math.random() - 0.5) * spread : up + Math.random() * 4, (Math.random() - 0.5) * spread,
+                        bolt ? 0.25 : 0.6 + Math.random() * 0.5, 1, HUE[kind]);
                 }
             }
         });
@@ -882,31 +914,65 @@ export class Renderer {
 
         // Dragonfire: a translucent cone + a thick stream of flame while
         // breathing, sized for the charges spent (longer, wider, denser).
+        // Ice is the same cone in frost blue, with snow; lightning crackles
+        // at the mouth until it strikes (arcs below); acid sprays a spit.
         let fc = 0;
         for (const d of world.dragons) {
             if (!d.alive || !(d.breath > 0)) continue;
-            if (!this.fireCones[fc]) { this.fireCones[fc] = this.fireCone.clone(); this.scene.add(this.fireCones[fc]); }
-            const cone = this.fireCones[fc++];
-            cone.visible = true;
-            const st = world.breathStats(d.breathLevel || 1), tan = Math.tan(st.angle * Math.PI / 180);
-            const rad = st.range * tan;
+            const el = d.breathEl || 'fire', st = world.breathStats(d.breathLevel || 1), tan = Math.tan(st.angle * Math.PI / 180);
             // From the open mouth; the far end stays at the real fire range.
             const mouth = d.r * (1.45 + 0.05 * d.tier) * 1.6;
+            if (el === 'bolt' || el === 'acid') {
+                _p.copy(d.pos).addScaledVector(d.fwd, mouth);
+                for (let i = 0; i < (el === 'bolt' ? 6 : 14); i++) {
+                    _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+                    const sp = el === 'bolt' ? 8 : 26 + Math.random() * 14;
+                    if (el === 'acid') _s.multiplyScalar(0.35).add(d.fwd).normalize();
+                    this.emit(_p.x, _p.y, _p.z, _s.x * sp + d.vdir.x * d.speed, _s.y * sp + d.vdir.y * d.speed, _s.z * sp + d.vdir.z * d.speed,
+                        el === 'bolt' ? 0.15 : 0.35, 1.4, HUE[el]);
+                }
+                continue;
+            }
+            if (!this.fireCones[fc]) { this.fireCones[fc] = this.fireCone.clone(); this.fireCones[fc].material = this.fireCone.material.clone(); this.scene.add(this.fireCones[fc]); }
+            const cone = this.fireCones[fc++], ice = el === 'ice';
+            cone.visible = true;
+            const rad = st.range * tan;
             cone.position.copy(d.pos).addScaledVector(d.fwd, mouth);
             cone.quaternion.copy(d.quat);
             cone.scale.set(rad, rad, Math.max(1, st.range - mouth + d.r));
-            cone.material.opacity = 0.12 + 0.06 * Math.sin(time * 30);
-            const spd = st.range / 0.45;
+            cone.material.color.setHex(ice ? 0x9ADFFF : 0xff7a2a);
+            cone.material.opacity = (ice ? 0.16 : 0.12) + 0.06 * Math.sin(time * 30);
+            const spd = st.range / (ice ? 0.6 : 0.45);
             for (let i = 0; i < 26 + 12 * st.k; i++) {
                 const a = Math.random() * Math.PI * 2, s = tan * Math.sqrt(Math.random());
                 _s.set(Math.cos(a) * s, Math.sin(a) * s, -1).normalize().applyQuaternion(d.quat);
                 const sp = spd * (0.8 + Math.random() * 0.4);
                 this.emit(cone.position.x, cone.position.y, cone.position.z,
                     _s.x * sp + d.vdir.x * d.speed, _s.y * sp + d.vdir.y * d.speed, _s.z * sp + d.vdir.z * d.speed,
-                    0.35 + Math.random() * 0.15, 1.6);
+                    (ice ? 0.45 : 0.35) + Math.random() * 0.15, 1.6, ice ? 1 : 0);
             }
         }
         for (let i = fc; i < this.fireCones.length; i++) this.fireCones[i].visible = false;
+        this.drawBolts(dt, time);
+        this.drawClouds(world, time);
+        // Chilled dragons shed frost; stunned ones crackle.
+        for (const d of world.dragons) {
+            if (!d.alive || !(d.chill > 0 || d.stun > 0) || cp.distanceToSquared(d.pos) > 150 * 150) continue;
+            if (d.chill > 0 && d.nBeads) {
+                const b = Math.floor(Math.random() * d.nBeads) * 3;
+                this.emit(d.beads[b] + (Math.random() - 0.5) * d.r * 2, d.beads[b + 1] + d.r, d.beads[b + 2] + (Math.random() - 0.5) * d.r * 2,
+                    d.vdir.x * d.speed * 0.5, -1.5, d.vdir.z * d.speed * 0.5, 0.8, 1.1, 1);
+            }
+            if (d.stun > 0) {
+                for (let i = 0; i < 6; i++) {
+                    // Round the head, and along the front of the body.
+                    const b = i < 3 || !d.nBeads ? -1 : Math.floor(Math.random() * Math.min(d.nBeads, 24)) * 3;
+                    const px = b < 0 ? d.pos.x : d.beads[b], py = b < 0 ? d.pos.y : d.beads[b + 1], pz = b < 0 ? d.pos.z : d.beads[b + 2];
+                    _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(d.r * 1.6);
+                    this.emit(px + _s.x, py + _s.y, pz + _s.z, _s.x * 6 + d.vdir.x * d.speed, _s.y * 6 + d.vdir.y * d.speed, _s.z * 6 + d.vdir.z * d.speed, 0.25, 1.6, 3);
+                }
+            }
+        }
 
         // Lodestone: blue head glow + field rings on every dragon holding one.
         let lr = 0, lightOn = false;
@@ -960,7 +1026,9 @@ export class Renderer {
             if (np >= this.PN) continue;
             const k = q.t / q.life, fade = (1 - k) * q.heat;
             pp[np * 3] = q.x; pp[np * 3 + 1] = q.y; pp[np * 3 + 2] = q.z;
-            if (q.hue) { pc[np * 3] = fade * (0.55 - 0.35 * k); pc[np * 3 + 1] = fade * (0.8 - 0.3 * k); pc[np * 3 + 2] = fade; }
+            if (q.hue === 1) { pc[np * 3] = fade * (0.55 - 0.35 * k); pc[np * 3 + 1] = fade * (0.8 - 0.3 * k); pc[np * 3 + 2] = fade; }   // icy blue
+            else if (q.hue === 2) { pc[np * 3] = fade * (0.4 - 0.25 * k); pc[np * 3 + 1] = fade * (1 - 0.25 * k); pc[np * 3 + 2] = fade * (0.18 - 0.1 * k); }   // acid green
+            else if (q.hue === 3) { pc[np * 3] = fade * (0.85 - 0.25 * k); pc[np * 3 + 1] = fade * (0.75 - 0.4 * k); pc[np * 3 + 2] = fade; }   // lightning violet-white
             else { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k); }
             np++;
         }
@@ -1096,6 +1164,95 @@ export class Renderer {
         }
     }
 
+    // Lightning struck: pts = [mouth, first hit, chained hits…] (x, y, z
+    // each). While it shows, it stays on the breather's mouth and moves
+    // with the dragons it struck.
+    zap(pts, d = null, hits = []) {
+        if (pts.length >= 6 && this.bolts.length < 16) {
+            this.bolts.push({ pts: pts.slice(), d, at: hits.map((o) => [o, o.pos.x, o.pos.y, o.pos.z]), t: 0, life: 0.45 });
+        }
+        for (let i = 3; i + 2 < pts.length; i += 3) {
+            for (let k = 0; k < 18; k++) {
+                _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(5 + Math.random() * 10);
+                this.emit(pts[i], pts[i + 1], pts[i + 2], _s.x, _s.y, _s.z, 0.3 + Math.random() * 0.3, 1.6, 3);
+            }
+        }
+    }
+
+    // Live bolts as jagged, flickering ribbons (re-jagged every frame): a
+    // wide violet glow and a white-hot core along every hop.
+    drawBolts(dt, time) {
+        const pa = this.arcGeo.attributes.position.array, ca = this.arcGeo.attributes.color.array, cp = this.camera.position;
+        let n = 0;
+        const quad = (ax, ay, az, bx, by, bz, w, r, g, b) => {
+            if (n >= MAX_ARCS) return;
+            const dx = bx - ax, dy = by - ay, dz = bz - az, vx = cp.x - ax, vy = cp.y - ay, vz = cp.z - az;
+            let sx = dy * vz - dz * vy, sy = dz * vx - dx * vz, sz = dx * vy - dy * vx;
+            const sl = Math.hypot(sx, sy, sz) || 1;
+            sx *= w / sl; sy *= w / sl; sz *= w / sl;
+            const v = [ax - sx, ay - sy, az - sz, bx - sx, by - sy, bz - sz, bx + sx, by + sy, bz + sz,
+                ax - sx, ay - sy, az - sz, bx + sx, by + sy, bz + sz, ax + sx, ay + sy, az + sz];
+            const k = n++ * 18;
+            for (let i = 0; i < 18; i++) { pa[k + i] = v[i]; ca[k + i] = i % 3 === 0 ? r : i % 3 === 1 ? g : b; }
+        };
+        for (let j = this.bolts.length - 1; j >= 0; j--) {
+            const B = this.bolts[j];
+            B.t += dt;
+            if (B.t > B.life) { this.bolts[j] = this.bolts[this.bolts.length - 1]; this.bolts.pop(); continue; }
+            const f = (1 - B.t / B.life) * (0.75 + 0.25 * Math.sin(time * 60 + j)), P = B.pts;
+            if (B.d && B.d.alive) { const m = B.d.r * 2; P[0] = B.d.pos.x + B.d.fwd.x * m; P[1] = B.d.pos.y + B.d.fwd.y * m; P[2] = B.d.pos.z + B.d.fwd.z * m; }
+            B.at.forEach((a, i) => {
+                const o = a[0], k = 3 + i * 3;
+                if (!o.alive || k + 2 >= P.length) return;
+                P[k] += o.pos.x - a[1]; P[k + 1] += o.pos.y - a[2]; P[k + 2] += o.pos.z - a[3];
+                a[1] = o.pos.x; a[2] = o.pos.y; a[3] = o.pos.z;
+            });
+            for (let i = 0; i + 5 < P.length; i += 3) {
+                const ax = P[i], ay = P[i + 1], az = P[i + 2], bx = P[i + 3], by = P[i + 4], bz = P[i + 5];
+                const len = Math.hypot(bx - ax, by - ay, bz - az), steps = Math.max(5, Math.min(14, Math.round(len / 2.5))), amp = Math.min(4, len * 0.09);
+                let px = ax, py = ay, pz = az;
+                for (let s = 1; s <= steps; s++) {
+                    const u = s / steps, e = s === steps ? 0 : amp;
+                    const x = ax + (bx - ax) * u + (Math.random() - 0.5) * e, y = ay + (by - ay) * u + (Math.random() - 0.5) * e, z = az + (bz - az) * u + (Math.random() - 0.5) * e;
+                    quad(px, py, pz, x, y, z, 0.45, 0.5 * f, 0.3 * f, 1.2 * f);
+                    quad(px, py, pz, x, y, z, 0.1, 2.4 * f, 2.2 * f, 2.8 * f);
+                    px = x; py = y; pz = z;
+                }
+            }
+        }
+        this.arcGeo.setDrawRange(0, n * 6);
+        this.arcGeo.attributes.position.needsUpdate = true;
+        this.arcGeo.attributes.color.needsUpdate = true;
+    }
+
+    // Acid clouds: a swirling green ball that fades in, then out at the
+    // end, bubbling where you can see it.
+    drawClouds(world, time) {
+        const clouds = world.clouds || [], cp = this.camera.position;
+        for (let i = 0; i < clouds.length; i++) {
+            const c = clouds[i];
+            if (!this.cloudMeshes[i]) {
+                const m = new THREE.Mesh(this.cloudGeo, this.cloudMat.clone());
+                m.frustumCulled = false; m.renderOrder = 3;
+                this.scene.add(m); this.cloudMeshes[i] = m;
+            }
+            const m = this.cloudMeshes[i];
+            m.visible = true;
+            m.position.set(c.x, c.y, c.z);
+            m.scale.setScalar(c.r);
+            const age = c.life - c.ttl;
+            m.material.uniforms.fade.value = Math.min(1, age / 0.3, c.ttl / 1.5);
+            m.material.uniforms.time.value = time + c.id * 7.3;
+            if ((c.x - cp.x) ** 2 + (c.y - cp.y) ** 2 + (c.z - cp.z) ** 2 < 160 * 160) {
+                for (let k = 0; k < 2; k++) {
+                    _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(c.r * Math.cbrt(Math.random()));
+                    this.emit(c.x + _s.x, c.y + _s.y, c.z + _s.z, (Math.random() - 0.5) * 1.5, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 1.5, 0.9, 0.9, 2);
+                }
+            }
+        }
+        for (let i = clouds.length; i < this.cloudMeshes.length; i++) this.cloudMeshes[i].visible = false;
+    }
+
     // A tail tip bitten off: a puff of the victim's colour (plus gold).
     biteBurst(x, y, z, color) {
         for (let k = 0; k < 40; k++) {
@@ -1118,6 +1275,27 @@ export class Renderer {
         for (const h of this.heads.values()) { this.scene.remove(h.g); h.mat.dispose(); h.mat2.dispose(); }
         this.heads.clear();
     }
+}
+
+// Particle hue per breath element (see the particle colours in update).
+const HUE = { fire: 0, ice: 1, acid: 2, bolt: 3 };
+
+// An acid cloud: green, brightest at the rim, with a slow swirl; fades in and out.
+function acidMaterial() {
+    return new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 }, fade: { value: 1 } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vP;
+            void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz); vP = position;
+                gl_Position = projectionMatrix * viewMatrix * wp; }`,
+        fragmentShader: `uniform float time; uniform float fade; varying vec3 vN; varying vec3 vV; varying vec3 vP;
+            void main() {
+                float rim = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+                float sw = sin(vP.x * 3.1 + time * 1.7) * sin(vP.y * 3.7 - time * 1.3) * sin(vP.z * 2.9 + time * 1.1);
+                float a = (0.11 + 0.42 * rim * rim + 0.09 * sw) * fade;
+                gl_FragColor = vec4(vec3(0.38, 1.0, 0.22) * a * 1.6, a);
+            }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
 }
 
 // Spiky 'Bit' shape: raise a pyramid on every face of a polyhedron.

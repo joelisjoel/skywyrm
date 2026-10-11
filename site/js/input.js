@@ -5,7 +5,7 @@
 // toward it; lift it to fly straight), a second finger boosts, and the
 // on-screen buttons hold boost / brake / fire. Everything funnels into the
 // same {sx, sy, …} struct.
-import { T } from './tunables.js?v=19';
+import { T } from './tunables.js?v=20';
 
 export class Input {
     constructor(canvas) {
