@@ -6,7 +6,8 @@
   "scripts": {
     "serve": "node scripts/serve.mjs",
     "smoke": "node scripts/smoke-test.mjs",
-    "stamps": "node scripts/check-stamps.mjs"
+    "stamps": "node scripts/check-stamps.mjs",
+    "stamps:fix": "node scripts/check-stamps.mjs --fix"
   },
   "devDependencies": {
     "playwright": "1.62.1",

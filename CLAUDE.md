@@ -32,7 +32,8 @@ are in `notes/MULTIPLAYER.md` (partly stale, see DESIGN-v3 §10.3).
 ## Before pushing
 
 ```sh
-npm run stamps            # bump ?v=N on every changed module, in every importer
+npm run stamps:fix        # bump ?v=N on every changed module, in every importer
+npm run stamps            # check only (what CI runs)
 npm run smoke             # loads and flies; screenshots land in smoke-shots/
 (cd server && npm test)   # sim + rooms
 ```
