@@ -11,7 +11,7 @@
     <title>Skywyrm — fly a Chinese dragon</title>
     <meta name="description" content="Skywyrm: fly a Chinese dragon through the clouds. Eat, grow, and don't touch their tails. Free, in your browser.">
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=26">
+    <link rel="stylesheet" href="style.css?v=27">
     <script type="importmap">
         {
             "imports": {
@@ -159,7 +159,7 @@
     <div id="controls" class="panel">
         <h2>Controls</h2>
         <div class="keys">
-            <div><b>Touch</b></div><div>put a finger on the sky: your dragon turns toward it · lift to fly straight · bolt button (or a second finger) to boost · chevrons to brake · flame for dragonfire · ❚❚ to pause</div>
+            <div><b>Touch</b></div><div>put a finger on the sky: your dragon turns toward it · lift to fly straight · bolt button (or a second finger) to boost · chevrons to brake · flame for dragonfire · ❚❚ to pause · speaker to mute</div>
             <div class="no-touch"><b>Mouse</b></div><div class="no-touch">steer — the further from centre, the harder you turn</div>
             <div class="no-touch"><b>Click / W / Space</b></div><div class="no-touch">boost (burns length)</div>
             <div class="no-touch"><b>Right-click / S</b></div><div class="no-touch">brake — tighter turns</div>
@@ -171,7 +171,7 @@
             <div class="no-touch"><b>E / F</b></div><div class="no-touch">breathe — grab a crystal first: red fire burns through a tail, blue ice slows everyone in the cone, violet lightning stuns a line of dragons, green acid spits a cloud that melts tails. Crystals stack (up to 5): one breath spends them all, reaching farther and wider, and the last colour you ate decides what you breathe</div>
             <div class="no-touch"><b>Esc / P</b></div><div class="no-touch">pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
             <div class="no-touch"><b>N</b></div><div class="no-touch">music on / off</div>
-            <div class="no-touch"><b>M</b></div><div class="no-touch">mute all sound</div>
+            <div class="no-touch"><b>M</b></div><div class="no-touch">mute / unmute all sound (or the speaker button, top left)</div>
             <div class="dev-only no-touch"><b><kbd>`</kbd></b></div><div class="dev-only no-touch">tuning panel (the key left of 1)</div>
         </div>
         <button class="cta close-overlay">Done</button>
@@ -208,10 +208,12 @@
         <button id="t-boost" aria-label="Boost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z"/></svg></button>
     </div>
 
+    <!-- Sound on/off, on every screen (also M, and Settings → Player). -->
+    <button id="mute-btn" aria-label="Mute sound" aria-pressed="false" title="Mute sound (M)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.6 7.6 0 0 1 0 10.8"/><path class="off" d="M15.6 9.6l4.8 4.8M20.4 9.6l-4.8 4.8"/></svg><span class="flash" aria-live="polite"></span></button>
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=58"></script>
+    <script type="module" src="js/main.js?v=59"></script>
 </body>
 
 </html>

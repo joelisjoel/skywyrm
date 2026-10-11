@@ -89,7 +89,8 @@ export class Input {
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
         addEventListener('keydown', (e) => {
-            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+            const el = e.target;                          // typing in a field: no hotkeys
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
             if (!e.repeat && this.onKey) this.onKey(e.code, e);
             this.keys.add(e.code);
             if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();

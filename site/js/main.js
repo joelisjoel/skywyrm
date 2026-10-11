@@ -6,9 +6,9 @@ import { World, Dragon, hazardDist } from './sim.js?v=25';
 import { managePopulation, targetBots } from './bots.js?v=25';
 import { Renderer } from './render.js?v=40';
 import { ChaseCam } from './camera.js?v=25';
-import { Input } from './input.js?v=28';
-import { Hud } from './hud.js?v=27';
-import { Audio } from './audio.js?v=14';
+import { Input } from './input.js?v=29';
+import { Hud } from './hud.js?v=28';
+import { Audio } from './audio.js?v=15';
 import { TunePanel } from './tune-panel.js?v=26';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=28';
@@ -623,7 +623,16 @@ const bindCheck = (id, key, after) => {
 // Beginner is the only mode: walls and the cloud sea steer you clear (no
 // dying on walls you can't see) and bots stay gentler, solo and online.
 function beginnerRules() { if (online) return; world.rules.botAggrMax = 0.5; }
-bindCheck('opt-mute', 'muted', () => audio.setMuted(settings.muted));
+// Mute: the speaker button, M and Settings → Mute all sound stay in step.
+function setMuted(m, flash) {
+    settings.muted = m;
+    saveSettings();
+    audio.setMuted(m);
+    $('opt-mute').checked = m;
+    hud.setMuted(m, flash);
+}
+bindCheck('opt-mute', 'muted', () => setMuted(settings.muted));
+$('mute-btn').onclick = (e) => { setMuted(!settings.muted, true); e.currentTarget.blur(); };   // so Space/Enter go to the game
 bindCheck('opt-music', 'music', () => audio.setMusic(settings.music));
 bindCheck('opt-voice', 'voice', () => audio.setVoice(settings.voice));
 // Graphics: Auto starts high and steps down once if play runs well below
@@ -668,6 +677,7 @@ input.settings.invertY = settings.invertY;
 input.settings.mouseLock = settings.mouseLock;
 cam.reduceMotion = settings.reduceMotion;
 audio.muted = settings.muted;
+hud.setMuted(settings.muted);
 audio.musicOn = settings.music;
 audio.voiceOn = settings.voice;
 
@@ -785,7 +795,7 @@ syncServer();
 const onControl = (e) => !!(e && e.target && e.target.closest && e.target.closest('button, a[href], input, select, textarea, summary, [tabindex], [contenteditable]'));
 input.onKey = (code, e) => {
     if (code === 'Backquote') { if (DEV) tune.toggle(); }
-    else if (code === 'KeyM') { settings.muted = !settings.muted; audio.setMuted(settings.muted); $('opt-mute').checked = settings.muted; saveSettings(); }
+    else if (code === 'KeyM' && !(e.ctrlKey || e.metaKey || e.altKey)) setMuted(!settings.muted, true);
     else if (code === 'KeyN') { settings.music = !settings.music; audio.setMusic(settings.music); $('opt-music').checked = settings.music; saveSettings(); hud.toast(settings.music ? '♪ Music on' : 'Music off', 'hint'); }
     else if (overlay && (code === 'Escape' || (code === 'Enter' && !onControl(e)))) closeOverlay();
     else if (overlay) return;
