@@ -37,7 +37,7 @@ body[data-state=play] #game { cursor: crosshair; }
 body[data-state=menu] #hud > :not(#board):not(#feed) { display: none; }
 body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats { opacity: 0.25; }
 
-#feed { position: absolute; top: calc(16px + var(--safe-t)); left: calc(18px + var(--safe-l)); font-size: 12.5px; color: rgba(235,235,245,0.6); display: flex; flex-direction: column; gap: 4px; }
+#feed { position: absolute; top: calc(60px + var(--safe-t)); left: calc(18px + var(--safe-l)); font-size: 12.5px; color: rgba(235,235,245,0.6); display: flex; flex-direction: column; gap: 4px; }
 #board { position: absolute; top: calc(14px + var(--safe-t)); right: calc(60px + var(--safe-r)); width: 210px; font-size: 12.5px; background: rgba(18,18,26,0.38); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 8px 12px; backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); }
 #board .row { display: flex; gap: 8px; line-height: 1.7; font-variant-numeric: tabular-nums; }
 #board .row.me { background: rgba(255,255,255,0.09); border-radius: 7px; margin: 0 -6px; padding: 0 6px; }
@@ -438,6 +438,27 @@ body[data-touch="1"] #hud-stats { bottom: calc(18px + env(safe-area-inset-bottom
     #menu h1 { font-size: 34px; }
     #menu .seal { width: 40px; height: 40px; font-size: 30px; }
 }
+
+/* ---------------- Sound on/off: a speaker button, top left on every screen ---------------- */
+#mute-btn { position: fixed; left: calc(14px + var(--safe-l)); top: calc(12px + var(--safe-t)); width: 40px; height: 40px; margin: 0; padding: 0;
+    border-radius: 50%; display: grid; place-items: center; z-index: 4; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    background: rgba(18, 16, 14, 0.42); border: 1px solid rgba(243, 221, 164, 0.35); color: #F3DDA4;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#mute-btn::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }      /* a thumb-sized target */
+#mute-btn:hover { background: rgba(243, 221, 164, 0.16); }
+#mute-btn svg { width: 50%; height: 50%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#mute-btn .off, #mute-btn[aria-pressed=true] .on { display: none; }
+#mute-btn[aria-pressed=true] .off { display: inline; }
+#mute-btn[aria-pressed=true] { color: rgba(243, 221, 164, 0.6); }
+#mute-btn .flash { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); white-space: nowrap; pointer-events: none; opacity: 0;
+    font-size: 13px; font-weight: 700; color: #F3DDA4; padding: 5px 12px; border-radius: 999px; background: rgba(18, 18, 26, 0.55); border: 1px solid rgba(255, 255, 255, 0.07); }
+#mute-btn .flash.show { animation: muteFlash 1.4s ease-out forwards; }
+@keyframes muteFlash { 0% { opacity: 0; transform: translate(-4px, -50%); } 12% { opacity: 1; transform: translate(0, -50%); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(0, -50%); } }
+body[data-touch="1"] #mute-btn { left: calc(66px + var(--safe-l)); }                         /* beside ❚❚ */
+body[data-overlay] #mute-btn { display: none; }                                                  /* Settings has the switch */
+/* The start menu sits a little lower, so even a tall menu on a phone on its
+   side starts below the speaker button. */
+#menu { top: calc(50% + 23px + (var(--safe-t) - var(--safe-b)) / 2); max-height: calc(100% - 70px - var(--safe-t) - var(--safe-b)); }
 
 /* Settings → Player: the last problem this device hit, to copy into a report. */
 #last-problem { margin-top: 10px; padding: 8px 10px; border: 1px solid rgba(255, 120, 90, 0.4); border-radius: 8px; }

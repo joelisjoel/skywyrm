@@ -77,6 +77,7 @@ export class Hud {
             feed: document.getElementById('feed'),
             fps: document.getElementById('hud-fps'),
             warn: document.getElementById('hud-warn'),
+            mute: document.getElementById('mute-btn'),
         };
         this.g = {};
         const box = document.getElementById('hud-gauges');
@@ -109,6 +110,17 @@ export class Hud {
         this.el.toasts.appendChild(t);
         setTimeout(() => t.remove(), 1600);
         while (this.el.toasts.children.length > 4) this.el.toasts.firstChild.remove();
+    }
+
+    // Speaker button: the icon follows the mute state; `flash` (M or a tap)
+    // also shows "Sound off / on" beside it for a moment, on any screen.
+    setMuted(m, flash) {
+        const b = this.el.mute, f = b.querySelector('.flash');
+        b.setAttribute('aria-pressed', String(m));
+        b.title = m ? 'Sound off: unmute (M)' : 'Mute sound (M)';
+        if (!flash) return;
+        f.textContent = m ? 'Sound off' : 'Sound on';
+        f.classList.remove('show'); void f.offsetWidth; f.classList.add('show');
     }
 
     feed(text) {

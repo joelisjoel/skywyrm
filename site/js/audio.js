@@ -1,7 +1,7 @@
 // Synthesised sound (spec §11) — no assets. Feel-first: wind that rises
 // with speed, an orb chime ladder, whooshes for near misses, and the
 // adaptive soundtrack (music.js) with power-up stingers in its key.
-import { Music } from './music.js?v=9';
+import { Music } from './music.js?v=10';
 import { Voice } from './voice.js?v=2';
 
 // D minor pentatonic, so orb chimes sit inside the soundtrack.
@@ -40,6 +40,7 @@ export class Audio {
         src.start();
         this.music = new Music(this.ctx, this.master, this.noise);
         this.music.setOn(this.musicOn);
+        this.music.hold = this.muted || this.hidden;
         this.voice = new Voice(this.ctx, this.master, this.music);
         this.voice.on = this.voiceOn;
     }
@@ -59,7 +60,7 @@ export class Audio {
         this.hidden = h;
         if (!this.ctx) return;
         const t = this.ctx.currentTime, mg = this.master.gain;
-        if (this.music) this.music.hold = h;
+        if (this.music) this.music.hold = h || this.muted;
         if (h) {
             mg.cancelScheduledValues(t); mg.setValueAtTime(0, t);
             this.windGain.gain.cancelScheduledValues(t); this.windGain.gain.setValueAtTime(0, t);
@@ -106,9 +107,19 @@ export class Audio {
         }
     }
 
+    // Mute (speaker button, M, Settings): the master gain drops to 0 in
+    // 20 ms (quick, but no click) and comes back to the same volume. The
+    // music scheduler holds meanwhile, so a muted phone isn't building
+    // notes nobody hears; unmuted, the song carries on from where it was.
     setMuted(m) {
         this.muted = m;
-        if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.volume, this.ctx.currentTime, 0.05);
+        if (!this.ctx) return;
+        if (this.music) this.music.hold = m || this.hidden;
+        if (m && this.voice) this.voice.stop();
+        if (this.hidden) return;                        // setHidden(false) restores the level
+        const t = this.ctx.currentTime, g = this.master.gain;
+        g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(m ? 0 : this.volume, t + 0.02);
     }
 
     wind(speed, active) {

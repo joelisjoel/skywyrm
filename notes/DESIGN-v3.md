@@ -805,6 +805,12 @@ The improvement loop's numbers, kept without identifying anyone
   background timer would play stray notes) and the context is suspended.
   Coming back resumes it from any stopped state, including iOS's
   `interrupted`, and every tap or key retries if that fails.
+- **Mute** (`Audio.setMuted`): the speaker button (`#mute-btn`, top left on
+  every screen, beside ❚❚ on touch; the start menu sits 23 px lower to clear
+  it), M and Settings → Mute all sound share `settings.muted`. The master
+  gain ramps to 0 in 20 ms and back to 0.6 on unmute. While muted the music
+  scheduler and stingers hold (no notes built for nobody) and a voice line
+  in progress stops.
 
 ### 5.5 Browser storage
 

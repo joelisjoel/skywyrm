@@ -416,7 +416,8 @@ device.
 | Roll | A or D | none |
 | Look back | C | none |
 | Pause | Esc or P | Pause button |
-| Mute / music | M / N | in Settings |
+| Mute | M, or the speaker button (top left) | Speaker button (top left, beside pause) |
+| Music on / off | N | in Settings |
 
 **Settings** (saved in the browser):
 
@@ -480,7 +481,8 @@ legs, fins and feathers grow with them.
 - Stats text has a soft shadow so it reads on bright cloud. Touch screens hide
   keyboard and mouse hints (the fire gauge's `E`, key names in Controls and
   Settings) and the keyboard and mouse settings.
-- **Top:** leaderboard, kill feed, and toasts.
+- **Top:** the speaker (mute) button at the left, leaderboard, kill feed, and
+  toasts.
 - **Over the world:**
   - names over dragons within 50 m
   - arrows to dragons off screen within 30 m
@@ -495,6 +497,10 @@ legs, fins and feathers grow with them.
   (menu, flying, action), and it muffles when paused.
 - **Background:** all sound stops while the tab is hidden and comes back
   when you return.
+- **Mute:** a speaker button at the top left of every screen (and M on a
+  keyboard) turns all sound off or on at once, with a brief "Sound off / Sound
+  on" label. It matches Settings → Mute all sound and is remembered on this
+  device.
 - **Voice:** 24 recorded Mandarin battle shouts, with characters, pinyin and English
   captions on screen. Only your own dragon's events trigger them:
 

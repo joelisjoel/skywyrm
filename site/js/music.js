@@ -38,7 +38,7 @@ export class Music {
     constructor(ctx, out, noise) {
         this.ctx = ctx; this.noise = noise;
         this.on = true;
-        this.hold = false;              // tab hidden: schedule nothing
+        this.hold = false;              // tab hidden or muted: schedule nothing
         this.level = 0; this.want = 0; this.paused = false;
         this.step = 0; this.nextT = 0;
         this.chord = [0, 'm'];
@@ -294,6 +294,7 @@ export class Music {
     }
 
     sting(kind) {
+        if (this.hold) return;
         const t = this.grid(), S = STEP;
         switch (kind) {
             case 'shield':      // Ember Shield: a warm rising brass call + sparkle
