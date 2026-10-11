@@ -43,6 +43,16 @@ export class NetGame {
     send(m) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
     close() { this.closing = true; try { this.ws.close(); } catch { /* ignore */ } }
     takeEvents() { const e = this.events; this.events = []; return e; }
+    // Only the game loop drains the queue, and a hidden tab doesn't run it.
+    // So while hidden (or if the queue backs up) keep just what changes the
+    // game — your own death and bites, folding wings — and drop the toasts,
+    // sparks and sounds for everyone else, which would all play at once on
+    // return (and each death holds on to a removed dragon).
+    queue(e) {
+        const keep = e.type === 'parking' || e.type === 'unparked' || e.type === 'parked'
+            || ((e.type === 'death' || e.type === 'bite') && e.d === this.player);
+        if (keep || !(document.hidden || this.events.length >= 200)) this.events.push(e);
+    }
     dragon(id) { return (this.world && this.world.byId.get(id)) || this.gone.get(id) || null; }
 
     onMessage(m) {
@@ -163,27 +173,27 @@ export class NetGame {
                     const d = this.dragon(e.id);
                     if (!d) break;
                     d.alive = false;
-                    this.events.push({ type: 'death', d, killer: e.by ? this.dragon(e.by) : null, cause: e.cause });
+                    this.queue({ type: 'death', d, killer: e.by ? this.dragon(e.by) : null, cause: e.cause });
                     break;
                 }
-                case 'sever': { const d = this.dragon(e.id), o = this.dragon(e.o); if (d && o) this.events.push({ type: 'sever', d, o, burn: e.burn || [] }); break; }
-                case 'fire': { const d = this.dragon(e.id); if (d) this.events.push({ type: 'fireStart', d }); break; }
+                case 'sever': { const d = this.dragon(e.id), o = this.dragon(e.o); if (d && o) this.queue({ type: 'sever', d, o, burn: e.burn || [] }); break; }
+                case 'fire': { const d = this.dragon(e.id); if (d) this.queue({ type: 'fireStart', d }); break; }
                 case 'bite': {
                     const d = this.dragon(e.id), o = this.dragon(e.o);
-                    if (d && o) this.events.push({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
+                    if (d && o) this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
                     break;
                 }
-                case 'eat': this.events.push({ type: 'eat', d: p }); break;
-                case 'tier': this.events.push({ type: 'tier', d: p, tier: e.tier | 0 }); break;
-                case 'nm': this.events.push({ type: 'nearMiss', d: p }); break;
-                case 'pu': this.events.push({ type: 'powerup', d: p, kind: e.kind }); break;
-                case 'shield': this.events.push({ type: 'shieldPop', d: p }); break;
-                case 'miss': this.events.push({ type: 'fireMiss', d: p }); break;
-                case 'empty': this.events.push({ type: 'thrustEmpty', d: p }); break;
-                case 'parking': this.events.push({ type: 'parking', in: +e.in || 3 }); break;
-                case 'unparked': this.events.push({ type: 'unparked' }); break;
-                case 'parked': this.parked = true; if (p) p.alive = false; this.events.push({ type: 'parked' }); break;
-                case 'land': { const d = this.dragon(e.id); if (d && d !== p) this.events.push({ type: 'land', d }); break; }
+                case 'eat': this.queue({ type: 'eat', d: p }); break;
+                case 'tier': this.queue({ type: 'tier', d: p, tier: e.tier | 0 }); break;
+                case 'nm': this.queue({ type: 'nearMiss', d: p }); break;
+                case 'pu': this.queue({ type: 'powerup', d: p, kind: e.kind }); break;
+                case 'shield': this.queue({ type: 'shieldPop', d: p }); break;
+                case 'miss': this.queue({ type: 'fireMiss', d: p }); break;
+                case 'empty': this.queue({ type: 'thrustEmpty', d: p }); break;
+                case 'parking': this.queue({ type: 'parking', in: +e.in || 3 }); break;
+                case 'unparked': this.queue({ type: 'unparked' }); break;
+                case 'parked': this.parked = true; if (p) p.alive = false; this.queue({ type: 'parked' }); break;
+                case 'land': { const d = this.dragon(e.id); if (d && d !== p) this.queue({ type: 'land', d }); break; }
             }
         }
     }

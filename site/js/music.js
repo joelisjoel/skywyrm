@@ -38,6 +38,7 @@ export class Music {
     constructor(ctx, out, noise) {
         this.ctx = ctx; this.noise = noise;
         this.on = true;
+        this.hold = false;              // tab hidden: schedule nothing
         this.level = 0; this.want = 0; this.paused = false;
         this.step = 0; this.nextT = 0;
         this.chord = [0, 'm'];
@@ -108,8 +109,10 @@ export class Music {
     }
 
     // ------------------------------------------------ sequencer
+    // A background tab throttles this timer to about once a second, which
+    // would play a stuttering note or two each time: hold until visible.
     tick() {
-        if (!this.on || this.ctx.state !== 'running') return;
+        if (!this.on || this.hold || this.ctx.state !== 'running') return;
         const now = this.ctx.currentTime;
         if (this.nextT < now - 0.1) this.nextT = now + 0.05;          // first start, or the tab slept
         while (this.nextT < now + 0.15) {

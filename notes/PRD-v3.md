@@ -304,6 +304,8 @@ device.
   1. A 3 s countdown, during which you can still be hit.
   2. You leave the sky with your length kept.
   3. You can fly back in after 2 s.
+- **Switching away** (another tab, or locking the phone) folds your wings the
+  same way, and solo pauses. Coming back shows the pause screen; tap Resume.
 - **If the server is down:** the lobby says "servers offline — play solo". Solo
   always works.
 - **Known limit:** Cloud Run ends every connection after 60 minutes, and there is
@@ -386,6 +388,8 @@ device.
   for eating, whooshes, power-up sounds and dragonfire.
 - **Music:** generated live in D minor at 118 BPM. It has three intensity levels
   (menu, flying, action), and it muffles when paused.
+- **Background:** all sound stops while the tab is hidden and comes back
+  when you return.
 - **Voice:** 24 recorded Mandarin battle shouts, with characters, pinyin and English
   captions on screen. Only your own dragon's events trigger them:
 
@@ -476,7 +480,7 @@ device.
   - colour-blind stripes
   - volume sliders
   - ping display
-- **Audio:** spatial (3D) audio, mute when the tab is hidden.
+- **Audio:** spatial (3D) audio.
 - **Worlds:** The Grid and The Warrens.
 - **Persistent boards:** daily and all-time.
 - **Input:** emotes and gamepad.
