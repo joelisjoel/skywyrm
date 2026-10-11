@@ -192,7 +192,15 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - The type pool is `shield, magnet` plus two breath crystals
     (`breathCrystal`): `fire`, or with rule `elements` and probability
     `elementShare` 0.5 one of `ice`, `bolt` (lightning) or `acid`.
-  - They are placed at food hotspots.
+  - They are placed at food hotspots, at least 30 m from a wall, 20 m from
+    the sun and within 0.55R of the centre.
+  - **Drift** (`World.drift`, rule `powerupDrift` 1 m/s): each crystal flies
+    at 0.6–1.4× that, easing (τ 2 s) toward a new random heading every
+    3–8 s (half as steep in Skyhold). It heads for the centre within 30 m of
+    a wall or the cloud sea or beyond 0.55R, and away from it inside 20 m.
+    The server simulates it; positions already go out in every snapshot's
+    `pu`, so old clients simply see crystals move. The renderer adds a
+    bob and sway of up to 0.6 m (drawing only).
 - **Dragonfire** (`updateBreath`, `fireTarget`, `breathStats`):
   - Each fire crystal adds a charge, up to `fireChargeMax` 5 (rule
     `fireCharge`; with it off a crystal sets one charge). One breath spends
@@ -256,6 +264,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `fireCharge` | 1 | `lengthSpeedMax` | 3 |
 | `fireChargeMax` | 5 | `elements` | 1 |
 | `speedCap` | 4 | `lengthSpeedLate` | 1.35 |
+| `powerupDrift` | 1 | `botTreasure` | 1 |
+| `botTreasureNear` | 18 | `botTreasureFar` | 150 |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -291,6 +301,21 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - The menu's attract mode uses 30.
 - **Gentle period:** in solo, during your first 3 runs, bots ignore you for 45 s
   after you spawn (`main.js:136`).
+- **Treasure** (`Brain.treasure`, rule `botTreasure`): checked after a
+  grazer's flee and before stalking or feeding. Drive = (length − 12)/188,
+  from 0 for a hatchling to 1 from 200 m:
+  - Notice range: `botTreasureNear` + (`botTreasureFar` − near)·drive, ×(0.5 + A).
+    Per decision a bot looks with chance 0.2 + 0.6·drive, best by 1/(dist + 10),
+    halved if behind. It skips breath crystals (fire, ice, lightning, acid)
+    once its charges are full (`fireChargeMax`, or 1 with `fireCharge` off).
+  - Commitment: holds the goal 1.5 + 8·drive s, and drops it early with
+    chance 0.05·(1 − drive) per decision.
+  - Path: drive > 0.3 leads the crystal's drift; smaller bots wobble up to
+    0.5·(1 − drive) off the line. Above drive 0.5 a bot may boost when
+    another dragon is closer to it. The feelers still decide the final
+    direction.
+  - Fair play: below A 0.75 (every beginner room) a bot skips a crystal if a
+    human is within (1.75 − A)× its own distance.
 - **Names:** 44 dragon-style names, deduplicated.
 
 ---
@@ -794,7 +819,8 @@ The improvement loop's numbers, kept without identifying anyone
 ### 6.6 Effects
 - **Food:** one InstancedMesh of icosahedra, capped at 6,000. Colours are pushed
   above 1 so they bloom.
-- **Power-up crystals** snap between shapes on a beat, like Tron's "Bit".
+- **Power-up crystals** snap between shapes on a beat, like Tron's "Bit", and
+  bob and sway as they float.
 - **Dragonfire:** a pooled additive cone sized by `breathStats` for the
   charges spent, plus 26 + 12k flame particles per frame.
 - **Breath elements:**
@@ -897,7 +923,7 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (64 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients) |
+| `server/test/sim.test.mjs` (74 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients), power-ups drifting in bounds (and `powerupDrift` 0), a big bot fetching a crystal a hatchling ignores, `botTreasure` 0 (also switched off mid-chase), bots yielding to a nearer human, bots fetching any breath element until their charges are full |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
 | `server/test/rooms.test.mjs` (36 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
@@ -1030,8 +1056,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Boost and food | boostCost 4/s · boostDropShare 0.5 · boostMinMass 15 · orbTarget 2000 · orbClusterShare 0.6 · foodSpread 0.2 · foodUniformShare 0.15 · pickupBase 2 · lootShare 0.8 · lootTtl 45 · botGrowthCapMass 400 |
 | Heat and thrust | ambientTemp 10 · sunHeat 70 · sunRadius 0.35 · crowdHeat 35 · crowdRadius 35 · crowdFull 5 · tempRiseTau 3 · tempFallTau 7 · tempSpeed 0.4 · thrustBase 10 · tempThrust 0.6 · thrustRegen 0.4 |
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
-| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 |
+| Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 · powerupDrift 1 (rule) |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 |

@@ -1,7 +1,7 @@
 // Unit tests for sim rules (no server): run with `npm test`.
 import assert from 'node:assert/strict';
 import { Vector3 } from 'three';
-import { World, Dragon, T, managePopulation, aggression, cleanPerks, quatFromForwardUp } from '../../site/js/shared.js';
+import { World, Dragon, T, managePopulation, aggression, cleanPerks, quatFromForwardUp, hazardDist } from '../../site/js/shared.js';
 import { jadeFor } from '../../site/js/profile.js';
 import { Room } from '../rooms.js';
 
@@ -307,6 +307,77 @@ const X = { x: 1, y: 0, z: 0 };
     const life = (time, rank) => jadeFor({ peak: 12, kills: 0, bites: 0, time, rank });
     check(life(5, 1) - life(5, 50) === 0 && life(40, 1) - life(40, 50) === 60 && life(40, 3) - life(40, 50) === 25,
         'the #1 / top-3 jade bonus counts only after 30 s of life');
+}
+// Power-ups float about (rule powerupDrift): they wander 0.5–1.5 m/s and
+// stay well inside the arena and out of the sun.
+{
+    for (const arena of ['sky', 'orb']) {
+        const w = new World(arena, 'local');
+        for (let i = 0; i < 5; i++) { w.nextPowerup = -1; w.updatePowerups(0); }
+        w.nextPowerup = Infinity;
+        const start = w.powerups.map((p) => p.pos.clone()), last = w.powerups.map((p) => p.pos.clone());
+        const walked = start.map(() => 0);
+        let wall = Infinity, sun = Infinity, far = 0;
+        for (let s = 0; s < 1800; s++) {
+            w.time += 0.1; w.updatePowerups(0.1);
+            w.powerups.forEach((p, i) => {
+                walked[i] += p.pos.distanceTo(last[i]); last[i].copy(p.pos);
+                wall = Math.min(wall, hazardDist(w.arena, p.pos)[0]);
+                const c = p.pos.distanceTo(w.arena.center);
+                sun = Math.min(sun, c); far = Math.max(far, c / w.arena.radius);
+            });
+        }
+        const pace = walked.map((m) => m / 180), moved = w.powerups.map((p, i) => p.pos.distanceTo(start[i]));
+        check(w.powerups.length === 5 && pace.every((v) => v > 0.35 && v < 1.5) && Math.max(...moved) > 10,
+            `${arena}: 5 power-ups drift ${pace.map((v) => v.toFixed(1)).join('/')} m/s over 3 min`);
+        check(wall > 20 && sun > 15 && far < 0.62, `${arena}: they keep ${wall.toFixed(0)} m from the walls, ${sun.toFixed(0)} m from the sun, within ${(far * 100).toFixed(0)}% of the radius`);
+    }
+    const w = new World('orb', 'local');
+    w.rules.powerupDrift = 0;
+    w.nextPowerup = -1; w.updatePowerups(0);
+    const p0 = w.powerups[0].pos.clone();
+    for (let s = 0; s < 100; s++) { w.time += 0.1; w.updatePowerups(0.1); }
+    check(w.powerups[0].pos.equals(p0), 'powerupDrift 0: power-ups stay put');
+}
+// Bots go for power-ups (rule botTreasure), more goal-directed the bigger
+// they are: a big bot grabs one 70 m away; a hatchling doesn't notice it.
+{
+    const trial = (mass, rules = {}, human = false, flipOff = false, type = 'shield', charges = 0) => {
+        const w = new World('orb', 'local');
+        Object.assign(w.rules, { botAggrMax: 0.5 }, rules);
+        w.ageStart = 0;
+        w.botTarget = () => 1;
+        managePopulation(w, true);
+        const b = w.dragons[0];
+        w.spawn(b, mass); b.protect = 0;
+        b.pos.set(0, 0, -100);
+        quatFromForwardUp(new Vector3(1, 0, 0), new Vector3(0, 1, 0), b.quat); b.updateFrame(); b.vdir.copy(b.fwd);
+        b.pathHead = -1; b.pathCount = 0; b.lastPt.copy(b.pos);
+        w.powerups.push({ pos: new Vector3(0, 0, -170), type, spin: 0 });
+        b.fire = charges;
+        w.nextPowerup = Infinity;
+        let p = null;
+        if (human) {
+            p = new Dragon('Kid', false); w.player = p;
+            w.spawn(p, 30);
+        }
+        let got = null;
+        for (let i = 0; i < 8 * 30 && !got; i++) {
+            if (p) { p.pos.set(0, 25, -150); p.protect = 5; }
+            if (flipOff && i === 15) w.rules.botTreasure = 0;
+            w.step(1 / 30);
+            const e = w.events.find((x) => x.type === 'powerup');
+            if (e) got = e.d;
+        }
+        return got === b;
+    };
+    const big = [0, 1, 2].filter(() => trial(600)).length, tiny = [0, 1, 2].filter(() => trial(10)).length;
+    check(big === 3 && tiny === 0, `a 248 m bot fetches a power-up 70 m away (${big}/3); a hatchling doesn't notice it (${tiny}/3)`);
+    check(!trial(600, { botTreasure: 0 }), 'botTreasure 0: bots ignore power-ups');
+    check(!trial(600, {}, true), 'bots let a nearer human have it (beginner aggression)');
+    check(!trial(600, {}, false, true), 'switching botTreasure off mid-chase just drops the goal');
+    check(trial(600, {}, false, false, 'ice', 2) && !trial(600, {}, false, false, 'acid', T.fireChargeMax),
+        'bots go for breath crystals of any element (ice, lightning, acid) until their charges are full');
 }
 
 // Breath elements (rule elements): ice chills, lightning stuns and chains,
