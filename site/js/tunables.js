@@ -125,6 +125,10 @@ export const DEFAULTS = {
     lengthSpeedLate: 1.35,  // extra bonus at full length (lenCap), bending the curve up from 200 m
     lengthSpeedMax: 3,      // cap on the length bonus alone (the total is capped by speedCap)
     speedCap: 4,            // cap on the whole cruise/boost multiplier, heat + length (0 = no cap)
+    powerupDrift: 1,        // m/s power-ups float about (each 0.6–1.4× this; 0 = they stay put)
+    botTreasure: 1,         // bots go for power-ups, more goal-directed the bigger they are (0 = off)
+    botTreasureNear: 18,    // m a hatchling bot notices a power-up from…
+    botTreasureFar: 150,    // …rising to this from 200 m long
     fireCharge: 1,          // fire crystals stack and one breath spends them all, bigger per charge (0 = one charge, classic)
     fireChargeMax: 5,       // most charges a dragon can store
     elements: 1,            // ice, lightning and acid crystals join fire; the last one eaten sets your breath (0 = only fire)
@@ -249,6 +253,10 @@ export const PANEL = [
     ['lengthSpeedLate', 0, 3, 0.05, 'Rules'],
     ['lengthSpeedMax', 0, 3, 0.1, 'Rules'],
     ['speedCap', 1, 6, 0.1, 'Rules'],
+    ['powerupDrift', 0, 5, 0.1, 'Rules'],
+    ['botTreasure', 0, 1, 1, 'Rules'],
+    ['botTreasureNear', 0, 100, 1, 'Rules'],
+    ['botTreasureFar', 0, 300, 5, 'Rules'],
     ['fireCharge', 0, 1, 1, 'Rules'],
     ['fireChargeMax', 1, 9, 1, 'Rules'],
     ['elements', 0, 1, 1, 'Rules'],

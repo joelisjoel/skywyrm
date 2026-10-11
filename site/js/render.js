@@ -2,7 +2,7 @@
 // deliberately skipped). Everything that moves is instanced; the arena is
 // wireframe + fog + drifting dust so speed and depth read clearly.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=21';
+import { T, TIERS } from './tunables.js?v=22';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -855,7 +855,9 @@ export class Renderer {
             const pop = 1 + 0.45 * Math.max(0, 1 - frac * 5);
             if (!crystal.material.userData.own) { crystal.material = crystal.material.clone(); crystal.material.userData.own = true; }
             crystal.material.color.setHex(flash ? 0xffffff : this.puMats[kind].color.getHex());
-            g.position.copy(pu.pos);
+            // Bob and sway as it floats (drawing only; pickups use pu.pos).
+            const ph = pu.pos.x * 0.21 + pu.pos.z * 0.17;
+            g.position.set(pu.pos.x + 0.35 * Math.sin(time * 0.7 + ph), pu.pos.y + 0.6 * Math.sin(time * 1.3 + ph * 2), pu.pos.z + 0.35 * Math.cos(time * 0.9 + ph));
             crystal.rotation.set(pu.spin * 0.7, pu.spin * 1.3, 0);
             shell.rotation.set(-pu.spin * 0.5, pu.spin * 0.9, pu.spin * 0.3);
             crystal.scale.setScalar((breath ? 1.9 : 1.4) * pop);

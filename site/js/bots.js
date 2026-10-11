@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=21';
-import { Dragon, hazardDist } from './sim.js?v=21';
+import { T } from './tunables.js?v=22';
+import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=22';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -167,8 +167,9 @@ class Brain {
         const hunt = T.botAggression * (0.3 + this.aggr) * (moods ? MOOD_HUNT[this.mood] * (0.35 + 0.9 * A) : 1);
         this.biteTip = null;
         if (moods && this.mood === 'grazer') want = this.flee(world, d);
+        if (!want) want = this.treasure(world, d, A);
         if (!want && moods && (this.mood === 'hunter' || this.mood === 'kingslayer')) want = this.stalk(world, d, A, hunt);
-        if (want) { /* fleeing or stalking */ }
+        if (want) { /* fleeing, after a power-up, or stalking */ }
         else if (this.goal && this.goal.kind === 'prey' && world.time < this.goalUntil && this.goal.o.alive) {
             want = this.preyDir(d, this.goal.o);
         } else if (Math.random() < hunt * 0.6) {
@@ -296,6 +297,47 @@ class Brain {
         return this.preyDir(d, o);
     }
 
+    // Power-ups (rule botTreasure). The bigger the bot, the more goal-
+    // directed: a hatchling only grabs a crystal within botTreasureNear and
+    // is easily distracted on the way; a 200 m dragon notices one from
+    // botTreasureFar, holds the goal much longer and flies straight at
+    // where it's drifting to. The feelers still have the last word. Both
+    // ranges grow with aggression (×0.75 when a room wakes, ×1 at the
+    // beginner cap), and below 0.75 aggression bots leave a crystal to a
+    // human who is nearly as close (beginner rooms never get past 0.5).
+    treasure(world, d, A) {
+        if (!world.rule('botTreasure')) { if (this.goal && this.goal.kind === 'treasure') this.goal = null; return null; }
+        const drive = Math.min(1, Math.max(0, (d.len - 12) / 188));   // 0 hatchling … 1 from 200 m
+        let g = this.goal && this.goal.kind === 'treasure' ? this.goal : null;
+        if (g && (!world.powerups.includes(g.t) || world.time > this.goalUntil || Math.random() < 0.05 * (1 - drive))) g = this.goal = null;
+        if (!g && Math.random() < 0.2 + 0.6 * drive) {
+            const near = world.rule('botTreasureNear'), reach = (near + (world.rule('botTreasureFar') - near) * drive) * (0.5 + A);
+            const full = world.rule('fireCharge') ? Math.max(1, world.rule('fireChargeMax')) : 1;   // breath charges it can hold
+            let best = null, bestScore = 0;
+            for (const t of world.powerups) {
+                if (ELEMENTS.includes(t.type) && d.fire >= full) continue;  // fire, ice, lightning, acid: charges already full
+                const dist = t.pos.distanceTo(d.pos);
+                if (dist > reach || (A < 0.75 && humanNearer(world, d, t.pos, dist * (1.75 - A)))) continue;
+                const sc = (_v.subVectors(t.pos, d.pos).dot(d.fwd) > -0.3 * dist ? 1 : 0.5) / (dist + 10);
+                if (sc > bestScore) { bestScore = sc; best = t; }
+            }
+            if (best) { g = this.goal = { kind: 'treasure', t: best }; this.goalUntil = world.time + 1.5 + 8 * drive; }
+        }
+        if (!g) return null;
+        const t = g.t, dist = t.pos.distanceTo(d.pos);
+        // Big bots lead the drift; small ones meander toward it.
+        _p.copy(t.pos);
+        if (t.vel && drive > 0.3) _p.addScaledVector(t.vel, dist / Math.max(8, d.speed));
+        const dir = _p.sub(d.pos).normalize();
+        const wob = 0.5 * (1 - drive) * Math.min(1, dist / 15), ph = d.id * 1.7, tt = world.time;
+        if (wob > 0.02) dir.addScaledVector(_v.set(Math.sin(tt * 1.9 + ph), 0.6 * Math.sin(tt * 1.3 + ph), Math.cos(tt * 1.6 + ph)), wob).normalize();
+        // A big bot boosts to beat another dragon that's closer to it.
+        if (drive > 0.5 && dist > 12 && dist < 60 && d.mass > 40 && !d.thrustLocked && Math.random() < drive * (0.3 + A)) {
+            for (const o of world.dragons) if (o !== d && o.alive && o.pos.distanceToSquared(t.pos) < dist * dist) { this.boost = true; break; }
+        }
+        return dir.clone();
+    }
+
     preyDir(d, o) {
         const dist = o.pos.distanceTo(d.pos);
         return _p.copy(o.pos).addScaledVector(o.fwd, 6 + dist * 0.35).sub(d.pos).normalize().clone();
@@ -339,11 +381,20 @@ class Brain {
         if (!g) return d.fwd;
         if (g.kind === 'prey') return _p.copy(g.o.pos).sub(d.pos).normalize();
         if (g.kind === 'orb') return _p.set(worldRef.ox[g.i], worldRef.oy[g.i], worldRef.oz[g.i]).sub(d.pos).normalize();
+        if (g.kind === 'treasure') return _p.copy(g.t.pos).sub(d.pos).normalize();
         return _p.copy(g.p).sub(d.pos).normalize();
     }
 }
 
 let worldRef = null;
+
+// Is a human (or the solo player) within `dist` of p?
+function humanNearer(world, d, p, dist) {
+    for (const o of world.dragons) {
+        if (o !== d && o.alive && (o.human || o === world.player) && o.pos.distanceToSquared(p) < dist * dist) return true;
+    }
+    return false;
+}
 
 function botName(world) {
     const used = new Set(world.dragons.map((d) => d.name));

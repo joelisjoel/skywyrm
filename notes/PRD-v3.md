@@ -200,6 +200,8 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
 Crystals appear about every 20 s, with up to 5 in the sky at once. Half of
 them are breath crystals: fire, or (rule `elements`) half the time ice,
 lightning or acid.
+They float about slowly (about 1 m/s, bobbing as they go), staying near the
+action and clear of the walls, the cloud sea and the sun.
 
 | Crystal | Effect |
 |---|---|
@@ -274,6 +276,11 @@ lightning or acid.
 
 - **Aggression** rises the longer a room has been busy. It is capped at half
   (beginner rules) and reaches that cap after about 5 minutes.
+- **Power-ups:** bots go for crystals, and the bigger they are the more
+  goal-directed: a hatchling only grabs one within about 18 m and wanders
+  off easily; a 200 m dragon spots one up to 150 m away and flies straight
+  for it. In beginner rooms a bot leaves a crystal to a player who is
+  nearly as close.
 
 ### 5.10 Leaderboard and big moments 🟡
 - **Leaderboard:** the top 10 by mass, showing length.

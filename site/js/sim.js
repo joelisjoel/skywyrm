@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=21';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=22';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -14,10 +14,14 @@ const HASH_SIZE = 16384;        // buckets (power of two)
 const MAX_ORBS = 6000;
 const MAX_CLOUDS = 12;          // acid clouds alive at once (oldest goes first)
 const NET_GRACE = 0.25;         // s before the server enforces a fresh chill or stun on a browser (the news is still in flight)
+const PU_WALL_GAP = 30;         // m: drifting power-ups turn back this far from walls and the cloud sea
+const PU_SUN_GAP = 20;          // m: …and this far from the sun (its glare would hide them)
+const PU_HOME = 0.55;           // × arena radius: …and wander back toward the action past this
 
 const _v1 = new Vector3(), _v2 = new Vector3(), _v3 = new Vector3();
 const _q1 = new Quaternion(), _m = new Matrix4();
 const _a1 = new Vector3(), _a2 = new Vector3(), _a3 = new Vector3();   // wallAssist scratch
+const _d1 = new Vector3();                                              // drift scratch
 const X = new Vector3(1, 0, 0), Y = new Vector3(0, 1, 0), Z = new Vector3(0, 0, 1);
 
 // ---------------------------------------------------------------- arenas
@@ -887,7 +891,10 @@ export class World {
                 const types = ['shield', 'magnet'];
                 if (T.dragonfire) types.push(this.breathCrystal(), this.breathCrystal());
                 const p = new Vector3();
-                this.foodPoint(12, p);   // hotspots where the food is
+                this.foodPoint(PU_WALL_GAP, p);   // hotspots where the food is, but not in the sun or far out
+                const c = this.arena.center, dc = _d1.subVectors(p, c).length(), home = this.arena.radius * PU_HOME;
+                if (dc < PU_SUN_GAP) p.copy(c).addScaledVector(randomUnit(_d1), PU_SUN_GAP);
+                else if (dc > home) p.copy(c).addScaledVector(_d1, home / dc);
                 const type = types[Math.floor(Math.random() * types.length)];
                 this.powerups.push({ pos: p, type, spin: Math.random() * 6 });
                 this.emit({ type: 'powerupSpawn', kind: type, pos: p });
@@ -896,6 +903,7 @@ export class World {
         for (let k = this.powerups.length - 1; k >= 0; k--) {
             const pu = this.powerups[k];
             pu.spin += dt;
+            this.drift(pu, this.rule('powerupDrift'), dt);
             for (const d of this.dragons) {
                 if (!d.alive) continue;
                 const rr = 2.5 + d.r;
@@ -915,6 +923,34 @@ export class World {
                 }
             }
         }
+    }
+
+    // Power-ups float about (rule powerupDrift, m/s; each one 0.6–1.4× that):
+    // a slow wander that eases toward a new heading every few seconds and
+    // turns for home near a wall or the cloud sea, out of the sun's glare,
+    // or once it has strayed from the action.
+    drift(t, speed, dt) {
+        if (!(speed > 0)) return;
+        const a = this.arena;
+        if (!t.vel) { t.vel = randomUnit(new Vector3()).multiplyScalar(speed); t.aim = new Vector3(); t.aimAt = 0; t.pace = 0.6 + 0.8 * Math.random(); }
+        if (this.time >= t.aimAt) {
+            randomUnit(t.aim);
+            if (a.gravity) t.aim.y *= 0.5;                    // mostly level in Skyhold
+            t.aim.normalize();
+            t.aimAt = this.time + 3 + Math.random() * 5;
+        }
+        const toC = _d1.subVectors(a.center, t.pos), dc = toC.length();
+        if (dc > 1e-3) {
+            toC.multiplyScalar(1 / dc);
+            if (hazardDist(a, t.pos)[0] < PU_WALL_GAP || dc > a.radius * PU_HOME) t.aim.copy(toC);
+            else if (dc < PU_SUN_GAP) t.aim.copy(toC).negate();
+        }
+        // Velocity eases toward the aim (τ 2 s): wide, gentle curves.
+        const k = Math.min(1, dt * 0.5), v = speed * t.pace;
+        t.vel.x += (t.aim.x * v - t.vel.x) * k;
+        t.vel.y += (t.aim.y * v - t.vel.y) * k;
+        t.vel.z += (t.aim.z * v - t.vel.z) * k;
+        t.pos.addScaledVector(t.vel, dt);
     }
 
     // A breath crystal: fire, or (rule elements) for a share of them ice,
@@ -1221,6 +1257,11 @@ export class World {
     leaderboard() {
         return this.dragons.filter((d) => d.alive).sort((a, b) => b.mass - a.mass);
     }
+}
+
+function randomUnit(out) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+    return out.set(s * Math.cos(th), u, s * Math.sin(th));
 }
 
 function gauss() {
