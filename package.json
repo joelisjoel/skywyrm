@@ -9,7 +9,8 @@
     "stamps": "node scripts/check-stamps.mjs",
     "stamps:fix": "node scripts/check-stamps.mjs --fix",
     "assets": "node scripts/check-assets.mjs",
-    "assets:fix": "node scripts/check-assets.mjs --fix"
+    "assets:fix": "node scripts/check-assets.mjs --fix",
+    "og": "node scripts/make-og.mjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",

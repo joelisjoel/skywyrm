@@ -15,7 +15,7 @@ shared rooms.
 | `site/js/sim.js` | The simulation, shared by the browser and the server |
 | `server/` | The multiplayer server: rooms over WebSockets, on Google Cloud Run |
 | `notes/` | Product and design docs ([PRD-v3](notes/PRD-v3.md), [DESIGN-v3](notes/DESIGN-v3.md)), rules, multiplayer setup, the voice clips' generator |
-| `scripts/` | Local server, smoke test, cache-stamp check |
+| `scripts/` | Local server, smoke test, cache-stamp and asset checks, the link-preview picture (`make-og.mjs`) |
 
 ## Run it locally
 
@@ -40,6 +40,16 @@ cd server && npm test             # simulation + rooms
 Phones cache hard, so every module is loaded with a `?v=N` stamp. When a
 module changes, bump its stamp in every file that imports it. CI checks
 this on every pull request.
+
+## Link previews
+
+A shared skywyrm.io link shows `site/og.jpg` (1200×630) with the title and
+blurb from the `og:` and `twitter:` tags in `site/index.html`. The tab icon
+(`favicon.png`) and home-screen icon (`apple-touch-icon.png`) are the 龍
+seal. `npm run og` remakes all three from the game itself: it poses a dragon
+in Skyhold, takes the frame in headless Chromium and lays the wordmark over
+it. The seal needs a Kai font for 龍 (on Linux: `apt install fonts-arphic-ukai`).
+Look at the picture before committing it.
 
 ## How it ships
 
