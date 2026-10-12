@@ -713,8 +713,8 @@ The improvement loop's numbers, kept without identifying anyone
   with no crash toast.
 - **Reconnect** (`net.js`, `main.js` `onDrop`/`onRejoin`):
   - When an online connection drops with a dragon to keep (flying or
-    folded), the picture holds still under a "Reconnecting…" pill (on the
-    pause panel, if paused) and the client retries (§4.3).
+    folded), the picture holds still with a "Reconnecting…" line in the
+    message stack (on the pause panel, if paused) and the client retries (§4.3).
   - If you were dead, it waits and reconnects when your next life starts.
   - Back in, the world (and the `ServerClock` timeline) is rebuilt from the
     new `welcome`. A resumed dragon keeps its object and this life's stats.
@@ -760,7 +760,14 @@ The improvement loop's numbers, kept without identifying anyone
   The death cam orbits the crash point, looking at the killer, and the attract
   cam orbits the arena centre.
 - **HUD** (`hud.js`):
-  - DOM elements for stats, the leaderboard, the kill feed and toasts.
+  - DOM elements for stats, the leaderboard, the kill feed and the message
+    stack (`#msgs`, just below the centre). `toast`, `caption` (the voice
+    line, one at a time) and `status` (the wall warning and "steering you
+    clear"; "Reconnecting…" is shown by CSS from `body[data-net]`) all go
+    there, newest on top, with the status lines in a row at its top.
+    `fit` keeps it to 4 messages and to its box (`--msg-top`, `--msg-foot`
+    per layout), dropping tips, then captions, then the oldest, never the
+    newest. A message leaves on `animationend` (a timer covers hidden tabs).
   - One canvas overlay for names, the steering reticle, off-screen arrows and
     the radar.
   - `project()` matches the wide-view warp so markers line up.
@@ -769,9 +776,11 @@ The improvement loop's numbers, kept without identifying anyone
     Both get the compact stats and a top-5 leaderboard, and menus hide the
     leaderboard and feed.
   - Upright, the radar sits above the stats, which grow when timed gauges
-    stack above the main row (`hud.js` keeps their height in `--stats-h`). On
-    its side it is 132 × 90 px at the bottom centre, toasts and the feed stay
-    clear of the leaderboard and mirror, and the menu is a two-column grid.
+    stack above the main row (`hud.js` keeps their height in `--stats-h`),
+    and messages end above it and the brake and fire buttons. On its side
+    the radar is 132 × 90 px at the bottom centre, messages fit between the
+    stats and the buttons above it (about two lines), the feed stays clear
+    of the leaderboard and mirror, and the menu is a two-column grid.
   - `viewport-fit=cover`, with `--safe-*` tokens from `env(safe-area-inset-*)`
     on everything near an edge.
   - Panels scroll when they're taller than the screen. Settings and Controls
