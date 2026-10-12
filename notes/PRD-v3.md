@@ -493,8 +493,12 @@ legs, fins and feathers grow with them.
   for eating, whooshes, power-up sounds, a bell run for a pearl, and a sound for each breath (fire,
   frost, lightning, acid) and for being frozen, zapped or caught in acid. The
   new elements have no voice lines.
-- **Music:** generated live in D minor at 118 BPM. It has three intensity levels
-  (menu, flying, action), and it muffles when paused.
+- **Music:** an original Chinese-flavoured score, composed live in pentatonic
+  modes and played by synthesised guzheng, dizi and xiao flutes, erhu, sheng,
+  ruan, drums, cymbals and gongs. It is written a phrase at a time from a
+  theme that keeps developing and changing, so it rarely repeats itself. It
+  has three intensity levels (menu, flying, action at 80, 108 and 120 BPM),
+  and it muffles when paused. It sits under the effects and the voice.
 - **Background:** all sound stops while the tab is hidden and comes back
   when you return.
 - **Mute:** a speaker button at the top left of every screen (and M on a
