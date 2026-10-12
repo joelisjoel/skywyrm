@@ -31,6 +31,12 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 | `pearlMass` | 30 | Mass for catching one |
 | `pearlRespawn` | 8 | s until a new one appears elsewhere (±25%) |
 | `pearlDrift` | 2.5 | m/s, on long curving paths |
+| `sunCrystals` | 1 | One breath crystal of each flavour (fire, ice, lightning, acid; only fire with `elements` 0) always in play, on top of the random ones: born at the sun with a flare, drifting out to the edge; 0 = off |
+| `sunCrystalSpeed` | 4 | m/s they crawl outward (each 0.85–1.15×): about 65–90 s from the sun to the edge |
+| `sunCrystalHatch` | 1.5 | s a newborn can't be caught while it clears the sun |
+| `sunCrystalEdge` | 40 | m inside the walls where they fade out |
+| `sunCrystalRespawn` | 4 | s until the next of a flavour is born, once one is eaten or fades (±25%) |
+| `botSunGap` | 60 | m: bots leave a sun crystal alone until it has drifted this far from the sun, so they don't camp the sun |
 | `girth` | 1 | Bigger dragons are fatter: body radius × (1 + `girth` × ((length − 12 m) ÷ 88 m)^`girthExp`), so ×2 at 100 m and ×3 at 300 m, newborns unchanged. Hitboxes grow with the body (a bite still costs what it did). 0 = the old thin dragons |
 | `girthExp` | 0.585 | Shape of the girth curve (0.585 gives ×3 at 300 m when it's ×2 at 100 m) |
 

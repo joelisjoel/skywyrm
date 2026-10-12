@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, tierFor } from './tunables.js?v=25';
-import { World, Dragon, ELEMENTS } from './sim.js?v=25';
-import { MOODS } from './bots.js?v=25';
+import { T, DEFAULTS, tierFor } from './tunables.js?v=27';
+import { World, Dragon, ELEMENTS } from './sim.js?v=27';
+import { MOODS } from './bots.js?v=27';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -263,7 +263,7 @@ export class NetGame {
         this.joining = false;
         const o = m.orbs;
         for (let k = 0; k < o.length; k += 7) this.setOrb(o[k], o[k + 1], o[k + 2], o[k + 3], o[k + 4], o[k + 5], o[k + 6]);
-        this.setPowerups(m.pu);
+        this.setPowerups(m.pu, typeof m.time === 'number' ? m.time : 0);
         this.setPearls(m.pl, typeof m.time === 'number' ? m.time : 0);
         this.player = w.byId.get(m.you) || keep;              // a folded dragon isn't in the sky
         w.player = this.player;
@@ -358,7 +358,7 @@ export class NetGame {
             if (op[0] === 0) this.clearOrb(op[1]);
             else this.setOrb(op[1], op[2], op[3], op[4], op[5], op[6], op[7]);
         }
-        this.setPowerups(m.pu);
+        this.setPowerups(m.pu, tm);
         w.clouds = Array.isArray(m.ac) ? m.ac.map((c) => ({ id: c[0], x: c[1], y: c[2], z: c[3], r: c[4], ttl: c[5], life: c[6] || 1, owner: c[7] })) : [];
         this.setPearls(m.pl, tm);
         this.humans = m.h;
@@ -414,6 +414,9 @@ export class NetGame {
                     break;
                 }
                 case 'pearl': { const d = this.dragon(e.id); if (d) this.queue({ type: 'pearl', d, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z }); break; }
+                case 'sun':                                                     // a sun crystal is born (rule sunCrystals)
+                    if ([e.x, e.y, e.z].every(Number.isFinite)) this.queue({ type: 'sunCrystal', kind: ELEMENTS.includes(e.kind) ? e.kind : 'fire', pos: new Vector3(e.x, e.y, e.z) });
+                    break;
                 case 'eat': this.queue({ type: 'eat', d: p }); break;
                 case 'tier': this.queue({ type: 'tier', d: p, tier: e.tier | 0 }); break;
                 case 'nm': this.queue({ type: 'nearMiss', d: p }); break;
@@ -454,9 +457,22 @@ export class NetGame {
         w.oalive[i] = 0; w.orbCount--;
     }
 
-    setPowerups(list) {
-        const w = this.world;
-        w.powerups = (list || []).map((q) => ({ type: String(q[0]), pos: new Vector3(q[1], q[2], q[3]), spin: q[4] }));
+    // Power-ups: [type, x, y, z, spin]. A sun crystal (rule sunCrystals)
+    // adds [id, fade, s until it can be caught]; it keeps its object by id
+    // and, as it moves faster than the rest, is drawn on the server's clock
+    // like the pearls.
+    setPowerups(list, tm = 0) {
+        const w = this.world, old = new Map();
+        for (const p of w.powerups) if (p.sun) old.set(p.sun, p);
+        w.powerups = (list || []).map((q) => {
+            if (!(q[5] > 0) || ![q[1], q[2], q[3]].every(Number.isFinite)) return { type: String(q[0]), pos: new Vector3(q[1], q[2], q[3]), spin: q[4] };
+            const p = old.get(q[5]) || { sun: q[5], pos: new Vector3(q[1], q[2], q[3]), samples: [] }, S = p.samples;
+            p.type = String(q[0]); p.spin = q[4]; p.fade = Number.isFinite(q[6]) ? q[6] : 1; p.hatch = +q[7] || 0;
+            if (S.length && tm < S[S.length - 1].t - 1) S.length = 0;                  // the room restarted
+            if (!S.length || tm > S[S.length - 1].t) S.push({ t: tm, x: q[1], y: q[2], z: q[3] });
+            if (S.length > 30) S.shift();
+            return p;
+        });
     }
 
     // Flaming pearls (absent from older servers): kept by id, each with its
@@ -496,11 +512,13 @@ export class NetGame {
             d.updateFrame(); d.vdir.copy(d.fwd);
             d.bank += ((d.bankNet || 0) - d.bank) * 0.3;
         }
-        for (const q of w.pearls) {
-            const S = q.samples;
-            if (!S || !S.length) continue;
-            while (S.length > 2 && S[1].t <= rt) S.shift();
-            pointAt(S, rt, q.pos);
+        for (const list of [w.pearls, w.powerups]) {
+            for (const q of list) {                                     // pearls and sun crystals
+                const S = q.samples;
+                if (!S || !S.length) continue;
+                while (S.length > 2 && S[1].t <= rt) S.shift();
+                pointAt(S, rt, q.pos);
+            }
         }
         const p = this.player;
         this.sendAcc += dt;

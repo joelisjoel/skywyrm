@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=25';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=27';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -22,11 +22,18 @@ const PU_HOME = 0.55;           // × arena radius: …and wander back toward th
 const PU_PATH = { every: 3, span: 5, tau: 2, home: PU_HOME };
 const PEARL_PATH = { every: 8, span: 8, tau: 4, home: 0.7 };   // long, sweeping curves over more of the sky
 const MAX_PEARLS = 8;
+// Sun crystals (rule sunCrystals) on their way out: spat from the sun at
+// (1 + SUN_SPIT) × their crawl, easing down to it over about a second;
+// leaning sideways (SUN_WANDER of the outward push, a new lean every 3–7
+// s) with velocity easing over SUN_TAU s; in Skyhold kept between SUN_BAND
+// m above the cloud sea and SUN_BAND m above the sun; fading over SUN_FADE
+// s at the edge. A new world's first ones are born SUN_STAGGER s apart.
+const SUN_SPIT = 2, SUN_WANDER = 0.45, SUN_TAU = 1.5, SUN_BAND = 50, SUN_FADE = 2.5, SUN_STAGGER = 1;
 
 const _v1 = new Vector3(), _v2 = new Vector3(), _v3 = new Vector3();
 const _q1 = new Quaternion(), _m = new Matrix4();
 const _a1 = new Vector3(), _a2 = new Vector3(), _a3 = new Vector3();   // wallAssist scratch
-const _d1 = new Vector3();                                              // drift scratch
+const _d1 = new Vector3(), _d2 = new Vector3();                         // drift scratch
 const X = new Vector3(1, 0, 0), Y = new Vector3(0, 1, 0), Z = new Vector3(0, 0, 1);
 
 // ---------------------------------------------------------------- arenas
@@ -222,8 +229,9 @@ export class World {
         this.rules = {};                          // per-room overrides of T's rule keys
         this.oFree = []; for (let i = MAX_ORBS - 1; i >= 0; i--) this.oFree.push(i);
         this.orbCount = 0; this.ambientCount = 0; this.oHigh = 0;
-        this.powerups = [];
+        this.powerups = [];                       // random ones, and sun crystals (rule sunCrystals: .sun = id)
         this.nextPowerup = 10;
+        this.sunDue = new Map(); this.sunSeq = 0; // sun crystals: flavour → when the next one is born; ids
         this.clouds = []; this.cloudSeq = 0;      // acid clouds (rule elements)
         this.pearls = [];                         // flaming pearls (rule pearls): { id, pos, vel, … }
         this.pearlRespawns = [];                  // { at, from }: a new pearl is due, away from `from`
@@ -907,7 +915,7 @@ export class World {
         if (!T.powerups) { this.powerups.length = 0; return; }
         if (this.time > this.nextPowerup) {
             this.nextPowerup = this.time + T.powerupEvery * (0.75 + Math.random() * 0.5);
-            if (this.powerups.length < T.powerupMax) {
+            if (this.powerups.filter((p) => !p.sun).length < T.powerupMax) {            // sun crystals come on top
                 const types = ['shield', 'magnet'];
                 if (T.dragonfire) types.push(this.breathCrystal(), this.breathCrystal());
                 const p = new Vector3();
@@ -920,10 +928,12 @@ export class World {
                 this.emit({ type: 'powerupSpawn', kind: type, pos: p });
             }
         }
+        this.updateSunCrystals(dt);
         for (let k = this.powerups.length - 1; k >= 0; k--) {
             const pu = this.powerups[k];
             pu.spin += dt;
-            this.drift(pu, this.rule('powerupDrift'), dt, PU_PATH);
+            if (pu.sun) { if (pu.hatch > 0) continue; }                               // still clearing the sun
+            else this.drift(pu, this.rule('powerupDrift'), dt, PU_PATH);
             for (const d of this.dragons) {
                 if (!d.alive) continue;
                 const rr = 2.5 + d.r;
@@ -939,10 +949,80 @@ export class World {
                     }
                     this.emit({ type: 'powerup', d, kind: pu.type, charge: d.fire });
                     this.powerups.splice(k, 1);
+                    if (pu.sun) this.sunDue.set(pu.type, this.time + this.sunDelay());
                     break;
                 }
             }
         }
+    }
+
+    // ------------------------------------------------ sun crystals
+    // Rule sunCrystals: one breath crystal of each flavour (fire, ice,
+    // lightning and acid; only fire without rule elements) is always in
+    // play, on top of the random power-ups. Each is born at the sun with a
+    // flare (event sunCrystal), can't be caught for sunCrystalHatch s while
+    // it clears the sun, and drifts out (sunDrift) until it is
+    // sunCrystalEdge m from a wall, where it fades. Once one is eaten or
+    // has faded, the next of its flavour is born sunCrystalRespawn s later.
+    updateSunCrystals(dt) {
+        const kinds = this.rule('sunCrystals') && T.dragonfire ? (this.rule('elements') ? ELEMENTS : ['fire']) : [];
+        for (let k = this.powerups.length - 1; k >= 0; k--) if (this.powerups[k].sun && !kinds.includes(this.powerups[k].type)) this.powerups.splice(k, 1);
+        for (const t of this.sunDue.keys()) if (!kinds.includes(t)) this.sunDue.delete(t);
+        kinds.forEach((t, i) => {
+            const due = this.sunDue.get(t);
+            if (due === undefined) { if (!this.powerups.some((p) => p.sun && p.type === t)) this.sunDue.set(t, this.time + i * SUN_STAGGER); }
+            else if (this.time >= due) { this.sunDue.delete(t); this.sunBirth(t); }
+        });
+        for (let k = this.powerups.length - 1; k >= 0; k--) {
+            const pu = this.powerups[k];
+            if (!pu.sun) continue;
+            pu.hatch = Math.max(0, pu.hatch - dt);
+            this.sunDrift(pu, dt);
+            if (pu.fade < 1 || hazardDist(this.arena, pu.pos)[0] < this.rule('sunCrystalEdge')) pu.fade -= dt / SUN_FADE;
+            if (pu.fade <= 0) { this.powerups.splice(k, 1); this.sunDue.set(pu.type, this.time + this.sunDelay()); }
+        }
+    }
+
+    sunDelay() { return this.rule('sunCrystalRespawn') * (0.75 + 0.5 * Math.random()); }
+    sunSpeed() { return Math.max(0.5, this.rule('sunCrystalSpeed')); }
+
+    // Born at the sun, heading out in a random direction (level-ish in
+    // Skyhold, never down into the cloud sea).
+    sunBirth(type) {
+        const a = this.arena, dir = randomUnit(new Vector3());
+        if (a.gravity) { dir.y *= 0.2; dir.normalize(); }
+        const pace = 0.85 + 0.3 * Math.random();
+        const pu = { pos: a.center.clone(), type, spin: Math.random() * 6, sun: ++this.sunSeq, born: this.time, hatch: this.rule('sunCrystalHatch'),
+            fade: 1, pace, dir, vel: dir.clone().multiplyScalar(this.sunSpeed() * pace * (1 + SUN_SPIT)), side: new Vector3(), aimAt: 0 };
+        this.powerups.push(pu);
+        this.emit({ type: 'sunCrystal', kind: type, id: pu.sun, pos: pu.pos.clone() });
+    }
+
+    // Its way out: pushed straight away from the sun (level in Skyhold)
+    // plus a sideways lean, so it wanders but never comes back in. It
+    // leaves the sun fast and slows to its crawl; in Skyhold it keeps to a
+    // band of sky above the cloud sea.
+    sunDrift(pu, dt) {
+        const a = this.arena, out = _d1.subVectors(pu.pos, a.center);
+        if (a.gravity) out.y = 0;
+        if (out.lengthSq() < 1) out.copy(pu.dir); else out.normalize();
+        if (this.time >= pu.aimAt) {
+            randomUnit(pu.side);
+            if (a.gravity) pu.side.y *= 0.5;
+            pu.aimAt = this.time + 3 + Math.random() * 4;
+        }
+        const aim = _d2.copy(pu.side).addScaledVector(out, -pu.side.dot(out)).multiplyScalar(SUN_WANDER).add(out);
+        if (a.gravity) {
+            const lo = a.floor + SUN_BAND, hi = a.center.y + SUN_BAND;
+            if (pu.pos.y < lo) aim.y += (lo - pu.pos.y) / 10;
+            else if (pu.pos.y > hi) aim.y -= (pu.pos.y - hi) / 10;
+        }
+        aim.normalize();
+        const v = this.sunSpeed() * pu.pace * (1 + SUN_SPIT * Math.exp(-(this.time - pu.born))), k = Math.min(1, dt / SUN_TAU);
+        pu.vel.x += (aim.x * v - pu.vel.x) * k;
+        pu.vel.y += (aim.y * v - pu.vel.y) * k;
+        pu.vel.z += (aim.z * v - pu.vel.z) * k;
+        pu.pos.addScaledVector(pu.vel, dt);
     }
 
     // Power-ups (rule powerupDrift, m/s; each one 0.6–1.4× that) and pearls

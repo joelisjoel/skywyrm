@@ -217,6 +217,31 @@ lightning or acid.
 They float about slowly (about 1 m/s, bobbing as they go), staying near the
 action and clear of the walls, the cloud sea and the sun.
 
+**Sun crystals** (rule `sunCrystals`) ✅
+- On top of those, one breath crystal of each flavour is always in play:
+  fire, ice, lightning and acid (only fire with `elements` off).
+- Each is **born at the sun**: a ring of its colour bursts out of the sun
+  with a spray of sparks and a soft chime (within about 220 m). It can't be
+  caught for its first 1.5 s while it clears the sun.
+- It then crawls outward at about 4 m/s on a gently wandering path that
+  never turns back, in Skyhold staying in the sky 50 m or more above the
+  cloud sea. Unchased it reaches the edge in about 65–90 s and fades out
+  40 m inside the walls.
+- Eaten or faded, the next of its flavour is born at the sun 3–5 s later.
+- An ink ring (a rim of its colour inside a dark band) marks it from
+  mid-range and far off, so it still reads in the sun's glare. It leaves a
+  trail of sparks, and the radar gives it a gold ring.
+- Bots leave a sun crystal alone until it has drifted 60 m from the sun
+  (`botSunGap`), so they catch them on the way out instead of camping the
+  sun. Body heat is only a reward (§5.3), so nothing else would stop them:
+  without the gap 25 bots keep about 9 dragons within 50 m of the sun
+  instead of 2–4.
+- **How much more offence:** the random crystals give a room about 1.5
+  breath crystals a minute (a spawn every 15–25 s while fewer than 5 are
+  out; half are breath crystals: fire 25%, ice, lightning and acid about 8%
+  each). With 25 bots, about 11–14 sun crystals are eaten a minute, mostly
+  60–80 m from the sun: roughly eight times the breath crystals of before.
+
 | Crystal | Effect |
 |---|---|
 | **Ember Shield** (orange) | Lasts 12 s and survives one body hit. It does *not* stop head-ons, walls or any breath |
@@ -295,7 +320,8 @@ action and clear of the walls, the cloud sea and the sun.
   wanders off easily; a 200 m dragon spots one up to 150 m away and flies
   straight for it. They want pearls most (2.5× as much, from 30% farther).
   In beginner rooms a bot leaves a crystal or pearl to a player who is
-  nearly as close.
+  nearly as close. Sun crystals are left alone until they are 60 m from the
+  sun (§5.8).
 
 ### 5.10 Leaderboard and big moments 🟡
 - **Leaderboard:** the top 10 by mass, showing length.
@@ -476,7 +502,7 @@ legs, fins and feathers grow with them.
   of its element). Shield, magnet, chilled and stunned gauges appear only
   while active; on phones they stack above the others, clear of the radar.
 - **Radar** at the bottom centre, with a 60 m range. It shows above and below,
-  power-ups, acid clouds, pearls, the centre and the leader. On an upright
+  power-ups (sun crystals with a gold ring), acid clouds, pearls, the centre and the leader. On an upright
   phone it sits above the stats, bottom left.
 - Stats text has a soft shadow so it reads on bright cloud. Touch screens hide
   keyboard and mouse hints (the fire gauge's `E`, key names in Controls and
@@ -498,7 +524,7 @@ legs, fins and feathers grow with them.
 
 ### 10.4 Sound
 - **Effects:** all synthesised live, with no sound files. Wind, a rising chime
-  for eating, whooshes, power-up sounds, a bell run for a pearl, and a sound for each breath (fire,
+  for eating, whooshes, power-up sounds, a bell run for a pearl, a soft three-note chime when a sun crystal is born nearby, and a sound for each breath (fire,
   frost, lightning, acid) and for being frozen, zapped or caught in acid. The
   new elements have no voice lines.
 - **Music:** an original Chinese-flavoured score, composed live in pentatonic
@@ -663,3 +689,8 @@ Each decision has a recommended default, so work can start on that default.
    ice, lightning or acid. That keeps one simple rule (it saves you from one
    body hit) and no breath kills anyway. Recommend leaving it; the alternative
    is to let it absorb one breath hit and pop, like a body hit.
+8. **How much breath from the sun?** Sun crystals (§5.8) bring a busy room
+   roughly eight times the breath crystals it had. Recommend playtesting the
+   defaults; if the sky gets too busy with breath, raise `sunCrystalRespawn`
+   (say to 15 s) or `botSunGap`, or turn `sunCrystals` off. All are rules, so
+   no code change is needed.
