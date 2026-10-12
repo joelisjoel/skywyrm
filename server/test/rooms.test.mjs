@@ -129,8 +129,12 @@ try {
     const names = a.last.lb.map((x) => x[1]);
     const aName = a.welcome.dragons.find((d) => d.id === a.welcome.you)?.name ?? names.find((n) => n.startsWith('Alice'));
     check(a.snaps >= 6, `snapshots flowing (${a.snaps} so far)`);
-    const pearlOk = (pl) => Array.isArray(pl) && pl.length >= 1 && pl.length <= 3 && pl.every((q) => q.length === 4 && q.every(Number.isFinite));   // a bot may have just caught one
-    check(pearlOk(a.welcome.pl) && pearlOk(a.last.pl) && !a.last.pu.some((q) => q[0] === 'pearl'),
+    // Bots catch pearls too (a new one appears 8 s ±25% later), so at any one
+    // moment all three may be gone: the welcome's list only has to be well
+    // formed, and a snapshot with a pearl in it has to arrive.
+    const pearlsOk = (pl, min) => Array.isArray(pl) && pl.length >= min && pl.length <= 3 && pl.every((q) => q.length === 4 && q.every(Number.isFinite));
+    await waitFor(() => pearlsOk(a.last.pl, 1), 12000);
+    check(pearlsOk(a.welcome.pl, 0) && pearlsOk(a.last.pl, 1) && !a.last.pu.some((q) => q[0] === 'pearl'),
         'flaming pearls sync in their own optional field (pl: [id, x, y, z]), never as power-ups');
     const listed = await waitFor(async () => {
         const x = (await (await api('/api/rooms')).json()).rooms.find((y) => y.id === room.id);
