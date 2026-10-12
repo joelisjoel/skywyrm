@@ -4,7 +4,8 @@
 //
 //   1. Every page has a Content-Security-Policy, and every inline <script>
 //      (the importmap) is allowed by its sha256 hash in script-src.
-//   2. Pages load no scripts, styles or fonts from other hosts.
+//   2. Pages load no scripts, styles or fonts from other hosts (a canonical
+//      link only names the page), and their link-preview pictures exist.
 //   3. site/vendor/three-<version>.module.min.js is exactly node_modules'
 //      three.module.min.js, at the version package.json pins.
 //   4. Every Chinese character used in site/ is in the Ma Shan Zheng subset
@@ -46,7 +47,12 @@ for (const file of walk(site).filter((f) => f.endsWith('.html'))) {
         }
     }
     for (const m of html.matchAll(/<(?:script|link|img)\b[^>]*\b(?:src|href)="(https?:)?\/\/[^"]*"/g)) {
+        if (/\brel="canonical"/.test(m[0])) continue;                   // names this page's address; loads nothing
         problems.push(`${rel(file)}: loads from another host: ${m[0]}`);
+    }
+    // Link-preview pictures (og:image, twitter:image) are files this site serves.
+    for (const m of html.matchAll(/<meta (?:property|name)="(?:og|twitter):image" content="https:\/\/skywyrm\.io\/([^"?#]*)"/g)) {
+        if (!existsSync(path.join(site, m[1]))) problems.push(`${rel(file)}: link-preview picture site/${m[1]} is missing (npm run og makes it)`);
     }
 }
 

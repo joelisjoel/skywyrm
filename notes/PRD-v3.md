@@ -34,7 +34,7 @@ on phones and computers with no install, no account and no tracking.
 | Death | Instant respawn | **3 lives** per game, 3 s between lives, then a game-over card |
 | Rules | Mass, boost, three power-ups | Adds **body heat**, a **thrust tank**, a **length speed bonus**, **tail nibbling**, ranks and perks, bot moods |
 | Worlds | Small 70 m arenas with a castle and obstacles | Large open worlds: Skyhold (350 m) and The Orb (325 m), with no obstacles |
-| Sharing | Highlights, replay links, share cards | Not built. Big moments show as toasts and voice lines only |
+| Sharing | Highlights, replay links, share cards | Link previews only: a shared skywyrm.io link shows a dragon picture, the title and a blurb (Open Graph and Twitter cards). Highlights, replays and share cards aren't built; big moments show as toasts and voice lines |
 | Stack | TypeScript/Vite/Vue, a VM, Firebase, binary netcode | Plain ES modules with no build step. Cloud Run, JSON over WebSocket |
 | Home | dendroslabs.com/wyrm | skywyrm.io, in its own repo. The old dendroslabs.com/wyrm page has been removed |
 
@@ -632,7 +632,6 @@ legs, fins and feathers grow with them.
   - highlight clips
   - replay links
   - share card
-  - link previews (Open Graph)
 - **Run card:** "Share", "Watch replay" and "Change dragon" buttons.
 - **Settings:**
   - sensitivity, deadzone and FOV sliders
