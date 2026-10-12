@@ -53,12 +53,12 @@ on phones and computers with no install, no account and no tracking.
 |---|---|---|---|
 | 1 | It's fun for the kids | They come back to it on their own, ask for features and play online together | ✅ |
 | 2 | Push AI-assisted building end to end and ship to production | Live on its own domain, with small PRs, CI and auto-deploys | ✅ skywyrm.io; site and server deploy from `main` |
-| 3 | A small, genuine player base (stretch) | Anonymous daily totals at `/api/stats`: lives played, time flown, peak players online (§11). Nobody is tracked | ⬜ not pursued yet; the numbers are now counted |
+| 3 | A small, genuine player base (stretch) | Anonymous daily totals at `/api/stats`: lives played, time flown, peak players online, and visits: how many, roughly where from, whether devices come back and how far they get (§11). Nobody is tracked | ⬜ not pursued yet; the numbers are now counted |
 
 **Non-goals.**
 - Accounts or passwords.
 - Chat of any kind.
-- Analytics or tracking of players. Only anonymous daily totals are counted (§11).
+- Analytics or tracking of players. Only anonymous daily play and visit totals are counted (§11).
 - Ads, or purchases of any kind.
 - Native apps.
 - A realistic flight sim.
@@ -573,7 +573,24 @@ legs, fins and feathers grow with them.
   - The totals are public at `<server>/api/stats`.
   - The server uses IP addresses only in memory, to rate-limit, and doesn't
     store or log them.
-  - Nothing beyond this is collected.
+- **Anonymous visit totals** ✅ (approved by Joel, to see whether the game
+  is growing: how many come, from where, whether they come back, and where
+  they stop):
+  - Each page visit sends one note when it ends (the tab is first hidden or
+    closed), worked out on the device: where it came from as a category
+    (direct, search, social, video, games, other; the referrer itself is
+    never sent), a link tag if it is one of a fixed list (`?src=qr`,
+    `invite`, …; taken out of the address bar), how long since this device
+    first came as a bucket (new, today, 1 day, 2–6, 7, 8–29, 30+; the dates
+    stay in the browser), whether it's the device's first visit today, touch
+    or mouse, the furthest step reached (menu, play, a life finished, played
+    again, online), lives finished, seconds played, and whether an invite
+    was sent. No id, no cookie, no name.
+  - The server adds each answer to its own daily count (visits, devices,
+    sources, tags, return buckets, touch or mouse, the funnel, a play-time
+    histogram, lives, invites), so one visit's answers can't be put back
+    together. Same 30 days, same public `/api/stats`.
+- Nothing beyond these totals is collected.
 - **Server names aren't typed.** They're picked from lists of kid-friendly
   sky and landscape words ("Jade Peak", "Misty Falls"), so the lobby every
   player sees never shows what someone wrote.
@@ -595,8 +612,9 @@ legs, fins and feathers grow with them.
   or IP addresses. Google Cloud's standard request logs do record IP
   addresses, and keep them for 30 days by default.
 - ✅ **Privacy page** (`skywyrm.io/privacy.html`, linked from the menu): plain
-  words for kids and parents covering what is counted, what isn't, IP
-  addresses, who hosts what, and where grown-ups can ask (the repo's issues).
+  words for kids and parents covering what is counted (play and visit
+  notes), what stays on the device, IP addresses, who hosts what, and where
+  grown-ups can ask (the repo's issues).
 
 ---
 

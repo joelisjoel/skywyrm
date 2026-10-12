@@ -1,9 +1,13 @@
-// Anonymous play totals, one record per UTC day (see site/privacy.html):
-// how long dragons grow, how long lives last and how they end. Room lives
-// are counted here as they end; a solo game's browser sends one note per
-// life (POST /api/run, checked by cleanRun). No names, ids or addresses:
+// Anonymous play and visit totals, one record per UTC day (see
+// site/privacy.html): how long dragons grow, how long lives last and how
+// they end. Room lives are counted here as they end; a solo game's browser
+// sends one note per life (POST /api/run, checked by cleanRun). Each page
+// visit sends one note when it ends (POST /api/visit, checked by
+// cleanVisit; site/js/visit.js), added straight into counts, so nothing
+// links two visits or two fields of one visit. No names, ids or addresses:
 // only these numbers. Saved through store.js, one document per day, and
 // the last KEEP_DAYS days are kept.
+import { VISIT_SOURCES, VISIT_TAGS, VISIT_RETURNS, VISIT_DEVICES, VISIT_STAGES, VISIT_MAX } from '../site/js/shared.js';
 
 export const CAUSES = ['wall', 'body', 'headon', 'quit', 'disconnect', 'other'];
 export const ARENAS = ['sky', 'orb'];
@@ -11,6 +15,8 @@ export const KEEP_DAYS = 30;
 // Peak-length histogram (m). A new dragon is 12 m, so 0-15 is "barely ate".
 const LEN_BINS = [[15, '0-15'], [25, '15-25'], [50, '25-50'], [100, '50-100'], [200, '100-200'], [Infinity, '200+']];
 const MAX = { len: 2000, secs: 7200, kills: 500 };
+// Seconds played in one visit.
+const PLAY_BINS = [[1, '0'], [60, '<1m'], [300, '1-5m'], [900, '5-15m'], [1800, '15-30m'], [3600, '30-60m'], [Infinity, '60m+']];
 const DAY_MS = 24 * 3600 * 1000;
 
 const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -19,8 +25,16 @@ const zeros = (keys) => Object.fromEntries(keys.map((k) => [k, 0]));
 function blankSide() {
     return { runs: 0, secs: 0, kills: 0, maxLen: 0, len: zeros(LEN_BINS.map((b) => b[1])), cause: zeros(CAUSES), arena: zeros(ARENAS) };
 }
+// Visits: how many, first visits of the day (≈ devices), where from, the
+// link tag, how long since the device first came, touch or mouse, how far
+// in the funnel (cumulative: reached.play counts every visit that got to
+// play or further), time played, lives finished and invites sent.
+function blankVisits() {
+    return { visits: 0, devices: 0, src: zeros(VISIT_SOURCES), tag: zeros(VISIT_TAGS), ret: zeros(VISIT_RETURNS), dev: zeros(VISIT_DEVICES),
+        reached: zeros(VISIT_STAGES), secs: zeros(PLAY_BINS.map((b) => b[1])), lives: 0, invited: 0 };
+}
 function blankDay(day) {
-    return { day, solo: blankSide(), room: blankSide(), peakHumans: 0, roomsCreated: 0 };
+    return { day, solo: blankSide(), room: blankSide(), peakHumans: 0, roomsCreated: 0, visit: blankVisits() };
 }
 
 // A saved day back from the store: only known counters, and only finite,
@@ -48,6 +62,25 @@ export function cleanRun(b) {
     const run = { arena: b.arena, len: num(b.len, MAX.len), secs: num(b.secs, MAX.secs), kills: num(b.kills, MAX.kills),
         cause: CAUSES.includes(b.cause) ? b.cause : 'other' };
     return Number.isNaN(run.len + run.secs + run.kills) ? null : run;
+}
+
+// One page visit's note from a browser: {v:1, src, tag, ret, today, dev,
+// stage, lives, secs, invited}. Only known words are kept: an unknown
+// source counts as 'other', an unknown tag, return bucket or device is
+// left out, and an unknown stage counts as 'menu' (the page loaded).
+// Numbers are clamped and rounded, flags must be true. Anything else is
+// dropped. Returns null if it isn't a note.
+export function cleanVisit(b) {
+    if (!b || typeof b !== 'object' || Array.isArray(b) || b.v !== 1) return null;
+    const word = (v, list) => (typeof v === 'string' && list.includes(v) ? v : undefined);
+    const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(max, Math.max(0, v))) : 0);
+    const visit = { src: word(b.src, VISIT_SOURCES) || 'other', stage: word(b.stage, VISIT_STAGES) || 'menu',
+        lives: num(b.lives, VISIT_MAX.lives), secs: num(b.secs, VISIT_MAX.secs), today: b.today === true, invited: b.invited === true };
+    for (const [k, list] of [['tag', VISIT_TAGS], ['ret', VISIT_RETURNS], ['dev', VISIT_DEVICES]]) {
+        const w = word(b[k], list);
+        if (w) visit[k] = w;
+    }
+    return visit;
 }
 
 export class Stats {
@@ -90,6 +123,26 @@ export class Stats {
         s.len[LEN_BINS.find((b) => run.len < b[0])[1]]++;
         s.cause[CAUSES.includes(run.cause) ? run.cause : 'other']++;
         if (ARENAS.includes(run.arena)) s.arena[run.arena]++;
+        this.dirty.add(day.day);
+    }
+
+    // A page visit ended (a note checked by cleanVisit): add it to today's
+    // counts. Each field only bumps its own counter.
+    visit(v) {
+        const day = this.today(), s = day.visit;
+        const bump = (counts, k) => { if (Object.hasOwn(counts, k)) counts[k]++; };
+        s.visits++;
+        if (v.today) s.devices++;
+        bump(s.src, v.src);
+        bump(s.tag, v.tag);
+        bump(s.ret, v.ret);
+        bump(s.dev, v.dev);
+        const top = Math.max(0, VISIT_STAGES.indexOf(v.stage));
+        for (let i = 0; i <= top; i++) s.reached[VISIT_STAGES[i]]++;
+        const n = (x, max) => (Number.isFinite(x) ? Math.min(max, Math.max(0, x)) : 0);
+        s.secs[PLAY_BINS.find((b) => n(v.secs, VISIT_MAX.secs) < b[0])[1]]++;
+        s.lives += n(v.lives, VISIT_MAX.lives);
+        if (v.invited) s.invited++;
         this.dirty.add(day.day);
     }
 

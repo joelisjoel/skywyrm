@@ -3,6 +3,7 @@
 //   GET  /api/rooms          → { rooms: [...] }
 //   POST /api/rooms          → create { name, arena } → { room } (name from the list in names.js)
 //   POST /api/run            → 204: one solo life's anonymous numbers (stats.js)
+//   POST /api/visit          → 204: one page visit's anonymous note (stats.js, site/js/visit.js)
 //   GET  /api/stats          → { days: [...] }: public daily play totals, newest first
 //   WS   /ws?room=<id>       → play (first message must be { t: 'hello', name })
 // Runs on Cloud Run (PORT, K_SERVICE set) or locally: `node server.js`.
@@ -11,7 +12,7 @@ import { WebSocketServer } from 'ws';
 import { Registry } from './rooms.js';
 import { Client } from './client.js';
 import { makeStore } from './store.js';
-import { Stats, cleanRun } from './stats.js';
+import { Stats, cleanRun, cleanVisit } from './stats.js';
 import { T, DEFAULTS } from '../site/js/shared.js';
 
 const PORT = +process.env.PORT || 8080;
@@ -45,15 +46,17 @@ function positiveInt(s, fallback) {
     return s && Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-// Solo run notes (POST /api/run): 20 an hour per address. The address is
-// held only here, in memory, until its hour is up; never stored or logged.
-const RUNS_PER_IP_PER_HOUR = 20;
-const runNotes = new Map();   // ip → { n, since }
-function runAllowed(ip) {
-    const now = Date.now();
-    let e = runNotes.get(ip);
-    if (!e || now - e.since >= 3600 * 1000) runNotes.set(ip, (e = { n: 0, since: now }));
-    return ++e.n <= RUNS_PER_IP_PER_HOUR;
+// Anonymous notes from the page, each kind with its own limit per address
+// an hour: solo run notes (POST /api/run) 20, visit notes (POST /api/visit)
+// 30. The address is held only here, in memory, until its hour is up;
+// never stored or logged.
+const NOTES_PER_IP_PER_HOUR = { run: 20, visit: 30 };
+const noteCounts = { run: new Map(), visit: new Map() };   // kind → ip → { n, since }
+function noteAllowed(kind, ip) {
+    const now = Date.now(), seen = noteCounts[kind];
+    let e = seen.get(ip);
+    if (!e || now - e.since >= 3600 * 1000) seen.set(ip, (e = { n: 0, since: now }));
+    return ++e.n <= NOTES_PER_IP_PER_HOUR[kind];
 }
 
 // Optional server-side tuning without a code change, e.g. on Cloud Run:
@@ -119,17 +122,19 @@ const server = createServer(async (req, res) => {
                 return r.error ? send(res, r.status || 400, { error: r.error }, origin) : send(res, 201, r, origin);
             }
         }
-        // A solo life's anonymous numbers. Sent as text/plain so the browser
-        // needs no preflight; the page ignores every answer.
-        if (url.pathname === '/api/run' && req.method === 'POST') {
+        // Anonymous notes: a solo life's numbers (run) and a page visit's
+        // (visit). Sent as text/plain so the browser needs no preflight; the
+        // page ignores every answer.
+        const kind = req.method !== 'POST' ? '' : url.pathname === '/api/run' ? 'run' : url.pathname === '/api/visit' ? 'visit' : '';
+        if (kind) {
             if (!originOk(origin)) return send(res, 403, { error: 'Forbidden' }, origin);
             if (!/^(text\/plain|application\/json)/i.test(String(req.headers['content-type'] || ''))) return send(res, 415, { error: 'JSON only' }, origin);
             if (+req.headers['content-length'] > 512) return send(res, 413, { error: 'Too big' }, origin);
-            if (!runAllowed(ipOf(req))) return send(res, 429, { error: 'Too many' }, origin);
-            let run;
-            try { run = cleanRun(JSON.parse(await readBody(req, 512))); } catch (e) { return send(res, e.message === 'too big' ? 413 : 400, { error: 'Bad request' }, origin); }
-            if (!run) return send(res, 400, { error: 'Bad request' }, origin);
-            stats.run('solo', run);
+            if (!noteAllowed(kind, ipOf(req))) return send(res, 429, { error: 'Too many' }, origin);
+            let note;
+            try { note = (kind === 'run' ? cleanRun : cleanVisit)(JSON.parse(await readBody(req, 512))); } catch (e) { return send(res, e.message === 'too big' ? 413 : 400, { error: 'Bad request' }, origin); }
+            if (!note) return send(res, 400, { error: 'Bad request' }, origin);
+            if (kind === 'run') stats.run('solo', note); else stats.visit(note);
             return send(res, 204, null, origin);
         }
         if (url.pathname === '/api/stats' && req.method === 'GET') return send(res, 200, { days: stats.list() }, origin, 'public, max-age=60');
@@ -217,7 +222,7 @@ setInterval(() => {
 setInterval(() => {
     registry.sweep();
     const now = Date.now();
-    for (const [ip, e] of runNotes) if (now - e.since >= 3600 * 1000) runNotes.delete(ip);
+    for (const seen of Object.values(noteCounts)) for (const [ip, e] of seen) if (now - e.since >= 3600 * 1000) seen.delete(ip);
     stats.flush();                // saves today's totals, at most once a minute, if they changed
 }, 60 * 1000);
 

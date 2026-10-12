@@ -76,8 +76,8 @@ try {
     const solo = t.today.solo;
     check(t.res.headers.get('cache-control') === 'public, max-age=60' && t.today.day === new Date().toISOString().slice(0, 10) && solo.runs === 1 && solo.secs === 96
         && solo.maxLen === 42 && solo.len['25-50'] === 1 && solo.cause.body === 1 && solo.arena.orb === 1, 'GET /api/stats shows it in today\'s solo totals (cached 60 s)');
-    check(JSON.stringify(Object.keys(t.today)) === '["day","solo","room","peakHumans","roomsCreated"]' && t.today.roomsCreated === 5,
-        'the totals hold only counts (5 rooms created today), nothing per player');
+    check(JSON.stringify(Object.keys(t.today)) === '["day","solo","room","peakHumans","roomsCreated","visit"]' && t.today.roomsCreated === 5
+        && t.today.visit.visits === 0, 'the totals hold only counts (5 rooms created today), nothing per player');
     res = await runNote({ ...note, arena: 'sky', len: 1e9, secs: -50, kills: 99999, cause: 'eaten by a grue', name: 'Ember Drake' }, { 'content-type': 'application/json' });
     t = await totals();
     check(res.status === 204 && t.today.solo.runs === 2 && t.today.solo.maxLen === 2000 && t.today.solo.len['200+'] === 1 && t.today.solo.kills === 502

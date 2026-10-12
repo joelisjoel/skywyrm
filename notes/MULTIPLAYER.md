@@ -59,7 +59,8 @@ with nothing stored except your settings in localStorage.
   - Set **max instances = 1**: every room lives in one process. That's
     plenty for hundreds of players.
 - **Firestore** holds only the room list (names, settings, and expiry) and
-  the anonymous daily play totals (`stats`, 30 days; see DESIGN-v3 §4.7).
+  the anonymous daily play and visit totals (`stats`, 30 days; see
+  DESIGN-v3 §4.7 and §4.8).
   That lets user-created rooms survive a server restart for their 12 hours.
   Game state stays in memory (it's a snake game, so nothing needs saving).
 - **Movement is client-trusted but server-checked**, for v1.

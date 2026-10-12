@@ -15,9 +15,9 @@ are in `notes/MULTIPLAYER.md`.
   can't undo: Cloud Run or Firestore settings, DNS, or GitHub settings.
 - Joel's kids play this. Don't add accounts, chat, tracking, analytics or
   ads, and keep names going through the shared filter in `site/js/names.js`.
-  The one approved exception is the anonymous daily play totals (no ids, no
-  cookies, no stored IPs) that `site/privacy.html` describes; ask before
-  measuring anything else.
+  The approved exceptions are the anonymous daily play and visit totals (no
+  ids, no cookies, no stored IPs) that `site/privacy.html` describes; ask
+  before measuring anything else.
 - It's played on PCs and phones, so check that new UI works at phone width.
 
 ## Code map

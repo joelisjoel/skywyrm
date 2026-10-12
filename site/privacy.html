@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skywyrm · Privacy</title>
-    <meta name="description" content="What Skywyrm knows about you: no accounts, no ads, no cookies, no tracking. Only anonymous game totals.">
+    <meta name="description" content="What Skywyrm knows about you: no accounts, no ads, no cookies, no tracking. Only anonymous game and visit totals.">
     <link rel="icon" href="data:,">
     <!-- Self-contained on purpose: no fonts, scripts or images from anywhere else. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
@@ -88,7 +88,7 @@
                 <li>No accounts, no passwords, no chat.</li>
                 <li>No ads and nothing to buy.</li>
                 <li>No cookies and no tracking or analytics companies.</li>
-                <li>We count a few game numbers that can't tell players apart, so we can make the game better.</li>
+                <li>We count a few game and visit numbers that can't tell players apart, so we can make the game better.</li>
             </ul>
 
             <h2>What we count</h2>
@@ -101,11 +101,22 @@
                 <li>how it ended: the edge of the world, a tail, a head-on bump or leaving to the menu</li>
             </ul>
             <p>When you play <b>online</b>, the game server counts the same numbers itself when a life ends in a room (or you leave), plus how many players were online at once and how many servers were made each day.</p>
-            <p>The note has no name, no ID and no cookie, so nobody can tell who sent it, or that two notes came from the same person. The server adds the numbers into totals for each day, keeps them for 30 days and then deletes them. Anyone can look at the totals: <a href="https://wyrm-server-420365023329.us-west1.run.app/api/stats">here they are</a> (they look like computer code, which is normal).</p>
-            <p>We use them to make the game more fun, for example to see whether new dragons crash too soon or a world is too hard.</p>
+            <p>And once per <b>visit</b>, when you close the game or switch away from it, your browser sends one more short note:</p>
+            <ul>
+                <li>where the visit came from, as one word: straight to the game (typed in or a bookmark), a search engine, a social site, a video site, a games site, or somewhere else. Your browser works this out by itself: the address of the page you came from is never sent</li>
+                <li>a short tag, if the link you opened had one of ours in it (like "qr" for a printed code or "invite" for a friend's invite). Any other tag is ignored, and the game takes it out of the address bar so it isn't passed on</li>
+                <li>roughly how long ago this device first visited: new, today, yesterday, 2 to 6 days, a week, 8 to 29 days, or a month or more. The dates of your first and last visit stay in this browser; only that rough answer is sent, and only with the first visit of the day</li>
+                <li>whether this is the device's first visit today</li>
+                <li>whether it has a touch screen or a mouse</li>
+                <li>how far you got: opened the game, started playing, finished a life, played again, or played online</li>
+                <li>how many lives you finished and how many seconds you played</li>
+                <li>whether you sent a friend an invite link</li>
+            </ul>
+            <p>None of these notes has a name, an ID or a cookie, so nobody can tell who sent one, or that two notes came from the same person. The server doesn't keep the notes: it adds each answer to its own count for the day (one more visit from a search engine, one more visit on a touch screen, and so on), so the answers from one visit can't be put back together. It keeps the daily totals for 30 days and then deletes them. Anyone can look at the totals: <a href="https://wyrm-server-420365023329.us-west1.run.app/api/stats">here they are</a> (they look like computer code, which is normal).</p>
+            <p>We use them to make the game more fun, for example to see whether new dragons crash too soon, a world is too hard, or new players give up before they start.</p>
 
             <h2>What stays on your device</h2>
-            <p>Your dragon's name, rank, jade, perks, colours and settings are saved in this browser on your device and are never sent to us. Clearing this site's data in your browser wipes them.</p>
+            <p>Your dragon's name, rank, jade, perks, colours and settings, and the dates of your first and last visit, are saved in this browser on your device and are never sent to us. Clearing this site's data in your browser wipes them.</p>
             <p>The one exception is playing online: the other players in that room see your dragon's name, after it passes our name filter (no rude words, links or email addresses). The server forgets it when you leave. If you create a server, its name shows in the server list until 12 hours after the last player leaves.</p>
 
             <h2>Internet addresses</h2>
@@ -125,7 +136,7 @@
                 That page is public, so please don't include personal details.</p>
 
             <footer>
-                <span>Updated October 11, 2026</span>
+                <span>Updated October 12, 2026</span>
                 <a href="./">← Back to the game</a>
             </footer>
         </div>
