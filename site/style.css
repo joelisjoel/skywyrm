@@ -46,15 +46,35 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats { opa
 #board .v { color: var(--dim); }
 #board .total { margin-top: 4px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.08); text-align: right; font-size: 11px; color: rgba(235,235,245,0.45); }
 
-#toasts { position: absolute; top: 26%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.toast { font-weight: 700; font-size: 19px; letter-spacing: 0.01em; text-shadow: 0 1px 12px rgba(0,0,0,0.6); animation: toast 1.6s ease-out forwards; }
-.toast.big { font-size: 26px; font-weight: 800; color: #FFD60A; }
-.toast.nm { color: #64D2FF; }
-.toast.bad { color: #FF453A; }
-.toast.hint { max-width: min(560px, 70vw); text-align: center; font-size: 14px; font-weight: 600; background: rgba(18,18,26,0.5); border: 1px solid rgba(255,255,255,0.07); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 7px 16px; border-radius: 999px; animation-duration: 3.2s; }
-@keyframes toast { 0% { opacity: 0; transform: translateY(8px) scale(0.95); } 10% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
-
-#hud-warn { position: absolute; top: 42%; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 22px; color: var(--ember); opacity: 0; transition: opacity 0.2s; text-shadow: 0 0 12px rgba(255,77,77,0.8); }
+/* Messages: every toast, tip and voice caption, and the status lines (wall
+   warning, steering you clear, reconnecting), in one stack just below the
+   centre, newest on top (hud.js), so a new one always lands in the same
+   spot. It starts clear of the reticle and the steering dead zone and ends
+   above the radar (and on phones the buttons): --msg-top and --msg-foot,
+   per layout below. Your own dragon flies just below the centre, so it's
+   compact and see-through: thin pills, no blur. */
+#msgs { --msg-top: clamp(26px, 4.5vh, 44px); --msg-foot: calc(166px + var(--safe-b));
+    position: absolute; left: 0; right: 0; top: calc(50% + var(--msg-top)); max-height: calc(50% - var(--msg-top) - var(--msg-foot));
+    display: flex; flex-direction: column; align-items: center; gap: 5px; overflow: hidden; }
+#msg-status { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.msg { max-width: min(560px, 86vw); padding: 2px 13px; border-radius: 999px; background: rgba(10, 8, 6, 0.28); text-align: center; text-wrap: balance;
+    font-weight: 700; font-size: 17px; line-height: 1.3; letter-spacing: 0.01em; color: #F5EEE1;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 12px rgba(0, 0, 0, 0.45); animation: msg 1.6s ease-out forwards; }
+.msg.big { font-size: 22px; font-weight: 800; color: #FFD60A; }
+.msg.nm { color: #64D2FF; }
+.msg.bad, #hud-warn { color: #FF453A; }
+.msg.hint { font-size: 14px; font-weight: 600; color: rgba(245, 238, 225, 0.92); }
+.msg.caption { border-radius: 14px; padding: 1px 16px 3px; }
+.msg.caption .zh { font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-weight: 400; font-size: 32px; line-height: 1.15; letter-spacing: 0.08em; color: #F3DDA4; }
+.msg.caption .say { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: rgba(245, 238, 225, 0.78); }
+#msg-status .msg { animation: msg-in 0.2s ease-out; }
+#hud-warn { font-weight: 800; }
+#hud-assist { font-size: 13px; color: var(--jade); }
+#net-note { display: none; font-size: 14px; }
+#msg-status #net-note { animation: gPulse 0.9s ease-in-out infinite alternate; }
+body[data-net=reconnecting]:not([data-state=pause]) #net-note { display: block; }   /* paused, the pause panel says it */
+@keyframes msg { 0% { opacity: 0; transform: translateY(-6px) scale(0.96); } 8% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes msg-in { from { opacity: 0; } }
 
 
 #radar { position: absolute; left: 50%; bottom: calc(8px + var(--safe-b)); width: 220px; height: 150px; transform: translateX(-50%); }
@@ -96,7 +116,6 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .opt input { flex: none; margin-top: 3px; width: 16px; height: 16px; accent-color: var(--sun); }
 .opt small { display: block; color: var(--dim); font-size: 12px; }
 .opt.big { font-size: 16px; }
-#hud-assist { position: absolute; top: calc(42% + 30px); left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 700; color: #8CF09A; opacity: 0; transition: opacity 0.2s; }
 .home { display: inline-block; margin-top: 10px; color: var(--dim); font-size: 12px; text-decoration: none; }
 
 #card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
@@ -295,7 +314,6 @@ button.cta:hover, .room button:hover { filter: brightness(1.06); }
 .arenas label { border-color: var(--gold-line); }
 .arenas label:has(input:checked) { border-color: var(--gold); background: rgba(217, 181, 108, 0.08); }
 .badge { background: rgba(134, 217, 176, 0.14); color: var(--jade); }
-#hud-assist { color: var(--jade); }
 .opt input, .opt-range input { accent-color: var(--gold); }
 
 /* ---------------- Lives: dragon pearls + respawn countdown ---------------- */
@@ -304,26 +322,13 @@ button.cta:hover, .room button:hover { filter: brightness(1.06); }
 .pearls span.used { background: none; box-shadow: inset 0 0 0 1.2px rgba(255, 255, 255, 0.28); }
 #hud-lives { margin: 8px 0 2px; }
 #hud-lives:empty { display: none; }
-#respawn { position: fixed; left: 0; right: 0; top: 34%; display: none; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; text-align: center; }
+/* It ends at the centre, so the message stack (the death line, jade) shows below it. */
+#respawn { position: fixed; left: 0; right: 0; bottom: 50%; display: none; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; text-align: center; }
 body[data-state=dead][data-respawn="1"] #respawn { display: flex; }
 #respawn-text { font-size: 18px; font-weight: 600; color: rgba(245, 238, 225, 0.85); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7); }
 #respawn-count { font-family: 'Cinzel', Georgia, serif; font-size: 72px; font-weight: 700; line-height: 1; color: #F3DDA4; text-shadow: 0 0 30px rgba(217, 181, 108, 0.45); }
 #respawn .pearls span { width: 12px; height: 12px; }
-/* Online: shown while the connection is being made again (net.js), below the
-   rear-view mirror (on phones, below the leaderboard). Paused, the pause
-   panel says it instead. */
-#net-note { position: fixed; z-index: 5; top: calc(20% + 26px + env(safe-area-inset-top)); left: 0; right: 0; margin: 0 auto; width: max-content;
-    display: none; pointer-events: none; animation: gPulse 0.9s ease-in-out infinite alternate; }
-body[data-net=reconnecting]:not([data-state=pause]) #net-note { display: block; }
-@media (max-width: 640px) { #net-note { top: calc(168px + env(safe-area-inset-top)); } }
 #card-sub { color: var(--dim); font-size: 13px; margin: -6px 0 14px; }
-
-/* ---------------- Dragon voice caption (Mandarin + pinyin + English) ---------------- */
-#voice-caption { position: absolute; left: 0; right: 0; bottom: calc(172px + var(--safe-b)); text-align: center; pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity 0.35s, transform 0.35s; }
-#voice-caption.show { opacity: 1; transform: none; }
-#voice-caption .zh { font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', serif; font-size: 40px; line-height: 1.1; color: #F3DDA4; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75), 0 0 24px rgba(217, 181, 108, 0.35); letter-spacing: 0.08em; }
-#voice-caption .py { font-size: 13px; letter-spacing: 0.08em; color: rgba(245, 238, 225, 0.8); margin-top: 2px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
-#voice-caption .en { font-size: 12px; font-style: italic; color: rgba(245, 238, 225, 0.6); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
 
 #opt-gfx { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--gold-line); background: rgba(0, 0, 0, 0.35); color: #EDE3D1; }
 /* ---------------- Profile: rank seal, jade, perks & colours ---------------- */
@@ -390,27 +395,34 @@ body[data-touch="1"] #hud-stats { bottom: calc(18px + env(safe-area-inset-bottom
     #hud-gauges { gap: 7px; flex-wrap: wrap-reverse; max-width: 124px; }   /* three a row; timed ones stack above, clear of the radar */
     .g { width: 34px; height: 34px; }
     .g .icon { inset: 9px; width: 16px; height: 16px; }
-    #voice-caption .zh { font-size: 32px; }
-    .toast.hint { max-width: 86vw; }
+    .msg { max-width: 92vw; font-size: 16px; line-height: 1.25; }
+    .msg.big { font-size: 20px; }
+    .msg.hint { font-size: 13px; }
+    .msg.caption .zh { font-size: 27px; }
     /* A full-screen panel hides the leaderboard and kill feed instead of covering them. */
     body[data-state=menu] #board, body[data-state=pause] #board, body[data-overlay] #board, body[data-card="1"] #board,
     body[data-state=menu] #feed, body[data-state=pause] #feed, body[data-overlay] #feed, body[data-card="1"] #feed { display: none; }
 }
 /* Upright: the radar stacks above the stats (bottom left; hud.js keeps their
    height, which grows with timed gauges, in --stats-h), clear of the buttons
-   and of your dragon in the middle; the feed stops short of the leaderboard. */
+   and of your dragon in the middle; the feed stops short of the leaderboard.
+   Messages end above the radar and the brake and fire buttons. */
 @media (max-width: 640px) {
     #radar { left: calc(22px + var(--safe-l)); bottom: calc(var(--stats-h, 132px) + 28px + var(--safe-b)); transform: none; width: 140px; height: 95px; }
-    #voice-caption { bottom: calc(285px + var(--safe-b)); }
+    #msgs { --msg-foot: calc(max(var(--stats-h, 132px) + 123px, 168px) + 8px + var(--safe-b)); }
     #feed { max-width: calc(100vw - 210px - var(--safe-l) - var(--safe-r)); }
 }
-/* On its side: a smaller radar low in the middle, toasts and the feed kept
-   clear of the leaderboard and the mirror, and a two-column menu. */
+/* On its side: a smaller radar low in the middle, messages between the
+   stats and the buttons and above the radar, the feed kept clear of the
+   leaderboard and the mirror, and a two-column menu. */
 @media (max-height: 500px) {
     #radar { width: 132px; height: 90px; bottom: calc(4px + var(--safe-b)); }
-    #voice-caption { bottom: calc(100px + var(--safe-b)); }
-    #voice-caption .zh { font-size: 28px; }
-    .toast, .toast.hint { max-width: calc(100vw - 380px - 2 * max(var(--safe-l), var(--safe-r))); text-align: center; }
+    #msgs { --msg-top: 26px; --msg-foot: calc(98px + var(--safe-b)); gap: 4px; }
+    .msg { max-width: calc(100vw - 380px - 2 * max(var(--safe-l), var(--safe-r))); padding: 1px 11px; font-size: 14px; }
+    .msg.big { font-size: 17px; }
+    .msg.hint, #net-note { font-size: 12.5px; }
+    .msg.caption .zh { font-size: 22px; }
+    .msg.caption .say { font-size: 11px; }
     #feed { max-width: calc(36vw - 30px - var(--safe-l)); }
     #feed > :nth-last-child(n+3) { display: none; }      /* the latest two, clear of tall stats */
     .panel { padding: 16px 22px; }

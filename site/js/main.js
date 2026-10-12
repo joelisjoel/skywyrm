@@ -7,7 +7,7 @@ import { managePopulation, targetBots } from './bots.js?v=25';
 import { Renderer } from './render.js?v=40';
 import { ChaseCam } from './camera.js?v=25';
 import { Input } from './input.js?v=29';
-import { Hud } from './hud.js?v=28';
+import { Hud } from './hud.js?v=29';
 import { Audio } from './audio.js?v=16';
 import { TunePanel } from './tune-panel.js?v=26';
 import { checkName, randomRoomName } from './names.js?v=11';
@@ -681,18 +681,11 @@ hud.setMuted(settings.muted);
 audio.musicOn = settings.music;
 audio.voiceOn = settings.voice;
 
-// The dragon speaks: a Mandarin shout, captioned with pinyin and English.
-let captionTimer = 0;
+// The dragon speaks: a Mandarin shout, captioned with pinyin and English
+// in the message stack.
 function speak(ev) {
     const ph = audio.say(ev);
-    if (!ph) return;
-    const box = $('voice-caption');
-    box.querySelector('.zh').textContent = ph.zh;
-    box.querySelector('.py').textContent = ph.py;
-    box.querySelector('.en').textContent = ph.en;
-    box.classList.remove('show'); void box.offsetWidth; box.classList.add('show');
-    clearTimeout(captionTimer);
-    captionTimer = setTimeout(() => box.classList.remove('show'), 2800);
+    if (ph) hud.caption(ph);
 }
 // Browsers only allow sound after a gesture: the first click or key starts
 // the menu music, and later ones wake it if the phone stopped it (iOS
@@ -921,7 +914,6 @@ function tick(nowMs) {
         if (tb > lastTarget) hud.feed(`🐉 A new dragon arrives — ${tb} others now`);
         lastTarget = tb;
     }
-    document.getElementById('hud-assist').style.opacity = player && player.alive && state === 'play' && player.assisting > 0.25 ? '1' : '0';
 
     // Leaderboard + best rank (4 Hz).
     if (now - boardT > 0.25) {

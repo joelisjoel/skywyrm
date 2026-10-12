@@ -1,12 +1,15 @@
 // HUD (spec §8, §10.6): steering circle + reticle + nose marker, Elite-
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
-// toasts, kill feed. Names only ever go through textContent / fillText.
+// messages, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
 import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=25';
 import { MOOD_ICON } from './bots.js?v=25';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+// Messages: ms on screen by kind (every other kind 1.6 s), and how many at once.
+const MSG_LIFE = { hint: 3200, caption: 2800 };
+const MSG_MAX = 4;
 
 // Minimal status: ring gauges with line icons, no captions. Static SVG
 // only (no user text goes through innerHTML).
@@ -73,10 +76,11 @@ export class Hud {
             tier: document.getElementById('hud-tier'),
             tierBar: document.getElementById('hud-tierbar'),
             board: document.getElementById('board'),
-            toasts: document.getElementById('toasts'),
+            msgs: document.getElementById('msgs'),
             feed: document.getElementById('feed'),
             fps: document.getElementById('hud-fps'),
             warn: document.getElementById('hud-warn'),
+            assist: document.getElementById('hud-assist'),
             mute: document.getElementById('mute-btn'),
         };
         this.g = {};
@@ -103,13 +107,56 @@ export class Hud {
         this.rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
+    // Messages: every toast, tip and voice caption goes in one stack just
+    // below the centre (#msgs), newest on top, so a new one always lands in
+    // the same spot, right under the reticle, and older ones move down. The
+    // stack's box ends above the radar (style.css, per layout), so what
+    // doesn't fit, and anything past MSG_MAX, is dropped (fit). The status
+    // lines (wall warning, steering you clear, reconnecting) sit in a row at its top.
+    message(el, cls) {
+        const life = MSG_LIFE[cls] || 1600, gone = () => el.remove();
+        el.className = 'msg ' + cls;
+        el.style.animationDuration = life + 'ms';
+        el.addEventListener('animationend', gone);     // gone as it fades out, even when a slow frame delays timers
+        setTimeout(gone, life + 1000);                 // a hidden tab doesn't run the animation
+        this.el.msgs.querySelector('#msg-status').after(el);
+        this.fit();
+    }
+
     toast(text, cls = '') {
         const t = document.createElement('div');
-        t.className = 'toast ' + cls;
         t.textContent = text;
-        this.el.toasts.appendChild(t);
-        setTimeout(() => t.remove(), 1600);
-        while (this.el.toasts.children.length > 4) this.el.toasts.firstChild.remove();
+        this.message(t, cls);
+    }
+
+    // The dragon's voice line: the characters, then pinyin and English. One at a time.
+    caption(ph) {
+        for (const c of this.el.msgs.querySelectorAll('.caption')) c.remove();
+        const t = document.createElement('div'), zh = document.createElement('div'), say = document.createElement('div');
+        zh.className = 'zh'; zh.textContent = ph.zh;
+        say.className = 'say'; say.textContent = `${ph.py} · ${ph.en}`;
+        t.append(zh, say);
+        this.message(t, 'caption');
+    }
+
+    // Too many, or more than fit: tips go first, then voice captions, then
+    // the rest, oldest first, and never the newest.
+    fit() {
+        const box = this.el.msgs, rank = (e) => (e.classList.contains('hint') ? 0 : e.classList.contains('caption') ? 1 : 2);
+        for (;;) {
+            const all = box.querySelectorAll(':scope > .msg');
+            if (all.length < 2 || (all.length <= MSG_MAX && box.scrollHeight <= box.clientHeight + 1)) return;
+            let out = all[all.length - 1];
+            for (let i = all.length - 2; i > 0; i--) if (rank(all[i]) < rank(out)) out = all[i];
+            out.remove();
+        }
+    }
+
+    // A status line, shown while `on`.
+    status(el, on) {
+        if (el.hidden !== on) return;
+        el.hidden = !on;
+        if (on) this.fit();
     }
 
     // Speaker button: the icon follows the mute state; `flash` (M or a tap)
@@ -322,7 +369,9 @@ export class Hud {
             g.stun.set(p.stun / (this.stunMax || 1));
         }
         this.el.fps.textContent = fps ? fps + ' fps' : '';
-        this.el.warn.style.opacity = view.wallWarn > 0.4 && view.state === 'play' ? '1' : '0';
+        const flying = view.state === 'play' && !!p && p.alive;
+        this.status(this.el.warn, flying && view.wallWarn > 0.4);
+        this.status(this.el.assist, flying && p.assisting > 0.25);
         if (now - this.lastBoard < 0.25) return;
         this.lastBoard = now;
         const lb = view.board || [];

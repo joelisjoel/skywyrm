@@ -481,12 +481,20 @@ legs, fins and feathers grow with them.
 - Stats text has a soft shadow so it reads on bright cloud. Touch screens hide
   keyboard and mouse hints (the fire gauge's `E`, key names in Controls and
   Settings) and the keyboard and mouse settings.
-- **Top:** the speaker (mute) button at the left, leaderboard, kill feed, and
-  toasts.
+- **Top:** the speaker (mute) button at the left, the leaderboard and the
+  kill feed. The leaderboard and feed are lists, not messages, so they stay
+  up there.
+- **Messages, all in one spot just below the centre:** toasts, tips, the
+  dragon's voice caption and the status lines ("⚠ WALL", "🛟 steering you
+  clear", "Reconnecting…") share one compact, see-through stack, newest on
+  top, so a new message always lands in the same place. It starts clear of
+  the reticle and ends above the radar (on phones, above the radar and the
+  buttons). When it's full, tips give way first, then voice captions; the
+  newest message always shows. The respawn countdown ends at the centre, so
+  the death line shows below it.
 - **Over the world:**
   - names over dragons within 50 m
   - arrows to dragons off screen within 30 m
-  - a "⚠ WALL" warning
 
 ### 10.4 Sound
 - **Effects:** all synthesised live, with no sound files. Wind, a rising chime
