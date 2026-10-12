@@ -136,6 +136,14 @@ try {
     await waitFor(() => pearlsOk(a.last.pl, 1), 12000);
     check(pearlsOk(a.welcome.pl, 0) && pearlsOk(a.last.pl, 1) && !a.last.pu.some((q) => q[0] === 'pearl'),
         'flaming pearls sync in their own optional field (pl: [id, x, y, z]), never as power-ups');
+    // Sun crystals (rule sunCrystals) ride in the power-up list with three
+    // more fields. These players send no caps, like a cached older page: they
+    // get them as fire crystals, and the first five fields are all they read.
+    const sunPu = (pu) => pu.filter((q) => q.length === 8 && q[5] > 0 && q.slice(1).every(Number.isFinite));
+    await waitFor(() => sunPu(a.last.pu).length >= 3, 12000);
+    check(sunPu(a.welcome.pu).length >= 2 && sunPu(a.last.pu).length >= 3 && sunPu(a.last.pu).every((q) => q[0] === 'fire')
+        && a.last.pu.every((q) => typeof q[0] === 'string' && q.slice(1, 5).every(Number.isFinite)),
+        `an older page sees the sun crystals as fire crystals: [fire, x, y, z, spin, id, fade, hatch] (${sunPu(a.last.pu).length} now)`);
     const listed = await waitFor(async () => {
         const x = (await (await api('/api/rooms')).json()).rooms.find((y) => y.id === room.id);
         return x && x.humans === 2 && x.bots >= 3 && x;

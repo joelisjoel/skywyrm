@@ -2,7 +2,7 @@
 // with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
 // pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=25';
+import { T, TIERS } from './tunables.js?v=27';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -182,6 +182,16 @@ export class Renderer {
         this.puShapes = { fire: [spiky, octa, spiky, ico], shield: [octa, ico], magnet: [ico, octa],
             ice: [shard, octa, shard, ico], bolt: [star, spiky, star, octa], acid: [bubble, ico, bubble, octa] };
         this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2, ice: 2.6, bolt: 4.2, acid: 2.4 };
+        // Sun crystals (rule sunCrystals) wear an ink ring: a rim of their
+        // colour inside a dark band, drawn over everything, so one still reads
+        // in the sun's glare (where a glow just adds to the glare), and leave a
+        // trail of sparks. At birth a wider ring of that ink bursts out of the
+        // sun (sunFlare).
+        this.ringTex = radialTexture([[0, 'rgba(0,0,0,0)'], [0.5, 'rgba(0,0,0,0)'], [0.56, 'rgba(255,255,255,1)'], [0.68, 'rgba(255,255,255,1)'],
+            [0.74, 'rgba(16,10,6,0.75)'], [0.88, 'rgba(16,10,6,0.45)'], [1, 'rgba(16,10,6,0)']]);
+        this.flareTex = radialTexture([[0, 'rgba(0,0,0,0)'], [0.6, 'rgba(0,0,0,0)'], [0.68, 'rgba(255,255,255,0.95)'], [0.76, 'rgba(255,255,255,0.95)'],
+            [0.82, 'rgba(16,10,6,0.55)'], [0.92, 'rgba(16,10,6,0)'], [1, 'rgba(0,0,0,0)']]);
+        this.flares = []; this.sunTrail = 0;
 
         // The leader's blazing head (replaces the old light pillar): a very
         // bright additive halo + a warm point light + flame particles.
@@ -954,15 +964,20 @@ export class Renderer {
             const star = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.starTex, blending: THREE.AdditiveBlending,
                 depthWrite: false, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
             star.renderOrder = 9;
-            g.add(crystal, shell, glow, star);
-            g.userData = { crystal, shell, glow, star };
+            const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.ringTex, depthWrite: false, depthTest: false, transparent: true, fog: false, sizeAttenuation: false }));
+            ring.renderOrder = 10;
+            g.add(crystal, shell, glow, star, ring);
+            g.userData = { crystal, shell, glow, star, ring };
             this.scene.add(g); this.puMeshes.push(g);
         }
+        this.sunTrail += dt * (this.quality === 'low' ? 12 : 24);
+        const trail = Math.floor(this.sunTrail);
+        this.sunTrail -= trail;
         this.puMeshes.forEach((g, i) => {
             const pu = world.powerups[i];
             g.visible = !!pu;
             if (!pu) return;
-            const { crystal, shell, glow, star } = g.userData;
+            const { crystal, shell, glow, star, ring } = g.userData;
             const kind = this.puShapes[pu.type] ? pu.type : 'shield';                      // a type this build doesn't know
             const breath = kind === 'fire' || kind === 'ice' || kind === 'bolt' || kind === 'acid';   // breath crystals: big and loud
             // Bit: hop to the next shape every beat; flash white + pop on the hop.
@@ -995,7 +1010,35 @@ export class Renderer {
                         bolt ? 0.25 : 0.6 + Math.random() * 0.5, 1, HUE[kind]);
                 }
             }
+            // A sun crystal: its ink ring (round it from mid-range, a fixed-size
+            // marker far off, gone up close where the crystal speaks for
+            // itself; flickering white while it hatches), a trail, and
+            // shrinking away as it fades at the edge.
+            const fade = pu.sun && pu.fade < 1 ? Math.max(0, pu.fade) : 1;
+            ring.visible = !!pu.sun;
+            g.scale.setScalar(0.3 + 0.7 * fade);
+            glow.material.opacity = star.material.opacity = fade;
+            if (pu.sun) {
+                const dist = this.camera.position.distanceTo(pu.pos), hatching = pu.hatch > 0;
+                ring.material.opacity = fade * Math.min(1, Math.max(0, (dist - 20) / 25));
+                ring.material.color.setHex(hatching && Math.sin(time * 18) > 0 ? 0xffffff : this.puColors[kind]);
+                ring.scale.setScalar(Math.max(0.05, 10 / Math.max(1, dist)) * (hatching ? 1.2 + 0.15 * Math.sin(time * 12) : 1));
+                if (dist < 300) {
+                    for (let k = 0; k < trail; k++) {
+                        this.emit(pu.pos.x + (Math.random() - 0.5) * 0.8, pu.pos.y + (Math.random() - 0.5) * 0.8, pu.pos.z + (Math.random() - 0.5) * 0.8,
+                            (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, 1.6, 1.3, HUE[kind]);
+                    }
+                }
+            }
         });
+        // Births at the sun: a ring of the crystal's colour bursts out and fades.
+        for (const f of this.flares) {
+            if (!f.visible) continue;
+            const t = (f.userData.t += dt) / 1.1;
+            if (t >= 1) { f.visible = false; continue; }
+            f.scale.setScalar(8 + 38 * (1 - (1 - t) ** 3));
+            f.material.opacity = 0.9 * (1 - t * t);
+        }
 
         // Flaming pearls: bob, breathe, twinkle and lick with flame.
         const pls = world.pearls || [], npl = Math.min(pls.length, MAX_PEARLS);
@@ -1430,6 +1473,26 @@ export class Renderer {
         for (let k = 0; k < 45; k++) {
             _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(3 + Math.random() * 6);
             this.emit(x, y, z, _s.x, _s.y, _s.z, 0.5 + Math.random() * 0.5, 1.3, k % 3 ? 0 : 1);
+        }
+    }
+
+    // A sun crystal is born (rule sunCrystals): a ring of its colour (in the
+    // dark ink that reads on the glare) bursts out of the sun, with a spray of
+    // its sparks.
+    sunFlare(kind, x, y, z) {
+        let f = this.flares.find((s) => !s.visible);
+        if (!f && this.flares.length < 6) {
+            f = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flareTex, depthWrite: false, depthTest: false, transparent: true, fog: false }));
+            f.renderOrder = 10;
+            this.scene.add(f); this.flares.push(f);
+        }
+        if (f) {
+            f.position.set(x, y, z); f.userData.t = 0; f.visible = true;
+            f.material.color.setHex(this.puColors[kind] || 0xffffff);
+        }
+        for (let k = 0; k < 60; k++) {
+            _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(10 + Math.random() * 16);
+            this.emit(x, y, z, _s.x, _s.y, _s.z, 0.7 + Math.random() * 0.7, 1.5, HUE[kind] || 0);
         }
     }
 

@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=25';
-import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=25';
+import { T } from './tunables.js?v=27';
+import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=27';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -306,6 +306,9 @@ class Brain {
     // ranges grow with aggression (×0.75 when a room wakes, ×1 at the
     // beginner cap), and below 0.75 aggression bots leave a crystal to a
     // human who is nearly as close (beginner rooms never get past 0.5).
+    // Sun crystals (rule sunCrystals) are left alone until they have drifted
+    // botSunGap m from the sun: bots catch them on their way out instead of
+    // crowding the sun to wait for the next one.
     treasure(world, d, A) {
         if (!world.rule('botTreasure')) { if (this.goal && this.goal.kind === 'treasure') this.goal = null; return null; }
         const drive = Math.min(1, Math.max(0, (d.len - 12) / 188));   // 0 hatchling … 1 from 200 m
@@ -314,10 +317,12 @@ class Brain {
         if (!g && Math.random() < 0.2 + 0.6 * drive) {
             const near = world.rule('botTreasureNear'), reach = (near + (world.rule('botTreasureFar') - near) * drive) * (0.5 + A);
             const full = world.rule('fireCharge') ? Math.max(1, world.rule('fireChargeMax')) : 1;   // breath charges it can hold
+            const sunGap = world.rule('botSunGap'), sun = world.arena.center;
             let best = null, bestScore = 0;
             const look = (list, worth, far) => {
                 for (const t of list) {
                     if (ELEMENTS.includes(t.type) && d.fire >= full) continue;  // fire, ice, lightning, acid: charges already full
+                    if (t.sun && t.pos.distanceToSquared(sun) < sunGap * sunGap) continue;   // a sun crystal: caught on its way out, not at the sun
                     const dist = t.pos.distanceTo(d.pos);
                     if (dist > reach * far || (A < 0.75 && humanNearer(world, d, t.pos, dist * (1.75 - A)))) continue;
                     const sc = worth * (_v.subVectors(t.pos, d.pos).dot(d.fwd) > -0.3 * dist ? 1 : 0.5) / (dist + 10);

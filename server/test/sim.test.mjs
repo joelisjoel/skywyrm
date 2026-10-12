@@ -124,7 +124,7 @@ function setup(beadFromEnd) {
 // tails lie where we put them (`tail`; `lay` moves one).
 function arena(rules = {}, mode = 'local') {
     const w = new World('orb', mode);
-    Object.assign(w.rules, rules);
+    Object.assign(w.rules, { sunCrystals: 0 }, rules);                   // `a` sits where the sun is
     w.nextPowerup = 1e9;
     const a = new Dragon('A', false);
     w.spawn(a, 60);
@@ -314,6 +314,7 @@ const X = { x: 1, y: 0, z: 0 };
 {
     for (const arena of ['sky', 'orb']) {
         const w = new World(arena, 'local');
+        w.rules.sunCrystals = 0;                                         // the random ones only (sun crystals are tested below)
         for (let i = 0; i < 5; i++) { w.nextPowerup = -1; w.updatePowerups(0); }
         w.nextPowerup = Infinity;
         const start = w.powerups.map((p) => p.pos.clone()), last = w.powerups.map((p) => p.pos.clone());
@@ -334,7 +335,7 @@ const X = { x: 1, y: 0, z: 0 };
         check(wall > 20 && sun > 15 && far < 0.62, `${arena}: they keep ${wall.toFixed(0)} m from the walls, ${sun.toFixed(0)} m from the sun, within ${(far * 100).toFixed(0)}% of the radius`);
     }
     const w = new World('orb', 'local');
-    w.rules.powerupDrift = 0;
+    w.rules.powerupDrift = 0; w.rules.sunCrystals = 0;
     w.nextPowerup = -1; w.updatePowerups(0);
     const p0 = w.powerups[0].pos.clone();
     for (let s = 0; s < 100; s++) { w.time += 0.1; w.updatePowerups(0.1); }
@@ -345,7 +346,7 @@ const X = { x: 1, y: 0, z: 0 };
 {
     const trial = (mass, rules = {}, human = false, flipOff = false, type = 'shield', charges = 0) => {
         const w = new World('orb', 'local');
-        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 0 }, rules);
+        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 0, sunCrystals: 0 }, rules);
         w.ageStart = 0;
         w.botTarget = () => 1;
         managePopulation(w, true);
@@ -523,7 +524,7 @@ const X = { x: 1, y: 0, z: 0 };
         const join = (caps) => { const c = { got: [], send(m) { this.got.push(m); }, sendRaw(t) { this.got.push(JSON.parse(t)); } }; room.join(c, 'P', { caps }); return c; };
         const oldC = join(undefined), newC = join(['el']);
         const w = room.world;
-        w.nextPowerup = 1e9; w.powerups.length = 0;
+        w.nextPowerup = 1e9; w.rules.sunCrystals = 0; w.powerups.length = 0;
         w.powerups.push({ pos: oldC.dragon.pos.clone().set(0, 0, 0), type: 'ice', spin: 0 });
         room.tick(); room.tick();
         const snap = (c) => c.got.filter((m) => m.t === 's').pop();
@@ -585,7 +586,7 @@ const X = { x: 1, y: 0, z: 0 };
 {
     const trial = () => {
         const w = new World('orb', 'local');
-        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 1, pearlDrift: 0 });
+        Object.assign(w.rules, { botAggrMax: 0.5, pearls: 1, pearlDrift: 0, sunCrystals: 0 });
         w.ageStart = 0; w.botTarget = () => 1;
         managePopulation(w, true);
         const b = w.dragons[0];
@@ -605,6 +606,213 @@ const X = { x: 1, y: 0, z: 0 };
     };
     const picks = [trial(), trial(), trial()];
     check(picks.every((p) => p === 'pearl'), `a big bot picks the pearl over a crystal the same distance away (${picks.join(', ')})`);
+}
+
+// Sun crystals (rule sunCrystals): one breath crystal of each flavour is
+// always in play, on top of the random ones. Each is born at the sun, can't
+// be caught while it hatches, drifts out on a wandering path and fades
+// sunCrystalEdge m from the walls (above the cloud sea in Skyhold); eaten or
+// faded, the next of its flavour is born sunCrystalRespawn s (±25%) later.
+{
+    const ELS = ['fire', 'ice', 'bolt', 'acid'];
+    const ofKind = (w, t) => w.powerups.filter((p) => p.sun && p.type === t);
+    const tick = (w, dt = 0.1) => { w.time += dt; w.events.length = 0; w.updatePowerups(dt); return w.events; };
+    const gap = T.sunCrystalRespawn * 1.25 + 0.15;                       // the longest a flavour may be missing
+    const seeded = (n) => () => { n = (Math.imul(n, 1664525) + 1013904223) >>> 0; return n / 4294967296; };   // a repeatable Math.random
+    for (const arena of ['sky', 'orb']) {
+        // Nobody about: every flavour crosses to the edge, fades and is born again, several times.
+        const w = new World(arena, 'local'), c = w.arena.center;
+        w.nextPowerup = Infinity;
+        const lives = new Map(), missing = {};
+        let twice = 0, late = 0, allFour = 0, births = 0, bornAway = 0;
+        for (let s = 0; s < 3000; s++) {
+            for (const e of tick(w)) if (e.type === 'sunCrystal') { births++; if (e.pos.distanceTo(c) > 1e-6) bornAway++; }
+            let present = 0;
+            for (const t of ELS) {
+                const n = ofKind(w, t).length;
+                if (n > 1) twice++;
+                if (n) { present++; missing[t] = null; } else { missing[t] ??= w.time; if (s > 40 && w.time - missing[t] > gap) late++; }
+            }
+            if (present === 4) allFour++;
+            for (const p of w.powerups) {
+                if (!p.sun) continue;
+                const out = w.arena.gravity ? Math.hypot(p.pos.x - c.x, p.pos.z - c.z) : p.pos.distanceTo(c);   // Skyhold: out across the sky
+                let L = lives.get(p.sun);
+                if (!L) lives.set(p.sun, L = { d0: p.pos.distanceTo(c), last: out, back: 0, wall: Infinity, low: Infinity, born: w.time, fadeAt: 0 });
+                if (out < L.last - 1e-9) L.back++;
+                L.last = out; L.wall = Math.min(L.wall, hazardDist(w.arena, p.pos)[0]);
+                if (w.arena.gravity) L.low = Math.min(L.low, p.pos.y - w.arena.floor);
+                if (p.fade < 1 && !L.fadeAt) L.fadeAt = w.time;
+            }
+        }
+        const all = [...lives.values()], crossed = all.filter((L) => L.fadeAt).map((L) => L.fadeAt - L.born);
+        check(twice === 0 && late === 0 && allFour > 3000 * 0.7 && births >= 12,
+            `${arena}: one crystal of each flavour at all times (never two; one is missing only for its ${T.sunCrystalRespawn} s respawn; all four out ${Math.round(allFour / 30)}% of the time), ${births} born in 5 min`);
+        check(bornAway === 0 && all.every((L) => L.d0 < 1.5 && L.back === 0),
+            `${arena}: each is born at the sun and its distance from the sun only grows`);
+        check(crossed.length >= 8 && Math.min(...crossed) > 45 && Math.max(...crossed) < 130 && all.every((L) => L.wall > 25 && (!w.arena.gravity || L.low > 40)),
+            `${arena}: unchased, one crawls to the edge in ${Math.min(...crossed).toFixed(0)}–${Math.max(...crossed).toFixed(0)} s and fades ${Math.min(...all.map((L) => L.wall)).toFixed(0)}+ m inside the walls`
+            + (w.arena.gravity ? `, ${Math.min(...all.map((L) => L.low)).toFixed(0)}+ m above the cloud sea` : ''));
+    }
+    {
+        // Eaten: gone at once, and the next of that flavour is born at the sun after the delay.
+        const w = new World('orb', 'local');
+        w.nextPowerup = Infinity;
+        for (let s = 0; s < 100; s++) tick(w);
+        const d = new Dragon('P', false);
+        w.spawn(d, 50); d.protect = 0;
+        const ice = ofKind(w, 'ice')[0];
+        d.pos.copy(ice.pos);
+        const got = tick(w, 0).find((e) => e.type === 'powerup');
+        d.pos.set(0, 250, 0);
+        const t0 = w.time;
+        let back = null;
+        for (let s = 0; s < gap * 10 && !back; s++) back = tick(w).find((e) => e.type === 'sunCrystal' && e.kind === 'ice');
+        const dt = w.time - t0;
+        check(got && got.d === d && got.kind === 'ice' && d.element === 'ice' && d.fire === 1 && back && back.pos.distanceTo(w.arena.center) < 1e-6
+            && ofKind(w, 'ice').length === 1 && dt >= T.sunCrystalRespawn * 0.75 - 0.05,
+            `eaten: an ice sun crystal gives a frost charge, and a new one is born at the sun ${dt.toFixed(1)} s later`);
+        check(w.powerups.filter((p) => p.sun).length === 4, 'the other flavours were never touched');
+    }
+    {
+        // Hatching: a dragon sitting on a newborn can't have it until it has cleared the sun.
+        const w = new World('sky', 'local');
+        w.nextPowerup = Infinity; w.rules.elements = 0;
+        const d = new Dragon('P', false);
+        w.spawn(d, 50); d.protect = 0;
+        let age = null;
+        for (let s = 0; s < 100 && age === null; s++) {
+            const p = ofKind(w, 'fire')[0];
+            if (p) d.pos.copy(p.pos);
+            const ate = tick(w, 1 / 30).find((e) => e.type === 'powerup');
+            if (ate && p) age = w.time - p.born;
+        }
+        check(age !== null && age >= T.sunCrystalHatch - 0.05 && age < T.sunCrystalHatch + 0.1, `a newborn can't be caught for its first ${T.sunCrystalHatch} s (caught at ${age && age.toFixed(2)} s)`);
+    }
+    {
+        // Rule elements 0: only fire, born at the sun; switched off mid-game, the other flavours go.
+        const w = new World('orb', 'local');
+        w.nextPowerup = Infinity;
+        for (let s = 0; s < 60; s++) tick(w);
+        const before = w.powerups.filter((p) => p.sun).length;
+        w.rules.elements = 0;
+        let kinds = new Set();
+        for (let s = 0; s < 1200; s++) { tick(w); for (const p of w.powerups) if (p.sun) kinds.add(p.type); }
+        check(before === 4 && [...kinds].join() === 'fire' && w.powerups.filter((p) => p.sun).length === 1, 'elements 0: just one sun crystal, a fire one (the others go when the rule is switched off)');
+        w.rules.sunCrystals = 0;
+        tick(w);
+        kinds = new Set(w.powerups.filter((p) => p.sun).map((p) => p.type));
+        check(kinds.size === 0 && w.sunDue.size === 0, 'switching sunCrystals off mid-game clears them');
+    }
+    {
+        // The random power-ups stay as they are: with the rule on they still fill up to powerupMax, and
+        // with it off nothing is born and they spawn and drift exactly as without the sun-crystal code.
+        const run = (rules, bare) => {
+            const real = Math.random;
+            Math.random = seeded(7);
+            try {
+                const w = new World('sky', 'local');
+                Object.assign(w.rules, rules);
+                if (bare) w.updateSunCrystals = () => {};
+                const log = [];
+                for (let s = 0; s < 3000; s++) for (const e of tick(w)) log.push(e.type);
+                return { w, log, at: w.powerups.map((p) => [p.type, p.pos.x.toFixed(4), p.pos.y.toFixed(4), p.pos.z.toFixed(4)].join()) };
+            } finally { Math.random = real; }
+        };
+        const on = run({}), off = run({ sunCrystals: 0 }), bare = run({ sunCrystals: 0 }, true);
+        const random = on.w.powerups.filter((p) => !p.sun).length, sun = on.w.powerups.length - random;
+        check(random === T.powerupMax && sun === 4, `rule on: ${random} random power-ups (powerupMax) plus ${sun} sun crystals on top`);
+        check(off.at.length === T.powerupMax && !off.log.includes('sunCrystal') && off.w.sunDue.size === 0 && JSON.stringify(off.at) === JSON.stringify(bare.at) && off.log.join() === bare.log.join(),
+            'sunCrystals 0: no sun crystals, and the random power-ups spawn and drift exactly as without them');
+    }
+    {
+        // Bots still go for them, but only once one has drifted botSunGap m from the sun.
+        const pick = (at) => {
+            const w = new World('orb', 'local');
+            Object.assign(w.rules, { botAggrMax: 0.5, pearls: 0, elements: 0 });
+            w.ageStart = 0; w.botTarget = () => 1;
+            managePopulation(w, true);
+            const b = w.dragons[0];
+            w.spawn(b, 600); b.protect = 0;
+            b.pos.set(0, 0, -100);
+            quatFromForwardUp(new Vector3(0, 0, 1), new Vector3(0, 1, 0), b.quat); b.updateFrame(); b.vdir.copy(b.fwd);
+            b.pathHead = -1; b.pathCount = 0; b.lastPt.copy(b.pos);
+            w.nextPowerup = Infinity;
+            for (let s = 0; s < 3; s++) tick(w);
+            const p = ofKind(w, 'fire')[0];
+            p.pos.set(0, 0, at); p.hatch = 0;
+            for (let k = 0; k < 40 && !b.brain.goal; k++) b.brain.treasure(w, b, 0.5);
+            const wants = !!(b.brain.goal && b.brain.goal.t === p);
+            let got = false;
+            for (let i = 0; i < 8 * 30 && !got; i++) { w.step(1 / 30); got = w.events.some((e) => e.type === 'powerup' && e.d === b); }
+            return { wants, got };
+        };
+        const near = pick(-30), out = [pick(-160), pick(-160), pick(-160)];
+        check(!near.wants && out.every((r) => r.wants && r.got),
+            `a big bot leaves a sun crystal ${T.botSunGap} m or less from the sun alone, and fetches one that has drifted out (${out.filter((r) => r.got).length}/3)`);
+    }
+    {
+        // No camping: a busy sky doesn't crowd round the sun waiting for births
+        // (it would without botSunGap). Bots near the sun swing a lot from run
+        // to run, so this is two fixed seeds, averaged. Bot paths also depend
+        // on dragon ids (which earlier tests use up) and on the machine's
+        // floating point, so even seeded runs differ between machines: with
+        // the rule off 1.1-3.7 bots sat within 50 m, with it on 0.8-4.5, and
+        // without botSunGap 5.8-10.6. The check is that botSunGap takes away
+        // at least half of the extra crowding, not a fixed margin over off.
+        const busy = (rules, seed) => {
+            const real = Math.random;
+            Math.random = seeded(seed);
+            try {
+                const w = new World('sky', 'server');
+                Object.assign(w.rules, { botAggrMax: 0.5 }, rules);
+                w.botTarget = () => 25;
+                w.spawnAmbient(T.orbTarget);
+                w.ageStart = 0;
+                managePopulation(w, true);
+                let near = 0, n = 0, eaten = 0;
+                const at = [];
+                for (let i = 0; i < 90 * 30; i++) {
+                    const was = w.powerups.filter((p) => p.sun);
+                    w.step(1 / 30); managePopulation(w);
+                    for (const p of was) if (!w.powerups.includes(p) && p.fade > 0) { eaten++; at.push(p.pos.distanceTo(w.arena.center)); }
+                    if (i % 15 === 0) { n++; for (const d of w.dragons) if (d.alive && d.pos.distanceTo(w.arena.center) < 50) near++; }
+                }
+                at.sort((a, b) => a - b);
+                return { near: near / n, eaten, median: at[at.length >> 1] || 0 };
+            } finally { Math.random = real; }
+        };
+        const avg = (rules) => { const r = [3, 99].map((s) => busy(rules, s)); return { near: (r[0].near + r[1].near) / 2, eaten: Math.min(r[0].eaten, r[1].eaten), median: Math.min(r[0].median, r[1].median) }; };
+        const off = avg({ sunCrystals: 0 }), on = avg({}), camp = avg({ botSunGap: 0 });
+        check(on.eaten >= 10 && on.median > T.botSunGap - 15 && on.near - off.near <= (camp.near - off.near) / 2 && camp.near >= on.near + 2.5,
+            `25 bots, 90 s: ${on.eaten}+ sun crystals eaten, half of them past ${on.median.toFixed(0)} m from the sun; ${on.near.toFixed(1)} bots within 50 m of the sun (${off.near.toFixed(1)} with the rule off, ${camp.near.toFixed(1)} camping without botSunGap)`);
+    }
+    {
+        // Wire: sun crystals ride in the power-up list with three extra fields
+        // (id, fade, s until catchable). An older browser (no caps) reads the
+        // first five and sees each as a fire crystal; births go out as a 'sun'
+        // event, which older browsers skip.
+        const room = new Room({ id: 's', name: 'S', arena: 'orb', beginner: true }, { occupied() {}, emptied() {}, countHumans() {}, stats: { run() {} } });
+        const join = (caps) => { const c = { got: [], send(m) { this.got.push(m); }, sendRaw(t) { this.got.push(JSON.parse(t)); } }; room.join(c, 'P', { caps }); return c; };
+        const oldC = join(undefined), newC = join(['el']);
+        const w = room.world;
+        room.tick(); room.tick();
+        const sunPu = (pu) => pu.filter((q) => q.length === 8 && q[5] > 0);
+        const snap = (c) => c.got.filter((m) => m.t === 's').pop();
+        const fresh = sunPu(snap(newC).pu), stale = sunPu(snap(oldC).pu);
+        check(fresh.map((q) => q[0]).sort().join() === 'acid,bolt,fire,ice' && sunPu(newC.got[0].pu).length === 4
+            && fresh.every((q) => q.every((v, i) => i === 0 || Number.isFinite(v)) && q[6] > 0 && q[6] <= 1 && q[7] >= 0),
+            'snapshots and the welcome carry the four sun crystals: [type, x, y, z, spin, id, fade, hatch]');
+        check(stale.length === 4 && stale.every((q) => q[0] === 'fire') && snap(oldC).pu.filter((q) => q.length === 5).length === snap(oldC).pu.length - 4,
+            'an older browser gets them as four fire crystals (random ones keep their five fields)');
+        w.powerups = w.powerups.filter((p) => !(p.sun && p.type === 'bolt'));
+        w.sunDue.set('bolt', w.time);
+        room.tick(); room.tick();
+        const born = newC.got.filter((m) => m.t === 'e').flatMap((m) => m.ev).find((e) => e.k === 'sun');
+        check(born && born.kind === 'bolt' && Math.hypot(born.x - w.arena.center.x, born.y - w.arena.center.y, born.z - w.arena.center.z) < 1e-6
+            && oldC.got.filter((m) => m.t === 'e').flatMap((m) => m.ev).some((e) => e.k === 'sun'),
+            'a birth goes out as a public \'sun\' event at the sun ({k, kind, id, x, y, z})');
+    }
 }
 
 // Girth (rule girth): bigger dragons are fatter, and collide that way.

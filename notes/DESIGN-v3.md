@@ -215,7 +215,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Orbs are reeled into the mouth rather than vanishing (`sim.js:792-826`).
   - Bots above mass 400 get half value.
 - **Power-ups** (`sim.js:833-863`):
-  - The first appears at 10 s, then every 20 s ±25%, with at most 5.
+  - The first appears at 10 s, then every 20 s ±25%, with at most 5 random
+    ones (sun crystals don't count toward the 5).
   - The type pool is `shield, magnet` plus two breath crystals
     (`breathCrystal`): `fire`, or with rule `elements` and probability
     `elementShare` 0.5 one of `ice`, `bolt` (lightning) or `acid`.
@@ -228,6 +229,41 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     The server simulates it; positions already go out in every snapshot's
     `pu`, so old clients simply see crystals move. The renderer adds a
     bob and sway of up to 0.6 m (drawing only).
+- **Sun crystals** (`updateSunCrystals`, `sunBirth`, `sunDrift`; rule
+  `sunCrystals`):
+  - One breath crystal of each flavour (`ELEMENTS`, or just `fire` with
+    `elements` off; none with `dragonfire` off) is in `world.powerups` on
+    top of the random ones, marked `pu.sun` = an id. `world.sunDue` maps a
+    flavour to when its next one is born. A new world's first four are born
+    1 s apart.
+  - Born at `arena.center` with a `sunCrystal` event (kind, id, pos),
+    heading out in a random direction (level ±20% in Skyhold). It can't be
+    caught while `pu.hatch` (`sunCrystalHatch` 1.5 s) runs.
+  - `sunDrift`: the aim is the straight line out from the sun (level in
+    Skyhold) plus a sideways lean of 0.45, re-picked every 3–7 s and
+    projected off the outward line, so the distance from the sun only grows.
+    It flies at `sunCrystalSpeed` 4 m/s × 0.85–1.15, spat out at 3× that
+    and easing down over about a second (velocity τ 1.5 s). Skyhold keeps it
+    between 50 m above the cloud sea and 50 m above the sun (it measures
+    50–95 m up). Unchased it takes 61–91 s to reach the edge.
+  - Within `sunCrystalEdge` 40 m of a wall it fades (`pu.fade` 1 → 0 over
+    2.5 s, still drifting; it's gone about 30 m inside the wall). Eaten or
+    faded, the next of its flavour is due `sunCrystalRespawn` 4 s ×
+    0.75–1.25 later.
+  - Bots (`Brain.treasure`) skip a sun crystal within `botSunGap` 60 m of
+    the sun. Body heat is only a reward (more speed and thrust), so nothing
+    else keeps them away: without the gap 25 bots keep about 9 within 50 m
+    of the sun and eat 30 sun crystals a minute at a median 26–30 m from
+    it; with it about 2–3 (the same as with the rule off) and 11–14 a minute
+    at a median 70 m.
+  - The renderer gives each an ink ring (a sprite over everything: a rim of
+    its colour inside a dark band, so it reads on the sun's glare where an
+    additive glow can't), shown from 20–45 m out and kept at least 5% of
+    the screen; it flickers white while hatching. It leaves a trail of 24
+    sparks a second (12 on Low) and shrinks as it fades. A birth flares
+    (`sunFlare`): a ring of its colour grows to 46 m round the sun in 1.1 s,
+    with 60 sparks, and a soft three-note chime (`Audio.sunCrystal`) within
+    220 m of the sun. The radar gives it a gold ring.
 - **Flaming pearls** (`updatePearls`, rule `pearls` 3, at most 8):
   - They spawn 0.2–0.65R from the centre (squashed like the food cloud in
     Skyhold) and at least 40 m from any wall.
@@ -305,6 +341,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `pearls` | 3 | `pearlMass` | 30 |
 | `pearlRespawn` | 8 | `pearlDrift` | 2.5 |
 | `girth` | 1 | `girthExp` | 0.585 |
+| `sunCrystals` | 1 | `sunCrystalSpeed` | 4 |
+| `sunCrystalHatch` | 1.5 | `sunCrystalEdge` | 40 |
+| `sunCrystalRespawn` | 4 | `botSunGap` | 60 |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
@@ -346,7 +385,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Notice range: `botTreasureNear` + (`botTreasureFar` − near)·drive, ×(0.5 + A).
     Per decision a bot looks with chance 0.2 + 0.6·drive, best by 1/(dist + 10),
     halved if behind. It skips breath crystals (fire, ice, lightning, acid)
-    once its charges are full (`fireChargeMax`, or 1 with `fireCharge` off).
+    once its charges are full (`fireChargeMax`, or 1 with `fireCharge` off),
+    and sun crystals still within `botSunGap` 60 m of the sun (§3.4).
   - Commitment: holds the goal 1.5 + 8·drive s, and drops it early with
     chance 0.05·(1 − drive) per decision.
   - Path: drive > 0.3 leads the crystal's drift; smaller bots wobble up to
@@ -423,9 +463,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | C→S | `p` | `{x,y,z,qx,qy,qz,qw,s,bk,b,k,f}`: pose, speed, bank, boost, brake, fire |
 | C→S | `spawn`, `park`, `unpark`, `ping{c}` | |
 | S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu, pl}`. Also `resume` (a new token every time), `resumed: 1` when a `hello`'s token got its dragon back, `parked: 1` when that dragon is still folded (not in `dragons`) |
-| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`. `pl`: pearls, `[id,x,y,z]` each (optional; new). `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), `el` (their element, when not fire), `ch` / `st` (s left chilled / stunned, when > 0), shield, magnet, kills and correction. `ac` (when any): acid clouds `[id,x,y,z,radius,s left,lifetime,spitter]` |
+| S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`: power-ups, `[type,x,y,z,spin]` each; a sun crystal adds `id, fade, hatch` (optional; new): older clients read the first five and see it as a crystal (as fire without `el`), and new ones keep it by `id` and draw it on the server's clock like a pearl. `pl`: pearls, `[id,x,y,z]` each (optional; new). `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), `el` (their element, when not fire), `ch` / `st` (s left chilled / stunned, when > 0), shield, magnet, kills and correction. `ac` (when any): acid clouds `[id,x,y,z,radius,s left,lifetime,spitter]` |
 | S→C | `dn` / `dx` | A dragon appears (meta plus a tail path at 1 cm precision, every other point, ≤600 points) / leaves |
-| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `pearl` (`{id, g, x, y, z}`; new), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
+| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `pearl` (`{id, g, x, y, z}`; new), `sun` (a sun crystal is born: `{kind, id, x, y, z}`; new, older clients skip it), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
 | S→C | `full` | The room is full |
 
 - **Flag bits** in `d`:
@@ -1055,6 +1095,10 @@ The improvement loop's numbers, kept without identifying anyone
   - Chilled dragons go frost-white and shed snow; stunned ones flicker violet
     and crackle with sparks.
   - Particle hues: 0 fire, 1 ice/lodestone blue, 2 acid green, 3 lightning.
+- **Sun crystals** (§3.4): the same crystals plus an ink-ring sprite each
+  (normal blending, depth test off, so it reads on the sun's glare), a spark
+  trail, and a pooled flare ring (up to 6) with a spark burst at each birth.
+  Online they are kept by id and placed on the server's clock like pearls.
 - **Flaming pearls:** the Ancient's pearl material and sphere, instanced (up
   to 8), bobbing and breathing; a world-size glow (Points, size 16) and a
   constant-size twinkle (Points, 22 px); 50 flame motes a second each from
@@ -1160,15 +1204,15 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (82 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients), power-ups drifting in bounds (and `powerupDrift` 0), a big bot fetching a crystal a hatchling ignores, `botTreasure` 0 (also switched off mid-chase), bots yielding to a nearer human, bots fetching any breath element until their charges are full, pearls drifting in bounds, a catch giving +30 and a respawn far away, `pearls` 0, a big bot choosing a pearl over a crystal |
+| `server/test/sim.test.mjs` (110 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients), power-ups drifting in bounds (and `powerupDrift` 0), a big bot fetching a crystal a hatchling ignores, `botTreasure` 0 (also switched off mid-chase), bots yielding to a nearer human, bots fetching any breath element until their charges are full, pearls drifting in bounds, a catch giving +30 and a respawn far away, `pearls` 0, a big bot choosing a pearl over a crystal, sun crystals (one of each flavour at all times in both arenas, born at the sun with their distance only growing, the crawl to the edge and the fade 25+ m inside the walls and 40+ m above the cloud sea, eaten → reborn at the sun after the delay, the hatch, `elements` 0 → fire only, switched off mid-game, the random ones still filling to 5, `sunCrystals` 0 matching the code without them on a seeded run, bots leaving one inside `botSunGap` and fetching one past it, 25 seeded bots not crowding the sun (and crowding it without `botSunGap`), the `pu` fields and the `sun` event for new and older browsers) |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
-| `server/test/rooms.test.mjs` (37 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
+| `server/test/rooms.test.mjs` (38 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, sun crystals reaching an older page as fire crystals, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
 | `server/test/crash.test.mjs` (15 checks) | The crash guard: a `Registry` with fake clients, then the real server with bugs planted by `poison-room.mjs` (`node --import`). A throwing tick or sweep resets only its room (1011) and other rooms keep snapshotting; a throwing message closes only its sender (1011) while the rest of its room plays on; a reset counts the lives it cut off; a repeated error is logged once, an unhandled rejection is not fatal |
 | `server/test/limits.test.mjs` (5 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot, seats held for dropped players count toward the limit |
 | `server/test/backpressure.test.mjs` (9 checks) | Fake sockets with a set queue size: over 512 KB only snapshots are skipped and `dn`/`dx`/`e` still arrive, the next snapshot carries the skipped food changes, over 4 MB the socket is closed (4009) |
 | `server/test/reconnect.test.mjs` (37 checks) | Resume tokens, ticked by hand in a `Registry`: back within 3 s carries on unseen, after that flies back in with its length and kills (`dn`), keeping its crystals, still folded if it was parked, takeover of a still-open socket (4011), used, forged, expired and other-room tokens get a fresh dragon, a kill during the 3 s drops loot once, leaving on purpose drops loot after 3 s. Play totals: a held or resumed life isn't counted, a forgotten seat, a death in the countdown and a shutdown each count it once. Then the real server: a reconnect over real sockets, tokens never logged, SIGTERM closes with 4010 |
-| `server/test/net.test.mjs` (10 checks) | The browser's `NetGame` run in Node against the real server: a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect |
+| `server/test/net.test.mjs` (11 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect |
 | `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
@@ -1290,6 +1334,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
 | Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 · powerupDrift 1 (rule) |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 · girth 1 · girthExp 0.585 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 · girth 1 · girthExp 0.585 · sunCrystals 1 · sunCrystalSpeed 4 · sunCrystalHatch 1.5 · sunCrystalEdge 40 · sunCrystalRespawn 4 · botSunGap 60 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · camGirth 0.8 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 · eatMotion 2 |

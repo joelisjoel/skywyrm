@@ -193,6 +193,13 @@ export class Audio {
         this.tone(587.33 * 2 ** (L[10] / 12), 1.1, 'sine', 0.04, 0.4);
         this.whoosh(0.7, 1500, 6000, 0.12);
     }
+    // A sun crystal is born (rule sunCrystals): a quiet, small cousin of the
+    // pearl's bell, three notes up the music's mode, each flavour starting
+    // on its own step; k (0–1) softens it with distance from the sun.
+    sunCrystal(kind, k = 1) {
+        const L = this.music ? this.music.ladder() : PENTA, s = { fire: 0, ice: 2, bolt: 4, acid: 1 }[kind] || 0;
+        [0, 2, 4].forEach((n, i) => this.tone(1174.66 * 2 ** (L[s + n] / 12), 0.45, 'sine', 0.03 * k, i * 0.09));
+    }
     // Chomp: a short crunch and a rising blip.
     bite() { this.whoosh(0.12, 2500, 400, 0.35); this.tone(392, 0.12, 'square', 0.06, 0, 784); this.tone(1174.66, 0.15, 'sine', 0.06, 0.06); }
     bitten() { this.whoosh(0.2, 800, 150, 0.3); this.tone(293.66, 0.25, 'sawtooth', 0.05, 0, 146.83); }

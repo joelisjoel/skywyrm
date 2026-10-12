@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // messages, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=25';
-import { MOOD_ICON } from './bots.js?v=25';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=27';
+import { MOOD_ICON } from './bots.js?v=27';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -294,9 +294,10 @@ export class Hud {
             if (!d.alive || d === p) continue;
             draw(d.pos, hex(d.color), false);
         }
-        // Power-ups by colour; breath crystals (fire, ice, lightning, acid) stay pinned to the rim.
+        // Power-ups by colour; breath crystals (fire, ice, lightning, acid) stay pinned to the rim,
+        // and sun crystals (rule sunCrystals) wear a gold ring.
         for (const pu of world.powerups) {
-            draw(pu.pos, EL_COLOR[pu.type] || { shield: '#FFB060', magnet: '#4D9BFF' }[pu.type] || '#fff', false, false, !!EL_COLOR[pu.type]);
+            draw(pu.pos, EL_COLOR[pu.type] || { shield: '#FFB060', magnet: '#4D9BFF' }[pu.type] || '#fff', false, false, !!EL_COLOR[pu.type], !!pu.sun);
         }
         // Acid clouds: green rings, so you can fly round them.
         for (const c of world.clouds || []) draw(_v2.set(c.x, c.y, c.z), 'rgba(124,255,79,0.85)', false, true);

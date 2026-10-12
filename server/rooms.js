@@ -390,8 +390,16 @@ export class Room {
         }
     }
 
+    // [type, x, y, z, spin]. A sun crystal (rule sunCrystals) adds its id,
+    // how faded it is (1, falling to 0 at the edge) and the s until it can
+    // be caught: older clients read the first five, so they see it too (as
+    // fire, without 'el').
     powerups(old = false) {
-        return this.world ? this.world.powerups.map((p) => [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)]) : [];
+        return this.world ? this.world.powerups.map((p) => {
+            const q = [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)];
+            if (p.sun) q.push(p.sun, r2(p.fade), r2(p.hatch));
+            return q;
+        }) : [];
     }
 
     // Flaming pearls, as a field of their own: old clients ignore it.
@@ -426,6 +434,7 @@ export class Room {
                 case 'acid': pub.push({ k: 'acid', id: e.d ? e.d.id : 0, o: e.o.id }); break;
                 case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'pearl': pub.push({ k: 'pearl', id: e.d.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
+                case 'sunCrystal': pub.push({ k: 'sun', kind: e.kind, id: e.id, x: r2(e.pos.x), y: r2(e.pos.y), z: r2(e.pos.z) }); break;   // born at the sun (older clients skip it)
                 case 'eat': to(e.d, { k: 'eat' }); break;
                 case 'tier': to(e.d, { k: 'tier', tier: e.tier }); break;
                 case 'nearMiss': to(e.d, { k: 'nm' }); break;

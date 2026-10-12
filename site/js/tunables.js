@@ -136,6 +136,12 @@ export const DEFAULTS = {
     pearlMass: 30,          // mass for catching one
     pearlRespawn: 8,        // s until a new one appears elsewhere (±25%)
     pearlDrift: 2.5,        // m/s, on long curving paths
+    sunCrystals: 1,         // one breath crystal of each flavour always in play, on top of the random ones: born at the sun, drifting out to the edge (0 = off)
+    sunCrystalSpeed: 4,     // m/s they crawl outward (each 0.85–1.15× this): about 80 s from the sun to the edge
+    sunCrystalHatch: 1.5,   // s a newborn can't be caught while it clears the sun
+    sunCrystalEdge: 40,     // m inside the walls where they fade out
+    sunCrystalRespawn: 4,   // s until the next of that flavour is born, once one is eaten or fades (±25%)
+    botSunGap: 60,          // m: bots leave a sun crystal alone until it has drifted this far from the sun, so they don't crowd the sun waiting for births
     girth: 1,               // bigger dragons are fatter: extra body radius at 100 m long (1 = ×2), see radiusFor (0 = off)
     girthExp: 0.585,        // curve: 0.585 gives ×3 at 300 m when it's ×2 at 100 m
 
@@ -274,6 +280,12 @@ export const PANEL = [
     ['pearlMass', 0, 100, 1, 'Rules'],
     ['pearlRespawn', 1, 60, 1, 'Rules'],
     ['pearlDrift', 0, 10, 0.1, 'Rules'],
+    ['sunCrystals', 0, 1, 1, 'Rules'],
+    ['sunCrystalSpeed', 0.5, 15, 0.5, 'Rules'],
+    ['sunCrystalHatch', 0, 5, 0.1, 'Rules'],
+    ['sunCrystalEdge', 20, 120, 5, 'Rules'],
+    ['sunCrystalRespawn', 0.5, 30, 0.5, 'Rules'],
+    ['botSunGap', 0, 200, 5, 'Rules'],
     ['girth', 0, 2, 0.05, 'Rules'],
     ['girthExp', 0.2, 1.2, 0.01, 'Rules'],
 ];

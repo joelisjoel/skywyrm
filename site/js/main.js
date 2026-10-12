@@ -1,17 +1,17 @@
 // Skywyrm game loop and flow: menu (attract mode, server list) → play,
 // solo vs bots or online (net.js) → death-cam → run card → play again.
 // Runs on PCs and phones.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=25';
-import { World, Dragon, hazardDist } from './sim.js?v=25';
-import { managePopulation, targetBots } from './bots.js?v=25';
-import { Renderer } from './render.js?v=40';
-import { ChaseCam } from './camera.js?v=25';
-import { Input } from './input.js?v=29';
-import { Hud } from './hud.js?v=29';
-import { Audio } from './audio.js?v=16';
-import { TunePanel } from './tune-panel.js?v=26';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=27';
+import { World, Dragon, hazardDist } from './sim.js?v=27';
+import { managePopulation, targetBots } from './bots.js?v=27';
+import { Renderer } from './render.js?v=41';
+import { ChaseCam } from './camera.js?v=26';
+import { Input } from './input.js?v=30';
+import { Hud } from './hud.js?v=30';
+import { Audio } from './audio.js?v=17';
+import { TunePanel } from './tune-panel.js?v=27';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=28';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=29';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -220,6 +220,12 @@ function handleEvents() {
                 }
                 break;
             case 'thrustEmpty': if (mine) audio.thrustEmpty(); break;
+            case 'sunCrystal': {                     // one is born at the sun (rule sunCrystals): a flare, and a quiet chime nearby
+                renderer.sunFlare(e.kind, e.pos.x, e.pos.y, e.pos.z);
+                const near = 1 - e.pos.distanceTo(cam.pos) / 220;
+                if (state === 'play' && near > 0) audio.sunCrystal(e.kind, near);
+                break;
+            }
             case 'pearl':
                 renderer.pearlBurst(e.x, e.y, e.z);
                 if (mine) { hud.toast(`FLAMING PEARL  +${e.gain}`, 'big'); audio.pearl(); hype(8); }

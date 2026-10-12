@@ -53,6 +53,17 @@ try {
     await until(() => g.last('welcome'));
     const p0 = g.player, id0 = g.you;
     check(g.last('welcome') && typeof g.token === 'string' && g.token.length === 22, 'joins and keeps the resume token');
+    // Sun crystals (rule sunCrystals): this client knows the elements, keeps
+    // each by its id from snapshot to snapshot, and moves it along its samples.
+    const suns = () => g.world.powerups.filter((p) => p.sun > 0);
+    await until(() => suns().length >= 3);
+    const seen = new Map(suns().map((p) => [p.sun, p]));
+    await until(() => suns().some((p) => seen.get(p.sun) === p && p.samples.length >= 2));
+    g.update(0);
+    const kinds = suns().map((p) => p.type);
+    check(kinds.length >= 3 && new Set(kinds).size === kinds.length && kinds.every((k) => ['fire', 'ice', 'bolt', 'acid'].includes(k))
+        && suns().some((p) => seen.get(p.sun) === p) && suns().every((p) => p.fade > 0 && p.fade <= 1 && Number.isFinite(p.pos.x)),
+        `sun crystals arrive with their elements (${kinds.join(', ')}), each kept by id across snapshots`);
 
     // A blip: the socket closes; the client reconnects to the same dragon.
     const sent = [], send = g.send.bind(g);
