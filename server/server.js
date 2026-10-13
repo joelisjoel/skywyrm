@@ -1,7 +1,7 @@
 // Skywyrm multiplayer server: HTTP room list/creation + WebSocket rooms.
 //   GET  /healthz            → "ok"
 //   GET  /api/rooms          → { rooms: [...] }
-//   POST /api/rooms          → create { name, arena } → { room } (name from the list in names.js)
+//   POST /api/rooms          → create { name, arena, rules? } → { room } (name from the list in names.js; rules: only { fight: 0 | 1 })
 //   POST /api/run            → 204: one solo life's anonymous numbers (stats.js)
 //   POST /api/visit          → 204: one page visit's anonymous note (stats.js, site/js/visit.js)
 //   GET  /api/stats          → { days: [...] }: public daily play totals, newest first
@@ -118,7 +118,7 @@ const server = createServer(async (req, res) => {
                 let body;
                 try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, { error: 'Bad request' }, origin); }
                 if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'Bad request' }, origin);
-                const r = registry.create({ name: body.name, arena: body.arena, beginner: body.beginner }, ipOf(req));
+                const r = registry.create({ name: body.name, arena: body.arena, beginner: body.beginner, rules: body.rules }, ipOf(req));
                 return r.error ? send(res, r.status || 400, { error: r.error }, origin) : send(res, 201, r, origin);
             }
         }

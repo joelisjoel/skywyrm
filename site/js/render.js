@@ -2,7 +2,7 @@
 // with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
 // pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=29';
+import { T, TIERS } from './tunables.js?v=30';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -598,7 +598,9 @@ export class Renderer {
         BODY_TIME.value = time;
         const seen = new Set();
         const cp = this.camera.position;
-        const biteFrom = world.rule('tailBite') ? world.rule('biteBeads') : 0;
+        // The edible tail tip (rule tailBite). In fight mode (rule fight) every
+        // part of a body is edible, so no tip is singled out.
+        const biteFrom = world.rule('tailBite') && !world.rule('fight') ? world.rule('biteBeads') : 0;
         for (const d of world.dragons) {
             if (!d.alive) continue;
             seen.add(d.id);
@@ -608,6 +610,7 @@ export class Renderer {
             const c2 = _c.set(d.color2), r2 = c2.r, g2 = c2.g, b2 = c2.b;
             const ghost = d.protect > 0 ? 0.35 + 0.25 * Math.sin(time * 20) : 1;
             const frost = d.chill > 0 ? 0.6 : 0, zap = d.stun > 0 ? 0.85 : 0;    // ice-white while chilled, flickering when stunned
+            const flash = d.guard > 0 ? 0.35 + 0.35 * Math.sin(time * 32) : 0;   // fight mode: just bitten (can't be bitten again yet)
             const isOther = d !== player;
             const tube = isOther ? this.bodies : this.ownBody, D = tube.data;
             if (tube.n + 2 >= tube.cap) continue;
@@ -786,6 +789,7 @@ export class Renderer {
                 }
                 if (frost) { cr += (0.8 - cr) * frost; cg += (0.94 - cg) * frost; cb += (1 - cb) * frost; }
                 if (zap) { const z = zap * (0.5 + 0.5 * Math.sin(time * 40 - b * 0.7)); cr += (1.1 - cr) * z; cg += (0.8 - cg) * z; cb += (1.7 - cb) * z; }
+                if (flash > 0) { cr += (1.6 - cr) * flash; cg += (1.5 - cg) * flash; cb += (1.3 - cb) * flash; }
                 D[k + 12] = cr * ghost; D[k + 13] = cg * ghost; D[k + 14] = cb * ghost;
                 tube.n++;
             }
@@ -1223,6 +1227,7 @@ export class Renderer {
             if (q.hue === 1) { pc[np * 3] = fade * (0.55 - 0.35 * k); pc[np * 3 + 1] = fade * (0.8 - 0.3 * k); pc[np * 3 + 2] = fade; }   // icy blue
             else if (q.hue === 2) { pc[np * 3] = fade * (0.4 - 0.25 * k); pc[np * 3 + 1] = fade * (1 - 0.25 * k); pc[np * 3 + 2] = fade * (0.18 - 0.1 * k); }   // acid green
             else if (q.hue === 3) { pc[np * 3] = fade * (0.85 - 0.25 * k); pc[np * 3 + 1] = fade * (0.75 - 0.4 * k); pc[np * 3 + 2] = fade; }   // lightning violet-white
+            else if (q.hue === 5) { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.92 - 0.3 * k); pc[np * 3 + 2] = fade * (0.72 - 0.45 * k); }   // pale gold (a body breaking up)
             else { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k); }
             np++;
         }
@@ -1493,6 +1498,26 @@ export class Renderer {
         for (let k = 0; k < 60; k++) {
             _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(10 + Math.random() * 16);
             this.emit(x, y, z, _s.x, _s.y, _s.z, 0.7 + Math.random() * 0.7, 1.5, HUE[kind] || 0);
+        }
+    }
+
+    // Fight mode: the part of a body behind a bite breaks up into pale gold
+    // motes along its length, drifting apart (its food falls there too).
+    crumble(pts) {
+        const step = pts.length > 240 ? 6 : 3;
+        for (let i = 0; i + 2 < pts.length; i += step) {
+            for (let k = 0; k < 2; k++) {
+                _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(1 + Math.random() * 3);
+                this.emit(pts[i], pts[i + 1], pts[i + 2], _s.x, _s.y, _s.z, 0.6 + Math.random() * 0.6, 1.2, 5);
+            }
+        }
+    }
+
+    // Fight mode: two heads bounce off each other: a ring of sparks.
+    bumpSpark(x, y, z) {
+        for (let k = 0; k < 36; k++) {
+            _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(8 + Math.random() * 10);
+            this.emit(x, y, z, _s.x, _s.y, _s.z, 0.25 + Math.random() * 0.3, 1.6, k % 2 ? 3 : 5);
         }
     }
 

@@ -148,6 +148,16 @@ export const DEFAULTS = {
     botSunGap: 60,          // m: bots leave a sun crystal alone until it has drifted this far from the sun, so they don't crowd the sun waiting for births
     girth: 1,               // bigger dragons are fatter: extra body radius at 100 m long (1 = ×2), see radiusFor (0 = off)
     girthExp: 0.585,        // curve: 0.585 gives ×3 at 300 m when it's ×2 at 100 m
+    // Fight mode (rule fight): a head bites any part of another dragon's
+    // body, not just the tail tip, and bodies are harmless to touch. See
+    // World.collide and World.bodyBite. 0 = classic (bodies are poisonous).
+    fight: 0,               // 1 = fight mode
+    biteGain: 0.3,          // fight: share of the bitten-off mass the biter gains at once (the rest drops as food)
+    biteMinLen: 10,         // fight: m; a bite that would leave less than this kills (the biter gets the kill)
+    biteCooldown: 0.4,      // fight: s between one dragon's bites
+    biteGuard: 1.2,         // fight: s a bitten dragon can't be bitten again (it flashes meanwhile)
+    headonRatio: 1.25,      // fight: head to head, this × the other's mass wins; closer than that, both bounce off
+    headonStun: 0.5,        // fight: s both are stunned after bouncing off
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -296,6 +306,13 @@ export const PANEL = [
     ['botSunGap', 0, 200, 5, 'Rules'],
     ['girth', 0, 2, 0.05, 'Rules'],
     ['girthExp', 0.2, 1.2, 0.01, 'Rules'],
+    ['fight', 0, 1, 1, 'Rules'],
+    ['biteGain', 0, 1, 0.05, 'Rules'],
+    ['biteMinLen', 8, 40, 1, 'Rules'],
+    ['biteCooldown', 0, 2, 0.05, 'Rules'],
+    ['biteGuard', 0, 5, 0.1, 'Rules'],
+    ['headonRatio', 1, 3, 0.05, 'Rules'],
+    ['headonStun', 0, 2, 0.05, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

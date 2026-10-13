@@ -188,6 +188,8 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
 - There is no self-collision.
 - **On death:** 80% of your mass drops as food, which lasts 45 s.
 - **Spawn protection:** 3 s, extended while you're still inside someone's body.
+- **Fight mode** (§5.11) turns this around for a solo game or a server that
+  chooses it: bodies are safe to touch and you bite them instead.
 
 ### 5.6 Tail nibbling ✅
 - The last 5 beads of every tail are the **edible tip**: a slender stalk
@@ -198,6 +200,9 @@ Speed multiplier = 1 + **heat bonus** + **length bonus**, capped at **×4**.
   - you gain **+25 mass** (5 beads × 5)
   - they lose about one tip's worth
 - There is a 0.5 s cooldown between bites.
+
+- In fight mode (§5.11) the tip is just part of the body: no gold tip, and
+  a bite anywhere breaks off what's behind it.
 
 ### 5.7 Food ✅
 - **Ambient food:** about 2,000 orbs worth 1 each. 60% come in clusters, and they
@@ -336,6 +341,43 @@ action and clear of the walls, the cloud sea and the sun.
   - shield saved you
 - ⬜ Not built: highlights you can share, replays, a share card.
 
+### 5.11 Fight mode (rule `fight`, off by default) ✅
+Classic rules punish getting close: every body is poisonous, so the safe
+play is to keep away. Fight mode flips that, as a switch so both can be
+played and compared (§14, decision 9).
+- **Bite anywhere.** Your head on another dragon's body bites it there, and
+  everything behind the bite breaks off. You gain 30% of what broke off at
+  once; the rest falls as food along the broken part, for anyone. The
+  bitten dragon keeps the front part and flies on, unless less than 10 m
+  would be left: then it's "bitten in two", it dies as usual and you get
+  the kill.
+- **Bodies are safe to touch.** Your head can't die on a body any more
+  (walls and the cloud sea still kill, and your own body is still
+  harmless).
+- **No shredding.** After a bite you wait 0.4 s before the next one, and a
+  dragon that was just bitten can't be bitten again for 1.2 s (it flashes
+  white meanwhile).
+- **Head to head:** a dragon a quarter heavier than the other (×1.25) wins
+  and the smaller dies. Closer in size, both bounce off and are stunned for
+  half a second, and nobody dies.
+- **Unchanged:** spawn protection (a newborn can't bite or be bitten), and
+  the Ember Shield, which takes one bite (it pops and nothing breaks off).
+  It still doesn't stop head-ons.
+- **Feel:** a chomp and a burst where the bite lands, the broken part
+  crumbling into gold motes, the jaws snapping, "CHOMP +29" for you and
+  "Bitten! −42 m" when it's you. The kill feed shows kills only, not every
+  bite.
+- **Bots** dodge bigger heads coming at their head or body. Hunters and
+  kingslayers go for bodies they can bite safely: never near the head of a
+  dragon that would beat them head to head. The bigger the bot, the farther
+  it looks and the straighter it flies. Bots that aren't hunting still
+  steer round bodies, so they don't bite everyone they pass.
+- **Where:** Settings → Server → Fight mode for solo (until you reload), and
+  a Fight mode switch when you create a server. Fight servers show a
+  "⚔ Fight" chip in the lobby. Skyhold and The Orb stay classic.
+- **How it plays** (25 bots, seeded, 6 minutes × 3 seeds per world): see
+  §14, decision 9.
+
 ---
 
 ## 6. Progression ✅
@@ -403,6 +445,10 @@ device.
 - **Create a server:** it gets a generated name such as "Jade Peak" (🎲
   picks another), and you pick a world. Names aren't typed, so nothing a
   player writes is shown in everyone's lobby.
+  - A **Fight mode** switch makes it a fight server (§5.11). Its lobby row
+    shows a "⚔ Fight" chip. A page cached from before fight mode can't
+    join one: it is told "This server plays Fight mode. Reload the page to
+    update Skywyrm, then join." 
   - Created servers disappear 12 h after the last player leaves.
   - At most 30 created servers can exist at once.
   - Each network can create 3 per hour.
@@ -477,6 +523,9 @@ device.
 | Dragon voice | on |
 | Graphics | Auto |
 
+- **Settings → Server** holds the room rules for solo games, until you
+  reload: starting dragons, max dragons, a new dragon every N s, and
+  **Fight mode** (§5.11). Online it shows the room's values, read-only.
 - **Graphics** can be Auto, High or Low. Auto drops to Low if the game runs below
   40 fps (or well below a slower screen's own rate, such as 30 Hz in Low Power
   Mode), and remembers that until you change the setting.
@@ -746,3 +795,31 @@ Each decision has a recommended default, so work can start on that default.
    defaults; if the sky gets too busy with breath, raise `sunCrystalRespawn`
    (say to 15 s) or `botSunGap`, or turn `sunCrystals` off. All are rules, so
    no code change is needed.
+9. **Fight mode or classic?** Joel asked whether flipping the dynamic would
+   make the game more fun: bodies poisonous only with a power-up, and
+   dragons eating each other anywhere, not just at the tail. It is built as
+   the rule `fight` (§5.11), off by default, so both can be tested: solo
+   from Settings → Server, online by creating a server with the switch.
+   - **What changes**, measured with 25 seeded bots in beginner rooms
+     (6 minutes × 3 seeds in each world; the numbers move a little between
+     runs): about half the deaths (about 4.5 a minute instead of 9), most
+     of them dragons bitten in two, but about 50 bites a minute instead of
+     a tail tip nibbled every two minutes, each taking about 50–60 mass.
+     Dragons stay shorter (about 50 m on average instead of 67, the longest
+     about 235 m instead of 300) because big bodies are big targets.
+     Hatchlings were bitten to death in their first 30 s no more often than
+     they were killed in classic (0–10% against 10–14%), but about one in
+     five was bitten at least once.
+   - **Risks:** being bitten every half minute or so may feel worse to a
+     young player than an occasional death, even though it's milder;
+     growing big is less of a safe reward (the pillar "getting longer must
+     always feel like a reward"); a nibble on a tail tip is now worth what
+     breaks off (often +2) instead of +25; and old cached pages can't join
+     fight servers until they reload.
+   - **Recommendation:** keep classic as the default and the permanent
+     servers classic. Let the kids play a fight server and solo fight mode
+     for a week, then decide whether it becomes a third permanent server, a
+     per-server choice only, or goes. If it stays, the first things to tune
+     are `biteGain` (0.3) and `biteMinLen` (10 m), all rules, so no code
+     change is needed. Don't set `WYRM_TUNE` `{"fight":1}` until old pages
+     have aged out: it would turn them away from every server.

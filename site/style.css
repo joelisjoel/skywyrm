@@ -185,6 +185,9 @@ body[data-overlay=settings] #settings, body[data-overlay=controls] #controls { d
 .room button:disabled { background: #333; color: #888; }
 .badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 6px; background: rgba(124,227,139,0.16); color: #8CF09A; vertical-align: 1px; }
 .room .badge { margin-left: 6px; }
+.badge[hidden] { display: none; }
+.badge.fight { margin: 0 6px 0 0; background: rgba(255, 110, 80, 0.18); color: #FFA58A; }          /* fight mode (rule fight) */
+#create-fight-opt { border-bottom: none; padding: 2px 2px 8px; }
 .opt .badge { font-size: 11px; }
 button.ghost { width: 100%; margin: 8px 0 0; background: transparent; border: 1px dashed var(--slate); color: var(--dim); }
 #create-form { margin-top: 8px; padding: 10px; border: 1px solid var(--slate); border-radius: 10px; }

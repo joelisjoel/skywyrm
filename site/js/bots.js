@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=29';
-import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=29';
+import { T } from './tunables.js?v=30';
+import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=30';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -133,13 +133,18 @@ class Brain {
 
     // Clear distance along a straight probe in `dir` before the first
     // hazard: walls, tails, or where a nearby head will be by then.
+    // Fight mode (rule fight): bodies are harmless, but a bot that isn't
+    // going for a bite still steers round them (so feeding bots don't
+    // blunder through everyone, biting as they go); one that is ignores
+    // them.
     clearance(world, d, dir, near, look) {
         const tip = this.biteTip;
         const pad = d.r + 1.0;
+        const any = !(this.goal && this.goal.kind === 'bite');
         for (let s = 1.2; s <= look; s += 1.2) {
             _p.copy(d.pos).addScaledVector(dir, s);
             if (hazardDist(world.arena, _p)[0] < 2 + d.r) return s;
-            if (world.tailDanger(_p, d.id, pad, tip)) return s;
+            if (world.tailDanger(_p, d.id, pad, tip, any)) return s;
             if (world.clouds.length && world.inAcid(_p, d.id, pad)) return s;    // someone's acid
             const t = s / Math.max(6, d.speed);
             for (const o of near) {
@@ -162,14 +167,19 @@ class Brain {
         }
 
         // 1) Choose what we want: flee, hunt, feed, or wander.
+        // Fight mode (rule fight): first keep clear of bigger heads (dodge),
+        // and hunt bodies to bite (hunt) instead of cutting dragons off.
         let want = null;
         const moods = world.rule('botMoods'), A = moods ? aggression(world) : 0;
         const hunt = T.botAggression * (0.3 + this.aggr) * (moods ? MOOD_HUNT[this.mood] * (0.35 + 0.9 * A) : 1);
+        const fight = world.rule('fight') > 0;
         this.biteTip = null;
-        if (moods && this.mood === 'grazer') want = this.flee(world, d);
+        if (fight) want = this.dodge(world, d);
+        if (!want && moods && this.mood === 'grazer') want = this.flee(world, d);
         if (!want) want = this.treasure(world, d, A);
-        if (!want && moods && (this.mood === 'hunter' || this.mood === 'kingslayer')) want = this.stalk(world, d, A, hunt);
-        if (want) { /* fleeing, after a power-up, or stalking */ }
+        if (!want && fight) want = this.hunt(world, d, A, hunt, moods);
+        else if (!want && moods && (this.mood === 'hunter' || this.mood === 'kingslayer')) want = this.stalk(world, d, A, hunt);
+        if (want || fight) { /* fleeing, after a power-up, stalking or (fight mode) biting; else feeding */ }
         else if (this.goal && this.goal.kind === 'prey' && world.time < this.goalUntil && this.goal.o.alive) {
             want = this.preyDir(d, this.goal.o);
         } else if (Math.random() < hunt * 0.6) {
@@ -189,7 +199,7 @@ class Brain {
             }
         }
         if (!want) {
-            if (!this.goal || this.goal.kind === 'prey' || world.time > this.goalUntil ||
+            if (!this.goal || this.goal.kind === 'prey' || this.goal.kind === 'bite' || world.time > this.goalUntil ||
                 (this.goal.kind === 'orb' && (!world.oalive[this.goal.i] || world.opull[this.goal.i]))) {
                 this.pickFood(world, d, moods);
             }
@@ -297,6 +307,107 @@ class Brain {
         return this.preyDir(d, o);
     }
 
+    // Fight mode (rule fight): a bigger dragon's head closing in. On our
+    // head, and it would win head to head (headonRatio): run. On our body,
+    // where it would bite the rest off: turn away from it and boost, so the
+    // body slides out of its reach sooner (more urgently near our head,
+    // where a bite costs most). Returns the way to go, or null.
+    dodge(world, d) {
+        const k = Math.max(1, world.rule('headonRatio'));
+        let threat = null, best = Infinity, onHead = false, at = 0;
+        for (const o of world.dragons) {
+            if (o === d || !o.alive || !(o.mass > d.mass) || o.protect > 0 || o.stun > 0) continue;
+            _v.subVectors(d.pos, o.pos);
+            const dist = _v.length();
+            if (dist > d.len + 40) continue;                               // nowhere near any of us
+            if (o.mass >= d.mass * k && dist < 22 + o.r && _v.dot(o.vdir) > dist * 0.3) {
+                if (dist < best) { threat = o; best = dist; onHead = true; }
+                continue;
+            }
+            const reach = 10 + o.r, step = Math.max(1, Math.round(3 / d.beadSpacing));
+            for (let b = 2; b < d.nBeads; b += step) {
+                const i = b * 3, dx = d.beads[i] - o.pos.x, dy = d.beads[i + 1] - o.pos.y, dz = d.beads[i + 2] - o.pos.z;
+                const dd = dx * dx + dy * dy + dz * dz;
+                if (dd > reach * reach) continue;
+                const db = Math.sqrt(dd);
+                if ((dx * o.vdir.x + dy * o.vdir.y + dz * o.vdir.z) > db * 0.5 && db < best) { threat = o; best = db; onHead = false; at = b; }
+                break;
+            }
+        }
+        if (!threat) return null;
+        const away = _v.subVectors(d.pos, threat.pos).normalize();
+        if (onHead) {
+            this.boost = best < 14 && !d.thrustLocked && d.mass > T.boostMinMass;
+            return away.add(_p.copy(d.fwd).multiplyScalar(0.5)).normalize().clone();
+        }
+        this.boost = !d.thrustLocked && d.mass > 30 && at < d.nBeads * 0.4 && best < 8;
+        return away.add(_p.copy(d.fwd)).normalize().clone();
+    }
+
+    // Fight mode: go for a body we can bite safely (biteSpot): not
+    // protected, just bitten or toxic, and if its owner would beat us head
+    // to head, only its back half and not while its head is near.
+    // Hunters and kingslayers seek one out (kingslayers the leader's
+    // above all); other moods snap at one close by, as often as they'd
+    // have gone for prey. As with power-ups (treasure), the bigger the bot,
+    // the farther it looks, the longer it holds on and the straighter it
+    // flies. Returns the way to go, or null.
+    hunt(world, d, A, hunt, moods) {
+        const drive = Math.min(1, Math.max(0, (d.len - 12) / 188));
+        const seeker = !moods || this.mood === 'hunter' || this.mood === 'kingslayer';
+        const k = Math.max(1, world.rule('headonRatio'));
+        let g = this.goal && this.goal.kind === 'bite' ? this.goal : null;
+        if (g && (!edible(world, d, g.o, true) || world.time > this.goalUntil || Math.random() < 0.05 * (1 - drive))) g = this.goal = null;
+        if (!g && Math.random() < (seeker ? 0.25 + 0.6 * A : hunt * 0.15)) {
+            const reach = seeker ? (30 + 50 * drive) * (0.5 + A) : 12 + 18 * drive;
+            const king = this.mood === 'kingslayer' ? world.leaderboard()[0] : null;
+            let best = null, bestScore = 0;
+            for (const o of world.dragons) {
+                if (!edible(world, d, o)) continue;
+                const far = reach * (o === king ? 2 : 1);
+                if (o.pos.distanceTo(d.pos) > far + o.len) continue;        // none of it within reach
+                const s = this.biteSpot(world, d, o, k);
+                if (!s || s.dist > far) continue;
+                const sc = (o === king ? 3 : 1) * s.worth / (s.dist + 10) * (_v.subVectors(s.p, d.pos).dot(d.fwd) > -0.3 * s.dist ? 1 : 0.5);
+                if (sc > bestScore) { bestScore = sc; best = o; }
+            }
+            if (best) { g = this.goal = { kind: 'bite', o: best }; this.goalUntil = world.time + 1.5 + 5 * drive; }
+        }
+        if (!g) return null;
+        const s = this.biteSpot(world, d, g.o, k);
+        if (!s) { this.goal = null; return null; }
+        const dir = _p.copy(s.p).sub(d.pos).normalize();
+        const wob = 0.4 * (1 - drive) * Math.min(1, s.dist / 15), ph = d.id * 1.3, tt = world.time;
+        if (wob > 0.02) dir.addScaledVector(_v.set(Math.sin(tt * 1.7 + ph), 0.6 * Math.sin(tt * 1.1 + ph), Math.cos(tt * 1.4 + ph)), wob).normalize();
+        this.boost = s.dist < 30 && s.dist > 6 && d.mass > 25 && !d.thrustLocked && Math.random() < (0.5 * hunt + 0.3 * drive) * (0.5 + A);
+        return dir.clone();
+    }
+
+    // Where to bite o: the nearest bead we may safely go for, with where it
+    // is (p), how far (dist) and what it's worth (the mass behind it; all
+    // of it for a bite that would kill). A dragon that would beat us head
+    // to head only from its back half, and not while its head is near us;
+    // one we'd beat, anywhere past its head (near the head is a kill); one
+    // in between, from a third of the way down. Null if none.
+    biteSpot(world, d, o, k) {
+        const strong = o.mass >= d.mass * k, weak = o.mass * k <= d.mass;
+        if (strong && o.pos.distanceToSquared(d.pos) < (25 + 4 * o.r) ** 2) return null;
+        const n = o.nBeads, from = strong ? Math.floor(n * 0.5) : weak ? 2 : Math.floor(n * 0.3);
+        const step = Math.max(1, Math.floor(n / 60));
+        let bb = -1, bd = Infinity;
+        for (let b = from; b < n - 2; b += step) {
+            const i = b * 3, dx = o.beads[i] - d.pos.x, dy = o.beads[i + 1] - d.pos.y, dz = o.beads[i + 2] - d.pos.z;
+            const dd = dx * dx + dy * dy + dz * dz;
+            if (dd < bd) { bd = dd; bb = b; }
+        }
+        if (bb < 0) return null;
+        const i = bb * 3, cut = bb * o.beadSpacing;
+        _bs.p.set(o.beads[i], o.beads[i + 1], o.beads[i + 2]);
+        _bs.dist = Math.sqrt(bd);
+        _bs.worth = cut < world.rule('biteMinLen') ? o.mass * 1.5 : o.mass * (1 - cut / Math.max(cut, o.shownLen || o.len));
+        return _bs;
+    }
+
     // Power-ups and pearls (rule botTreasure). Pearls count 2.5× and are
     // noticed from 30% farther. The bigger the bot, the more goal-
     // directed: a hatchling only grabs a crystal within botTreasureNear and
@@ -392,11 +503,22 @@ class Brain {
         if (g.kind === 'prey') return _p.copy(g.o.pos).sub(d.pos).normalize();
         if (g.kind === 'orb') return _p.set(worldRef.ox[g.i], worldRef.oy[g.i], worldRef.oz[g.i]).sub(d.pos).normalize();
         if (g.kind === 'treasure') return _p.copy(g.t.pos).sub(d.pos).normalize();
+        if (!g.p) return d.fwd;
         return _p.copy(g.p).sub(d.pos).normalize();
     }
 }
 
 let worldRef = null;
+const _bs = { p: new Vector3(), dist: 0, worth: 0 };   // Brain.biteSpot's answer
+
+// Fight mode: may d go for a bite of o? Not itself, a dead or protected
+// dragon, a new player in the gentle period, or (when choosing, not when
+// already chasing) one that was just bitten.
+function edible(world, d, o, chasing = false) {
+    if (o === d || !o.alive || o.protect > 0 || o.nBeads < 6) return false;
+    if (!chasing && o.guard > 0) return false;
+    return !(o === world.player && world.time - o.bornAt < world.gentleTime);
+}
 
 // Is a human (or the solo player) within `dist` of p?
 function humanNearer(world, d, p, dist) {

@@ -1,17 +1,17 @@
 // Skywyrm game loop and flow: menu (attract mode, server list) → play,
 // solo vs bots or online (net.js) → death-cam → run card → play again.
 // Runs on PCs and phones.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=29';
-import { World, Dragon, hazardDist } from './sim.js?v=29';
-import { managePopulation, targetBots } from './bots.js?v=29';
-import { Renderer } from './render.js?v=42';
-import { ChaseCam } from './camera.js?v=27';
-import { Input } from './input.js?v=31';
-import { Hud, msgTime } from './hud.js?v=32';
-import { Audio } from './audio.js?v=20';
-import { TunePanel } from './tune-panel.js?v=28';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=30';
+import { World, Dragon, hazardDist } from './sim.js?v=30';
+import { managePopulation, targetBots } from './bots.js?v=30';
+import { Renderer } from './render.js?v=43';
+import { ChaseCam } from './camera.js?v=28';
+import { Input } from './input.js?v=32';
+import { Hud, msgTime } from './hud.js?v=33';
+import { Audio } from './audio.js?v=21';
+import { TunePanel } from './tune-panel.js?v=29';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=30';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=31';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -199,9 +199,9 @@ function showHints() {
     const hints = input.isTouch ? ['Touch the sky to steer — your dragon turns toward your finger. Lift it to fly straight',
         'Hold ⚡ to boost (burns length) · ⏪ to brake for tight turns'] : ['Move the mouse to steer — the further from centre, the harder you turn',
         'Hold click / W to boost (burns length) · right-click / S to brake for tight turns'];
-    hints.push(
-        'Your head on their tail = you\'re out. Their head on your tail = dinner',
-        'Stay warm: the sun at the centre and crowds heat you up. Hotter dragons fly faster');
+    if (world.rule('fight')) hints.push(`⚔ Fight mode: ${FIGHT_HINT}`, 'Head to head, a dragon a quarter bigger wins. Closer in size, you both bounce off');
+    else hints.push('Your head on their tail = you\'re out. Their head on your tail = dinner');
+    hints.push('Stay warm: the sun at the centre and crowds heat you up. Hotter dragons fly faster');
     let i = 0;
     clearInterval(hintTimer);
     const next = () => { if (i < hints.length && state === 'play') hud.toast(hints[i++], 'hint'); else clearInterval(hintTimer); };
@@ -237,8 +237,20 @@ function handleEvents() {
                 break;
             case 'bite':
                 renderer.biteBurst(e.x, e.y, e.z, e.color);
+                if (e.fight) {                         // fight mode: a body bitten through; the part behind breaks off
+                    renderer.crumble(e.burn);
+                    if (mine) { audio.bite(); hype(6); lifeBites++; if (!e.fatal) hud.toast(`CHOMP  +${e.gain}`, 'nm'); }
+                    else if (e.o === player) { audio.bitten(); if (!e.fatal) hud.toast(`Bitten! −${Math.max(1, Math.round(e.cut))} m`, 'bad'); }
+                    else if (e.d.pos.distanceTo(cam.pos) < 60) audio.bite(0.5);
+                    break;
+                }
                 if (mine) { hud.toast(`CHOMP  +${e.gain}`, 'nm'); audio.bite(); hype(6); lifeBites++; }
                 else if (e.o === player) { hud.toast(`${e.d.name} bit your tail`, 'bad'); audio.bitten(); }
+                break;
+            case 'bump':                               // fight mode: two heads too close in size bounced off
+                renderer.bumpSpark(e.x, e.y, e.z);
+                if (e.a === player || e.b === player) { hud.toast(`BOUNCED off ${(e.a === player ? e.b : e.a).name} — too close in size`, 'nm'); audio.bump(); hype(4); }
+                else if (Math.hypot(e.x - cam.pos.x, e.y - cam.pos.y, e.z - cam.pos.z) < 60) audio.bump(0.5);
                 break;
             case 'parking': parkEndsAt = performance.now() / 1000 + e.in; break;
             case 'unparked': parkEndsAt = 0; break;
@@ -302,6 +314,7 @@ const ELEMENT_HINT = {
     acid: 'Spit acid in a dragon\'s path: the cloud melts tails (never yours)',
 };
 const hinted = new Set();
+const FIGHT_HINT = 'bite any part of a dragon to break off the rest. Bodies are safe to touch';
 function fireToast(kind, n) {
     const max = world.rule('fireCharge') ? world.rule('fireChargeMax') : 1, key = input.isTouch ? 'tap 🔥' : 'press E';
     const name = BREATH_NAME[kind] || BREATH_NAME.fire;
@@ -318,7 +331,7 @@ function onPlayerDeath(e) {
         at,
         pos: player.pos.clone(),
         killer: e.killer,
-        text: e.left ? 'You left the sky' : e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
+        text: e.left ? 'You left the sky' : e.killer ? (e.cause === 'head' ? `Head-on with ${e.killer.name}` : e.cause === 'bite' ? `Bitten in two by ${e.killer.name}` : `Poisoned by ${e.killer.name}`) : `Crashed into ${e.cause}`,
     };
     // This life's numbers roll into the game's.
     game.deaths++;
@@ -411,6 +424,7 @@ function joinRoom(id) {
             visit.reach('online');
             if (room.id === invitedRoom) invitedRoom = '';          // the invite has done its job
             hud.toast(`Joined ${room.name}`, 'hint');
+            if (w.rule('fight')) hud.toast(`⚔ Fight mode: ${FIGHT_HINT}`, 'hint');
         },
         onRespawn(p, resumed) {
             if (!resumed) { p.bornWall = performance.now() / 1000; visit.started(); }
@@ -515,8 +529,12 @@ function renderRooms(rooms) {
         if (!el) {
             el = { row: document.createElement('div'), nm: document.createElement('div'), meta: document.createElement('div'),
                 count: document.createElement('div'), humans: document.createElement('span'), bots: document.createElement('span'),
-                share: document.createElement('button'), btn: document.createElement('button') };
+                share: document.createElement('button'), btn: document.createElement('button'),
+                chip: document.createElement('span'), where: document.createElement('span') };
             el.row.className = 'room'; el.nm.className = 'rn'; el.meta.className = 'rm'; el.count.className = 'rc';
+            el.chip.className = 'badge fight'; el.chip.textContent = '⚔ Fight';
+            el.chip.title = 'Fight mode: bite any part of a dragon';
+            el.meta.append(el.chip, el.where);
             const info = document.createElement('div'), sep = document.createElement('span');
             info.append(el.nm, el.meta);
             sep.className = 'sep'; sep.textContent = ' · ';               // on a narrow phone the two counts stack instead
@@ -535,7 +553,8 @@ function renderRooms(rooms) {
         // The world, unless the room is already named after it ("Skyhold").
         const [worldName, physics] = r.arena === 'orb' ? ['The Orb', 'zero-G'] : ['Skyhold', 'gravity'];
         const named = r.name.trim().toLowerCase() === worldName.toLowerCase();
-        setText(el.meta, (named ? physics : `${worldName} · ${physics}`) + (r.permanent ? ' · always on' : ''));
+        setText(el.where, (named ? physics : `${worldName} · ${physics}`) + (r.permanent ? ' · always on' : ''));
+        el.chip.hidden = !r.fight;                                  // fight mode (rule fight)
         setText(el.humans, `👤 ${r.humans}`);
         setText(el.bots, `🐉 ${r.bots}`);
         el.count.title = `${r.humans} player${r.humans === 1 ? '' : 's'} and ${r.bots} bots`;
@@ -631,8 +650,10 @@ $('create-form').onsubmit = async (ev) => {
     $('create-error').textContent = '';
     try {
         const arena = (document.querySelector('input[name=create-arena]:checked') || {}).value === 'orb' ? 'orb' : 'sky';
-        const room = await createRoom(SERVER_BASE, { name: $('create-name').textContent, arena, beginner: true });
+        const fight = $('create-fight').checked;
+        const room = await createRoom(SERVER_BASE, { name: $('create-name').textContent, arena, beginner: true, rules: { fight: fight ? 1 : 0 } });
         $('create-form').hidden = true; $('create-open').hidden = false;
+        if (fight && !room.fight) notice('This server can\'t play Fight mode yet: it made a classic one');
         joinRoom(room.id);
     } catch (e) {
         $('create-error').textContent = e.message;
@@ -879,7 +900,15 @@ if (DEV) $('tune-btn').onclick = () => tune.toggle();
 const SERVER = [['srv-start', 'popStart', (v) => String(v)], ['srv-max', 'popMax', (v) => String(v)], ['srv-every', 'popRampSec', (v) => v + ' s']];
 function syncServer() {
     for (const [id, key, fmt] of SERVER) { $(id).value = T[key]; $(id + '-v').textContent = fmt(T[key]); $(id).disabled = !!online; }
+    $('srv-fight').checked = !!(online && world ? world.rule('fight') : T.fight);
+    $('srv-fight').disabled = !!online;
 }
+// Fight mode (rule fight) for solo games: bite any part of a dragon.
+$('srv-fight').onchange = () => {
+    if (online) { syncServer(); return; }
+    T.fight = $('srv-fight').checked ? 1 : 0;
+    syncServer(); tune.sync();
+};
 for (const [id, key] of SERVER) {
     $(id).oninput = () => {
         if (online) { syncServer(); return; }

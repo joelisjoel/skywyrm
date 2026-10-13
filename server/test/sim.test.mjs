@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Vector3 } from 'three';
 import { World, Dragon, T, managePopulation, aggression, cleanPerks, quatFromForwardUp, hazardDist } from '../../site/js/shared.js';
 import { jadeFor } from '../../site/js/profile.js';
-import { Room } from '../rooms.js';
+import { Room, FIGHT_UPDATE } from '../rooms.js';
 
 let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
@@ -886,6 +886,196 @@ const X = { x: 1, y: 0, z: 0 };
     // (head + tail reach 6 m) is a hit with the rule on, clear with it off.
     check(meet(1, 730, 730, 60, 5.4) === 'death' && meet(0, 730, 730, 60, 5.4) === 'miss',
         'girth: a head 5.4 m from a fat 300 m body hits it (the hash cells grow); thin, it passes');
+}
+
+// Fight mode (rule fight): a head bites any part of another body, and the
+// part behind breaks off; head to head, the bigger one wins or both bounce.
+function fightWorld(rules = {}) {
+    const w = new World('orb', 'local');
+    Object.assign(w.rules, { fight: 1, sunCrystals: 0, pearls: 0 }, rules);
+    w.nextPowerup = 1e9;
+    // A dragon of `mass` with its head at `head`, facing −z, its tail streaming out along +z.
+    const lay = (name, mass, head) => {
+        const d = new Dragon(name, false);
+        w.spawn(d, mass); d.protect = 0;
+        d.pos.copy(head); d.quat.set(0, 0, 0, 1); d.updateFrame(); d.vdir.copy(d.fwd);
+        d.pathHead = -1; d.pathCount = 0;
+        for (let k = Math.ceil((d.len + 2) / 0.5); k >= 0; k--) d.pushPath(head.x, head.y, head.z + k * 0.5);
+        d.rebuildBeads();
+        return d;
+    };
+    // a's head onto bead `bead` of b (negative: counted from the tip); returns the bead's index.
+    const onBead = (a, b, bead) => {
+        const n = bead < 0 ? b.nBeads + bead : bead, i = n * 3;
+        a.pos.set(b.beads[i] + 0.2, b.beads[i + 1], b.beads[i + 2]);
+        return n;
+    };
+    const hit = () => { w.events.length = 0; w.buildHash(); w.collide(); return w.events; };
+    const food = () => { let v = 0; for (let i = 0; i < w.oHigh; i++) if (w.oalive[i]) v += w.oval[i]; return v; };
+    return { w, lay, onBead, hit, food };
+}
+{
+    const V = (x, y, z) => new Vector3(x, y, z);
+    {
+        // fight 0: the same head on the middle of a body still dies (classic).
+        const { w, lay, onBead, hit } = fightWorld({ fight: 0 });
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        onBead(a, b, Math.floor(b.nBeads / 2));
+        const ev = hit();
+        check(!a.alive && !ev.some((e) => e.type === 'bite') && b.mass === 200, 'fight 0: a head on the middle of a body dies, as before');
+        check(w.rule('fight') === 0 && T.fight === 0, 'fight mode is off unless a room or player turns it on (default 0)');
+    }
+    {
+        const { w, lay, onBead, hit, food } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        const bead = onBead(a, b, Math.floor(b.nBeads / 2));
+        const cut = bead * b.beadSpacing, L = b.shownLen, L0 = T.lenBase + T.lenPerMass * T.spawnMass;
+        const keep = T.spawnMass + (200 - T.spawnMass) * (cut - L0) / (L - L0);
+        const ev = hit(), e = ev.find((x) => x.type === 'bite');
+        check(a.alive && b.alive && e && e.fight && e.d === a && e.o === b && !e.fatal, 'fight: a head on the middle of a body bites it; nobody dies');
+        const lost = 200 - b.mass;
+        check(Math.abs(b.mass - keep) < 1e-9 && b.len <= cut + 1e-9 && Math.abs(e.cut - (L - cut)) < 1e-9,
+            `fight: the part behind the bite breaks off (${L.toFixed(0)} m → ${cut.toFixed(0)} m long, −${lost.toFixed(1)} mass, as its length)`);
+        check(Math.abs(a.mass - (60 + lost * T.biteGain)) < 1e-9 && e.gain === Math.round(lost * T.biteGain),
+            `fight: the biter gains ${T.biteGain * 100}% of it at once (+${(a.mass - 60).toFixed(1)})`);
+        let nearest = Infinity;
+        for (let i = 0; i < w.oHigh; i++) if (w.oalive[i]) nearest = Math.min(nearest, w.oz[i]);
+        check(Math.abs(food() - lost * (1 - T.biteGain) * T.lootShare) < 1e-3 && nearest >= cut - 1e-3,
+            `fight: the rest drops as food along the broken-off part (${food().toFixed(1)} mass in orbs, from ${nearest.toFixed(1)} m back)`);
+        check(b.guard === T.biteGuard && a.lastBite === w.time && e.burn.length >= 3, `fight: the victim can't be bitten again for ${T.biteGuard} s (it flashes)`);
+    }
+    {
+        // Too little left: the bite kills, the biter gets the kill, the loot drops.
+        const { w, lay, onBead, hit, food } = fightWorld();
+        const b = lay('B', 60, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        const sp = b.beadSpacing, edge = Math.ceil(T.biteMinLen / sp);   // the first bead with biteMinLen in front of it
+        onBead(a, b, edge - 1);
+        const ev = hit(), death = ev.find((x) => x.type === 'death');
+        check(!b.alive && death && death.killer === a && death.cause === 'bite' && a.kills === 1 && a.alive && ev.some((x) => x.type === 'bite' && x.fatal),
+            `fight: a bite that would leave less than ${T.biteMinLen} m (${((edge - 1) * sp).toFixed(1)} m) kills; the biter gets the kill`);
+        check(Math.abs(food() - 60 * T.lootShare) < 1e-3 && a.mass === 60, 'fight: …and its loot drops as usual (the biter gains nothing at once)');
+        const s = fightWorld(), b2 = s.lay('B', 60, V(0, 0, 0)), a2 = s.lay('A', 60, V(40, 0, 0));
+        s.onBead(a2, b2, edge);
+        s.hit();
+        check(b2.alive && b2.mass === T.spawnMass && a2.mass > 60, `fight: bitten ${(edge * sp).toFixed(1)} m behind the head, it lives on at hatchling size`);
+        const h = fightWorld(), hb = h.lay('B', T.spawnMass, V(0, 0, 0)), ha = h.lay('A', 60, V(40, 0, 0));
+        h.onBead(ha, hb, -1);
+        const hev = h.hit();
+        check(hb.alive && hb.mass === T.spawnMass && !hev.some((x) => x.type === 'bite') && ha.lastBite < 0, 'fight: nipping a hatchling\'s tail tip does nothing (there\'s nothing to take)');
+    }
+    {
+        // No chain-shredding: the biter waits biteCooldown, the bitten can't be bitten for biteGuard.
+        const { w, lay, onBead, hit } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), c = lay('C', 200, V(-40, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        onBead(a, b, -12);
+        hit();
+        onBead(a, c, -12);
+        const quick = hit().some((x) => x.type === 'bite');
+        w.time += T.biteCooldown + 0.01;
+        const later = hit().some((x) => x.type === 'bite' && x.o === c);
+        check(!quick && later, `fight: one dragon bites at most once every ${T.biteCooldown} s`);
+        const x = lay('X', 60, V(80, 0, 0));
+        b.rebuildBeads();
+        onBead(x, b, -3);
+        const guarded = hit().some((e) => e.type === 'bite');
+        for (let i = 0; i < Math.ceil(T.biteGuard * 30) + 1; i++) w.upkeep(b, 1 / 30);
+        b.rebuildBeads(); onBead(x, b, -3);
+        const after = hit().some((e) => e.type === 'bite' && e.d === x && e.o === b);
+        check(!guarded && x.alive && after, `fight: a dragon just bitten can't be bitten again for ${T.biteGuard} s (heads pass through), then it can`);
+    }
+    {
+        // Head to head: headonRatio × the other's mass wins; closer in size, both bounce off, stunned.
+        const meet = (am, bm) => {
+            const { w, lay, hit } = fightWorld();
+            const a = lay('A', am, V(1, 0, 0)), b = lay('B', bm, V(0, 0, 0));
+            quatFromForwardUp(V(-1, 0, 0), V(0, 1, 0), a.quat); a.updateFrame(); a.vdir.copy(a.fwd);
+            quatFromForwardUp(V(1, 0, 0), V(0, 1, 0), b.quat); b.updateFrame(); b.vdir.copy(b.fwd);
+            const ev = hit();
+            return { a, b, ev, w };
+        };
+        const win = meet(60 * T.headonRatio + 1, 60), lose = meet(60, 60 * T.headonRatio + 1);
+        check(win.a.alive && !win.b.alive && win.ev.find((e) => e.type === 'death').cause === 'head' && !lose.a.alive && lose.b.alive && !win.ev.some((e) => e.type === 'bite'),
+            `fight: head to head, a dragon ${T.headonRatio}× the other's mass wins (and doesn't also bite its neck)`);
+        const even = meet(70, 60), bump = even.ev.find((e) => e.type === 'bump');
+        const away = (d, o) => d.fwd.dot(new Vector3().subVectors(d.pos, o.pos).normalize());
+        check(even.a.alive && even.b.alive && bump && Math.abs(even.a.stun - T.headonStun) < 1e-9 && Math.abs(even.b.stun - T.headonStun) < 1e-9
+            && away(even.a, even.b) > 0.9 && away(even.b, even.a) > 0.9 && even.a.pos.distanceTo(even.b.pos) >= (even.a.r + even.b.r) * T.headColScale,
+            `fight: closer in size (70 vs 60), both bounce off, turned away and stunned for ${T.headonStun} s; nobody dies`);
+        even.w.events.length = 0;
+        even.w.buildHash(); even.w.collide();
+        check(!even.w.events.some((e) => e.type === 'bump' || e.type === 'death' || e.type === 'bite'), 'fight: a stunned head doesn\'t bounce or bite again');
+    }
+    {
+        // Unchanged: spawn protection (no biting, no being bitten), the shield, walls, your own body.
+        const { lay, onBead, hit } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        a.protect = 2; onBead(a, b, -12);
+        const p1 = hit().some((e) => e.type === 'bite');
+        a.protect = 0; b.protect = 2;
+        const p2 = hit().some((e) => e.type === 'bite');
+        check(!p1 && !p2 && a.alive && b.mass === 200, 'fight: a newborn (spawn protection) can\'t bite or be bitten');
+        b.protect = 0; b.shield = 5;
+        const ev = hit(), pop = ev.find((e) => e.type === 'shieldPop');
+        check(pop && pop.d === b && pop.by === a && b.shield === 0 && b.mass === 200 && b.guard > 0 && !ev.some((e) => e.type === 'bite'),
+            'fight: the Ember Shield takes a bite (it pops; nothing breaks off)');
+        const own = fightWorld(), d = own.lay('D', 200, V(0, 0, 0));
+        own.onBead(d, d, -10);
+        check(!own.hit().some((e) => e.type === 'bite') && d.alive && d.mass === 200, 'fight: your own body is still harmless to you');
+        const wall = fightWorld(), wd = wall.lay('W', 60, V(T.orbRadius - 0.2, 0, 0));
+        wall.hit();
+        check(!wd.alive, 'fight: walls still kill');
+    }
+    {
+        // The classic tail tip is just another part of the body in fight mode: one bite, counted once.
+        const { lay, onBead, hit } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        onBead(a, b, -2);
+        const bites = hit().filter((e) => e.type === 'bite'), lost = 200 - b.mass;
+        check(bites.length === 1 && bites[0].fight && Math.abs(a.mass - 60 - lost * T.biteGain) < 1e-9 && a.mass < 60 + T.biteBeads * T.biteMult,
+            `fight: a tail-tip bite is a body bite (+${(a.mass - 60).toFixed(1)}), never also the classic +${T.biteBeads * T.biteMult}`);
+    }
+    {
+        // Bots: in fight mode they hunt bodies and bite them (seeded 25-bot minute); in classic, no body bites.
+        const seeded = (seed) => { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; };
+        const real = Math.random;
+        const run = (fight) => {
+            Math.random = seeded(4242);
+            const w = new World('sky', 'local');
+            Object.assign(w.rules, { botAggrMax: 0.5, fight });
+            w.botTarget = () => 25; w.ageStart = 0; w.gentleTime = 0;
+            w.spawnAmbient(T.orbTarget);
+            managePopulation(w, true);
+            const n = { bites: 0, hunted: 0, deaths: 0, bounces: 0 };
+            for (let i = 0; i < 60 * 30; i++) {
+                w.step(1 / 30);
+                for (const e of w.events) {
+                    if (e.type === 'bite' && e.fight) { n.bites++; if (e.d.brain && e.d.brain.goal && e.d.brain.goal.kind === 'bite') n.hunted++; }
+                    if (e.type === 'death') n.deaths++;
+                    if (e.type === 'bump') n.bounces++;
+                }
+                managePopulation(w);
+            }
+            Math.random = real;
+            return n;
+        };
+        const on = run(1), off = run(0);
+        check(on.bites >= 15 && on.hunted >= on.bites / 3 && off.bites === 0,
+            `fight: 25 bots bite ${on.bites} times in a minute (${on.hunted} on purpose), with ${on.deaths} deaths; classic: ${off.bites} body bites, ${off.deaths} deaths`);
+    }
+    {
+        // Wire: a fight room keeps out pages that predate fight mode; flags and events for those that know it.
+        const reg = { occupied() {}, emptied() {}, countHumans() {}, stats: { run() {} } };
+        const room = new Room({ id: 'f', name: 'F', arena: 'orb', beginner: true, rules: { fight: 1 } }, reg);
+        const client = () => ({ got: [], send(m) { this.got.push(m); return true; }, sendRaw(t) { this.got.push(JSON.parse(t)); } });
+        const old = client(), elOnly = client(), now = client();
+        const r1 = room.join(old, 'Old', {}), r2 = room.join(elOnly, 'El', { caps: ['el'] }), r3 = room.join(now, 'New', { caps: ['el', 'fight'] });
+        check(r1.error === FIGHT_UPDATE && r2.error === FIGHT_UPDATE && r3.ok && room.humans === 1 && !old.got.length,
+            'fight room: pages without the "fight" cap are kept out with an "update your page" message; a page with it joins');
+        const welcome = now.got.find((m) => m.t === 'welcome');
+        check(welcome.rules.fight === 1 && room.summary().fight === true, 'fight room: the welcome carries rules.fight = 1, and the lobby row says fight');
+        const classic = new Room({ id: 'c', name: 'C', arena: 'orb', beginner: true }, reg);
+        check(classic.join(client(), 'Old', {}).ok && classic.summary().fight === false, 'a classic room still lets every page in');
+    }
 }
 
 console.log(`\n${ok} sim checks passed`);
