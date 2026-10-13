@@ -554,8 +554,9 @@ legs, fins and feathers grow with them.
   - arrows to dragons off screen within 30 m
 
 ### 10.4 Sound
-- **Effects:** all synthesised live, with no sound files. Wind, a rising chime
-  for eating, whooshes, power-up sounds, a bell run for a pearl, a soft three-note chime when a sun crystal is born nearby, and a sound for each breath (fire,
+- **Effects:** all synthesised live, with no sound files. Soft, gusty wind
+  (low and soothing, no hiss) that swells into a whoosh when you boost, turn
+  hard or dive, a rising chime for eating, whooshes, power-up sounds, a bell run for a pearl, a soft three-note chime when a sun crystal is born nearby, and a sound for each breath (fire,
   frost, lightning, acid) and for being frozen, zapped or caught in acid. The
   new elements have no voice lines.
 - **Music:** an original Chinese-flavoured score, composed live in pentatonic

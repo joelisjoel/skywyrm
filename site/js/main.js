@@ -8,7 +8,7 @@ import { Renderer } from './render.js?v=42';
 import { ChaseCam } from './camera.js?v=27';
 import { Input } from './input.js?v=31';
 import { Hud, msgTime } from './hud.js?v=32';
-import { Audio } from './audio.js?v=18';
+import { Audio } from './audio.js?v=19';
 import { TunePanel } from './tune-panel.js?v=28';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=30';
@@ -924,6 +924,14 @@ newWorld();
 setState('menu');
 let lastTarget = 0;
 let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0, simMs = 0, boardT = 0, wasBoosting = false;
+// How fast your dragon's nose swings (rad/s), for the wind's whoosh.
+const lastFwd = { x: 0, y: 0, z: -1, d: null };
+function turnRate(d, dt) {
+    const f = d.fwd, same = lastFwd.d === d && dt > 0;
+    const c = same ? f.x * lastFwd.x + f.y * lastFwd.y + f.z * lastFwd.z : 1;
+    lastFwd.x = f.x; lastFwd.y = f.y; lastFwd.z = f.z; lastFwd.d = d;
+    return same ? Math.acos(Math.min(1, c)) / dt : 0;
+}
 
 // Crash guard: a frame that throws is logged and skipped, not repeated
 // forever into a frozen screen; the problem is kept on this device so it
@@ -1047,7 +1055,7 @@ function tick(nowMs) {
         view.wallWarn = Math.max(0, Math.min(1, (14 - hd) / 10));
         if (player.boosting && !wasBoosting) audio.boostStart();
         wasBoosting = player.boosting;
-        audio.wind(player.speed, state === 'play');
+        audio.wind(player.speed, state === 'play', player.speedX, turnRate(player, dt), world.arena.gravity ? Math.max(0, -player.fwd.y) : 0);
     } else if (state === 'dead') {
         const k = deathInfo.killer && deathInfo.killer.alive ? deathInfo.killer.pos : deathInfo.pos;
         cam.deathOrbit(deathInfo.pos, k, dt);

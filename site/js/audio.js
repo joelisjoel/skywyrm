@@ -1,12 +1,55 @@
-// Synthesised sound (spec §11) — no assets. Feel-first: wind that rises
-// with speed, an orb chime ladder, whooshes for near misses, and the
-// adaptive soundtrack (music.js) with power-up stingers in its mode.
+// Synthesised sound (spec §11) — no assets. Feel-first: soft gusty wind
+// that swells into a whoosh when you boost, turn hard or dive, an orb
+// chime ladder, whooshes for near misses, and the adaptive soundtrack
+// (music.js) with power-up stingers in its mode.
 import { Music } from './music.js?v=11';
 import { Voice } from './voice.js?v=3';
+import { T } from './tunables.js?v=29';
 
 // D minor pentatonic (D yu), the soundtrack's home; once the music is
 // running the chimes follow whatever mode it's in.
 const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24, 27, 29];
+// Wind levels: the bed at cruise, and the whoosh at its fullest.
+const WIND = { bed: 0.117, whoosh: 0.2 };
+
+// One RBJ biquad pass over a buffer, in place ('lp' or 'hp').
+function biquad(x, type, f, q, sr) {
+    const w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q), a0 = 1 + al;
+    const b1 = (type === 'lp' ? 1 - c : -(1 + c)) / a0, b0 = Math.abs(b1) / 2, a1 = -2 * c / a0, a2 = (1 - al) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+        const v = x[i], o = b0 * v + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = v; y2 = y1; y1 = o; x[i] = o;
+    }
+}
+
+// Soft noise for the wind and the airy whooshes: pink noise kept to about
+// 140 Hz – 1.3 kHz (nothing up where white noise hisses), 3 s that loop
+// without a seam. Made once, on the first tap (a few ms).
+function softNoise(ctx, secs = 3) {
+    const sr = ctx.sampleRate, n = Math.floor(sr * secs), fade = Math.floor(sr * 0.25), warm = Math.floor(sr * 0.1);
+    const x = new Float32Array(warm + n + fade);
+    let p0 = 0, p1 = 0, p2 = 0;
+    for (let i = 0; i < x.length; i++) {                    // pink (Paul Kellet's economy filter)
+        const w = Math.random() * 2 - 1;
+        p0 = 0.99765 * p0 + w * 0.099046; p1 = 0.963 * p1 + w * 0.2965164; p2 = 0.57 * p2 + w * 1.0526913;
+        x[i] = p0 + p1 + p2 + w * 0.1848;
+    }
+    biquad(x, 'hp', 140, 0.707, sr);
+    biquad(x, 'lp', 1300, 0.541, sr); biquad(x, 'lp', 1300, 1.307, sr);   // 4th-order Butterworth
+    const buf = ctx.createBuffer(1, n, sr), y = buf.getChannelData(0);
+    let e = 0;
+    for (let i = 0; i < n; i++) { y[i] = x[warm + i]; e += y[i] * y[i]; }
+    // The tail that runs past the end fades into the head (equal power), so
+    // the loop point continues the noise instead of clicking.
+    for (let i = 0; i < fade; i++) {
+        const a = (i / fade) * Math.PI / 2;
+        y[i] = y[i] * Math.sin(a) + x[warm + n + i] * Math.cos(a);
+    }
+    const k = 0.3 / Math.sqrt(e / n);                      // RMS 0.3
+    for (let i = 0; i < n; i++) y[i] *= k;
+    return buf;
+}
 
 export class Audio {
     constructor() {
@@ -26,19 +69,23 @@ export class Audio {
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : this.volume;
         this.master.connect(this.ctx.destination);
-        // Noise buffer shared by wind and whooshes.
+        // White noise for the crisp effects (and the music's percussion).
         const len = this.ctx.sampleRate * 2;
         this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
         const ch = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
-        // Continuous wind.
+        // Continuous wind: soft noise through one moving band-pass (the
+        // same three nodes the old hiss used), steered by wind().
+        this.soft = softNoise(this.ctx);
         const src = this.ctx.createBufferSource();
-        src.buffer = this.noise; src.loop = true;
+        src.buffer = this.soft; src.loop = true;
         this.windFilter = this.ctx.createBiquadFilter();
-        this.windFilter.type = 'bandpass'; this.windFilter.Q.value = 0.7; this.windFilter.frequency.value = 400;
+        this.windFilter.type = 'bandpass'; this.windFilter.Q.value = 0.8; this.windFilter.frequency.value = 330;
         this.windGain = this.ctx.createGain(); this.windGain.gain.value = 0;
         src.connect(this.windFilter).connect(this.windGain).connect(this.master);
         src.start();
+        const t0 = this.ctx.currentTime;
+        this.air = { t: t0, next: t0, g: 1, gTo: 1, f: 1, fTo: 1, m: 0, sentG: -1, sentF: -1 };
         this.music = new Music(this.ctx, this.master, this.noise);
         this.music.setOn(this.musicOn);
         this.music.hold = this.muted || this.hidden;
@@ -65,6 +112,7 @@ export class Audio {
         if (h) {
             mg.cancelScheduledValues(t); mg.setValueAtTime(0, t);
             this.windGain.gain.cancelScheduledValues(t); this.windGain.gain.setValueAtTime(0, t);
+            this.air.sentG = -1;                         // wind() sets it again on the way back
             this.hum(false);
             if (this.voice) this.voice.stop();
             try { const p = this.ctx.suspend(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ }
@@ -123,12 +171,36 @@ export class Audio {
         g.linearRampToValueAtTime(m ? 0 : this.volume, t + 0.02);
     }
 
-    wind(speed, active) {
+    // Wind, every frame. speed (m/s) is heard against this dragon's own
+    // cruise speed (speedX × cruise, which climbs as it grows), so a long,
+    // fast dragon gets the same soft air, only a little fuller, not a
+    // brighter hiss. turn is how fast the nose swings (rad/s), dive the sine
+    // of the dive angle.
+    // - The bed is quiet at cruise and gusty: every 1.5–4.5 s the air picks
+    //   a new strength and colour and drifts there over a second or two.
+    // - Moving hard (boost, a sharp turn, a dive) lifts the band and swells
+    //   it into a whoosh that fades about half a second after.
+    // At most two parameter changes a frame, and none while nothing moves.
+    wind(speed, active, speedX = 1, turn = 0, dive = 0) {
         if (!this.ctx) return;
-        const t = this.ctx.currentTime;
-        const g = active ? Math.min(0.35, 0.04 + (speed / 30) ** 2 * 0.3) : 0;
-        this.windGain.gain.setTargetAtTime(g, t, 0.15);
-        this.windFilter.frequency.setTargetAtTime(250 + speed * 45, t, 0.15);
+        const a = this.air, t = this.ctx.currentTime, dt = Math.min(0.1, Math.max(0, t - a.t));
+        a.t = t;
+        if (t >= a.next) {
+            a.gTo = 0.5 + 0.7 * Math.random() + (Math.random() < 0.25 ? 0.45 : 0);  // now and then a big gust
+            a.fTo = 0.75 + 0.35 * (a.gTo - 0.5) + 0.2 * Math.random();              // stronger air sounds a little brighter
+            a.next = t + 1.5 + 3 * Math.random();
+        }
+        const kg = 1 - Math.exp(-dt / 1.1);
+        a.g += (a.gTo - a.g) * kg; a.f += (a.fTo - a.f) * kg;
+        const c01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+        const sx = Math.max(1, speedX), rel = active ? Math.min(1.6, speed / (T.speedCruise * sx)) : 0;
+        const turnK = c01((turn / (T.turnCruise * Math.PI / 180) - 0.25) / 0.7);   // full-stick cruise turn ≈ 1
+        const mTo = active ? 1 - (1 - 0.65 * turnK) * (1 - 0.85 * c01((rel - 1.1) / 0.5)) * (1 - 0.7 * c01((dive - 0.25) / 0.5)) : 0;
+        a.m += (mTo - a.m) * (1 - Math.exp(-dt / (mTo > a.m ? 0.15 : 0.5)));
+        const g = active ? WIND.bed * (0.55 + 0.45 * rel) * (1 + 0.12 * Math.log2(sx)) * a.g + WIND.whoosh * a.m ** 1.3 : 0;
+        const f = 330 * a.f * (0.85 + 0.15 * rel) + 750 * a.m;
+        if (Math.abs(g - a.sentG) > Math.max(0.001, 0.02 * g)) { this.windGain.gain.setTargetAtTime(g, t, 0.12); a.sentG = g; }
+        if (g > 0 && Math.abs(f - a.sentF) > 0.015 * f) { this.windFilter.frequency.setTargetAtTime(f, t, 0.12); a.sentF = f; }
     }
 
     tone(freq, dur, type = 'sine', gain = 0.2, when = 0, slideTo = 0) {
@@ -144,11 +216,13 @@ export class Audio {
         o.start(t); o.stop(t + dur + 0.05);
     }
 
-    whoosh(dur = 0.35, from = 300, to = 3000, gain = 0.35) {
+    // A swept band of noise: white for crisp effects, or soft (the wind's
+    // own noise, nothing above ~1.5 kHz) for the airy ones.
+    whoosh(dur = 0.35, from = 300, to = 3000, gain = 0.35, soft = false) {
         if (!this.ctx) return;
         const t = this.ctx.currentTime;
-        const s = this.ctx.createBufferSource(); s.buffer = this.noise;
-        const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2;
+        const s = this.ctx.createBufferSource(); s.buffer = soft ? this.soft : this.noise;
+        const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = soft ? 1.2 : 2;
         f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + dur);
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + dur * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -165,8 +239,9 @@ export class Audio {
         this.tone(587.33 * 2 ** (L[this.ladder] / 12), 0.18, 'sine', 0.1);
     }
 
-    nearMiss() { this.whoosh(0.4, 400, 4000, 0.5); }
-    boostStart() { this.whoosh(0.3, 150, 900, 0.25); }
+    // Air rushing past: soft whooshes, no hiss.
+    nearMiss() { this.whoosh(0.45, 300, 1300, 0.28, true); }
+    boostStart() { this.whoosh(0.35, 200, 900, 0.1, true); }
     kill() { this.whoosh(0.2, 3000, 600, 0.25); this.sting('kill'); }
     tier() { this.sting('tier'); }
     leader() { this.sting('leader'); }
