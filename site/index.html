@@ -32,7 +32,7 @@
     <meta name="twitter:description" content="A 3D dragon game: eat glowing orbs, grow huge, and make other dragons crash into your tail. Free in your browser on phones and computers. No sign-up, no ads.">
     <meta name="twitter:image" content="https://skywyrm.io/og.jpg">
     <meta name="twitter:image:alt" content="A red and gold Chinese dragon coils through a golden sky toward the sun, above the word Skywyrm">
-    <link rel="stylesheet" href="style.css?v=28">
+    <link rel="stylesheet" href="style.css?v=29">
     <script type="importmap">
         {
             "imports": {
@@ -95,6 +95,7 @@
         <section class="lobby">
             <div class="lobby-head"><b>Servers</b><span id="lobby-status"></span></div>
             <div id="room-list"></div>
+            <input id="lobby-invite" class="invite-link" readonly hidden aria-label="Invite link: copy it to send to a friend">
             <button id="create-open" class="ghost">＋ Create server</button>
             <form id="create-form" hidden>
                 <div class="room-pick">
@@ -133,6 +134,9 @@
         <h2 id="pause-title">Paused</h2>
         <p id="pause-note" class="note"></p>
         <button id="resume" class="cta">Resume</button>
+        <!-- Online only: a link to this server for a friend (main.js invite). -->
+        <button id="invite" hidden>🔗 Invite a friend</button>
+        <input id="invite-link" class="invite-link" readonly hidden aria-label="Invite link: copy it to send to a friend">
         <div class="menu-row">
             <button class="open-settings">⚙ Settings</button>
             <button class="open-controls">🎮 Controls</button>
@@ -232,12 +236,15 @@
         <button id="t-boost" aria-label="Boost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z"/></svg></button>
     </div>
 
+    <!-- A short notice over the menus ("Invite link copied"). -->
+    <div id="notice" role="status" aria-live="polite"></div>
+
     <!-- Sound on/off, on every screen (also M, and Settings → Player). -->
     <button id="mute-btn" aria-label="Mute sound" aria-pressed="false" title="Mute sound (M)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.6 7.6 0 0 1 0 10.8"/><path class="off" d="M15.6 9.6l4.8 4.8M20.4 9.6l-4.8 4.8"/></svg><span class="flash" aria-live="polite"></span></button>
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=63"></script>
+    <script type="module" src="js/main.js?v=64"></script>
 </body>
 
 </html>

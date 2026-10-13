@@ -34,7 +34,7 @@ on phones and computers with no install, no account and no tracking.
 | Death | Instant respawn | **3 lives** per game, 3 s between lives, then a game-over card |
 | Rules | Mass, boost, three power-ups | Adds **body heat**, a **thrust tank**, a **length speed bonus**, **tail nibbling**, ranks and perks, bot moods |
 | Worlds | Small 70 m arenas with a castle and obstacles | Large open worlds: Skyhold (350 m) and The Orb (325 m), with no obstacles |
-| Sharing | Highlights, replay links, share cards | Link previews only: a shared skywyrm.io link shows a dragon picture, the title and a blurb (Open Graph and Twitter cards). The headline is "Hatch small. Grow huge. Rule the sky.", picked from ten lines scored by a kid, a parent and a web-game player. Highlights, replays and share cards aren't built; big moments show as toasts and voice lines |
+| Sharing | Highlights, replay links, share cards | **Invite links** to a server (§8), and link previews: a shared skywyrm.io link shows a dragon picture, the title and a blurb (Open Graph and Twitter cards). The headline is "Hatch small. Grow huge. Rule the sky.", picked from ten lines scored by a kid, a parent and a web-game player. Highlights, replays and share cards aren't built; big moments show as toasts and voice lines |
 | Stack | TypeScript/Vite/Vue, a VM, Firebase, binary netcode | Plain ES modules with no build step. Cloud Run, JSON over WebSocket |
 | Home | dendroslabs.com/wyrm | skywyrm.io, in its own repo. The old dendroslabs.com/wyrm page has been removed |
 
@@ -428,6 +428,22 @@ device.
 - **No dodging:** a dragon whose player disconnects or leaves stays in the sky
   for 3 s, still hittable, like folding your wings.
 - **Leaving a room** banks that life's jade, as a death would.
+- **Invite a friend** ✅:
+  - In a room, the pause panel has **Invite a friend**, and every server
+    row in the lobby has a 🔗. Either makes a link to that server:
+    `https://skywyrm.io/?room=<id>&src=invite`.
+  - On a phone it opens the share sheet, with fixed words: "Fly with me in
+    Skywyrm — server Jade Peak" (a generated server name, never a player's
+    name). Elsewhere it copies the link and says "Invite link copied". If
+    neither works, the link shows in a small field to copy by hand.
+  - Opening the link shows the menu with that server pinned at the top of
+    the list, lit up, under "You're invited", with a larger Join button.
+    Nobody joins without tapping Join, so kids see where they're going. If
+    the server has closed, the game says "That server has closed — pick
+    another" and shows the usual list.
+  - The game takes `room` and `src` out of the address bar, so copying the
+    address afterwards doesn't pass them on. A visit that sent an invite is
+    counted in the visit totals (`invited`, §11).
 
 ---
 
@@ -693,8 +709,10 @@ Each decision has a recommended default, so work can start on that default.
 1. ✅ **Reconnect after 60 minutes.** Built as recommended: an automatic rejoin
    of the same room that keeps your length (§8). It took a server change
    too: the server holds a dropped player's dragon for 30 s.
-2. **Sharing.** Recommend a kid-safe screenshot card (a picture only, with no
-   link back to the player) before replays. Or leave sharing out entirely.
+2. **Sharing.** Invite links to a server are built (§8): they carry only the
+   room's id, never a player. For more, recommend a kid-safe screenshot card
+   (a picture only, with no link back to the player) before replays. Or stop
+   at invites.
 3. **Portals, ads and revenue.** Recommend staying out while the game is
    kid-first. Ads would require consent tooling and a COPPA review.
 4. **Privacy page.** ✅ Done, together with the anonymous play totals (§11).

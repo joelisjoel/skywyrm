@@ -15,7 +15,8 @@ import { NetGame, fetchRooms, createRoom } from './net.js?v=29';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
-import { Visit } from './visit.js?v=1';
+import { Visit, withoutParam } from './visit.js?v=1';
+import { roomParam, inviteLink, inviteText, pinRoom } from './invite.js?v=1';
 
 // Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
 // with ?dev=1 or on a local page. Everyone else plays on the defaults: saved
@@ -371,6 +372,18 @@ const SERVER_BASE = serverUrl();
 // Visit totals (privacy.html): one anonymous note when this visit ends,
 // with the furthest step it reached (visit.js).
 const visit = new Visit(SERVER_BASE, () => input.isTouch);
+// An invite link (?room=<id>, invite.js) pins that server at the top of the
+// list until you join it; nobody is joined without a tap. The parameter is
+// read once and taken out of the address bar.
+let invitedRoom = takeRoomParam(), inviteSeen = false;
+function takeRoomParam() {
+    try {
+        const q = new URLSearchParams(location.search);
+        if (!q.has('room')) return '';
+        history.replaceState(history.state, '', location.pathname + withoutParam(location.search, 'room') + location.hash);
+        return roomParam(q.get('room'));
+    } catch { return ''; }
+}
 
 function joinRoom(id) {
     const name = takeName();
@@ -396,6 +409,7 @@ function joinRoom(id) {
             setState('play');
             visit.started();
             visit.reach('online');
+            if (room.id === invitedRoom) invitedRoom = '';          // the invite has done its job
             hud.toast(`Joined ${room.name}`, 'hint');
         },
         onRespawn(p, resumed) {
@@ -479,36 +493,104 @@ function setLobbyStatus(text) { $('lobby-status').textContent = text || ''; }
 
 // Rows are kept and updated in place, keyed by room id: a refresh only
 // changes their text, so a tap on Join can't land on a button it replaced.
-const roomRows = new Map();     // room id → { row, nm, meta, count, btn }
+const roomRows = new Map();     // room id → { row, nm, meta, count, humans, bots, share, btn }
 const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 function renderRooms(rooms) {
     const list = $('room-list');
     rooms = rooms.slice().sort((a, b) => (b.beginner - a.beginner) || (b.permanent - a.permanent) || (b.humans - a.humans) || a.name.localeCompare(b.name));
+    // The invited server goes first, highlighted. If it has closed, say so
+    // (once) and show the usual list.
+    let firstPin = false;
+    if (invitedRoom) {
+        const p = pinRoom(rooms, invitedRoom);
+        rooms = p.rooms;
+        if (!p.pinned) { if (!inviteSeen) notice('That server has closed — pick another'); invitedRoom = ''; }
+        firstPin = !!p.pinned && !inviteSeen;
+        inviteSeen = true;
+    }
     const ids = new Set(rooms.map((r) => r.id));
     for (const [id, el] of roomRows) if (!ids.has(id)) { el.row.remove(); roomRows.delete(id); }
     rooms.forEach((r, i) => {
         let el = roomRows.get(r.id);
         if (!el) {
             el = { row: document.createElement('div'), nm: document.createElement('div'), meta: document.createElement('div'),
-                count: document.createElement('div'), btn: document.createElement('button') };
+                count: document.createElement('div'), humans: document.createElement('span'), bots: document.createElement('span'),
+                share: document.createElement('button'), btn: document.createElement('button') };
             el.row.className = 'room'; el.nm.className = 'rn'; el.meta.className = 'rm'; el.count.className = 'rc';
-            const info = document.createElement('div');
+            const info = document.createElement('div'), sep = document.createElement('span');
             info.append(el.nm, el.meta);
+            sep.className = 'sep'; sep.textContent = ' · ';               // on a narrow phone the two counts stack instead
+            el.count.append(el.humans, sep, el.bots);
+            el.share.className = 'share';
+            el.share.textContent = '🔗';
+            el.share.title = `Invite a friend to ${r.name}`;
+            el.share.setAttribute('aria-label', el.share.title);
+            el.share.onclick = () => invite(r, $('lobby-invite'));
             el.btn.onclick = () => joinRoom(r.id);
-            el.row.append(info, el.count, el.btn);
+            el.row.append(info, el.count, el.share, el.btn);
             roomRows.set(r.id, el);
         }
+        el.row.classList.toggle('pinned', r.id === invitedRoom);
         setText(el.nm, r.name);
         // The world, unless the room is already named after it ("Skyhold").
         const [worldName, physics] = r.arena === 'orb' ? ['The Orb', 'zero-G'] : ['Skyhold', 'gravity'];
         const named = r.name.trim().toLowerCase() === worldName.toLowerCase();
         setText(el.meta, (named ? physics : `${worldName} · ${physics}`) + (r.permanent ? ' · always on' : ''));
-        setText(el.count, `👤 ${r.humans} · 🐉 ${r.bots}`);
+        setText(el.humans, `👤 ${r.humans}`);
+        setText(el.bots, `🐉 ${r.bots}`);
         el.count.title = `${r.humans} player${r.humans === 1 ? '' : 's'} and ${r.bots} bots`;
         setText(el.btn, r.humans >= r.max ? 'Full' : 'Join');
         el.btn.disabled = r.humans >= r.max;
         if (list.children[i] !== el.row) list.insertBefore(el.row, list.children[i] || null);
     });
+    if (firstPin) reveal(roomRows.get(invitedRoom).row);
+}
+// Scroll the menu so a row is in view, clear of the "more ▾" fade at its foot.
+function reveal(row) {
+    const r = row.getBoundingClientRect(), m = $('menu').getBoundingClientRect();
+    if (r.top < m.top || r.bottom > m.bottom - 60) row.scrollIntoView({ block: 'center' });
+}
+
+// Invite a friend (invite.js): on a phone the share sheet; otherwise copy
+// the link. If neither works, the link shows in a small field to copy by
+// hand. The text is fixed words and the server's generated name.
+async function invite(room, field) {
+    if (!room || !roomParam(room.id)) return;
+    const url = inviteLink(room.id);
+    field.hidden = true;
+    if (input.isTouch && navigator.share) {
+        // Counted first: picking an app hides the page (which sends the
+        // visit note) before share() returns. Closing the sheet takes it back.
+        const was = visit.invited;
+        visit.invited = true;
+        try { await navigator.share({ title: 'Skywyrm', text: inviteText(room.name), url }); return; }
+        catch (e) { visit.invited = was; if (e && e.name === 'AbortError') return; }     // closed the sheet: nothing sent
+    }
+    try {
+        await navigator.clipboard.writeText(url);
+        visit.invited = true;
+        notice('Invite link copied');
+    } catch {
+        field.value = url;
+        field.hidden = false;
+        field.focus();
+        field.select();
+    }
+}
+for (const f of document.querySelectorAll('.invite-link')) {
+    f.addEventListener('focus', () => f.select());
+    f.addEventListener('copy', () => { visit.invited = true; });
+}
+
+// A short line at the foot of the screen, over the menus (the HUD's
+// messages are hidden or covered there).
+let noticeTimer = 0;
+function notice(text) {
+    const el = $('notice');
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => el.classList.remove('show'), 4500);
 }
 
 // The lobby asks for the room list every 10 s, but only while you can see
@@ -564,6 +646,7 @@ $('play').onclick = () => startPlay();
 $('again').onclick = () => playAgain();
 $('menu-btn').onclick = () => { if (online) leaveOnline(); setState('menu'); };
 $('resume').onclick = () => resume();
+$('invite').onclick = () => invite(online && online.room, $('invite-link'));
 
 // Touch devices: on-screen buttons, and a flag the CSS keys off.
 const touchMode = () => { document.body.dataset.touch = '1'; };
@@ -596,6 +679,8 @@ function pause() {
     if (state !== 'play') return;
     setState('pause');
     pausedAt = performance.now();
+    $('invite').hidden = !online;
+    $('invite-link').hidden = true;
     if (online) {
         online.park();
         parkEndsAt = performance.now() / 1000 + 3;

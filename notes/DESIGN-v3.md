@@ -54,6 +54,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `site/js/profile.js` | Jade, ranks and the saved profile |
 | `site/js/names.js` | The name filter, which the server also uses |
 | `site/js/visit.js` | The visit note (§4.8): referrer categories, link tags and return buckets worked out on the device; the allowlists the server also uses |
+| `site/js/invite.js` | Invite links (§5.6): build one, read `?room=`, the share text, pinning the room first in the list |
 | `site/js/shared.js` | Re-exports the modules the server imports |
 | `site/js/net.js`, `net-config.js` | WebSocket client, interpolation, server URL |
 | `site/js/render.js` | The renderer: the whole three.js scene and all shaders, in one 1,844-line file |
@@ -756,7 +757,7 @@ where they drop off), kept without identifying anyone
     room counts as reaching `life` and `again` too.
   - `lives`: lives finished (0–50). `secs`: seconds in the `play` state,
     so not paused, dead, hidden or at the menu (0–7200). `invited`: an
-    invite link was sent (always false until invite links exist).
+    invite link was shared, copied, or copied by hand from its field (§5.6).
 - **Checks:** as for run notes (allowed origin, `text/plain` or JSON, at most
   512 bytes, the per-IP limit), then `cleanVisit`: `v` must be 1. An unknown
   `src` becomes `other`; an unknown `tag`, `ret` or `dev` is left out; an
@@ -972,6 +973,40 @@ where they drop off), kept without identifying anyone
 | `wyrm.tune.v2` | tunable overrides that differ from the defaults (solo only; read and written only by the dev panel) |
 | `wyrm.crash.v1` | the last problem |
 | `wyrm.visit.v1` | `{first, last}`: the UTC days of this browser's first and latest visit. Only a bucket made from them is sent (§4.8) |
+
+### 5.6 Invite links (`invite.js`, `main.js`)
+- **Making one:** the pause panel's **Invite a friend** (shown only in a
+  room) and the 🔗 on each lobby row call `invite(room)`. The link is
+  `https://skywyrm.io/?room=<id>&src=invite`; on any other host (a local
+  test page) it is this page's own address, plus its `?server=` so the
+  friend reaches the same test server (`inviteLink`).
+- **Sending it:** on a touch device with `navigator.share`, the share sheet
+  with `{title: 'Skywyrm', text, url}`; closing the sheet sends nothing. Otherwise
+  `navigator.clipboard.writeText(url)` and the notice "Invite link copied"
+  (`#notice`, a line at the foot of the screen over the menus, where the
+  HUD's messages are hidden or covered). If both fail, the link shows,
+  selected, in a read-only field under the button (`.invite-link`). The text
+  is "Fly with me in Skywyrm — server {name}", and the name is included
+  only if it is a generated list name or a built-in room (`inviteText`), so
+  nothing a player typed can get in. Any of these sets the visit's
+  `invited` (§4.8). For the share sheet it is set as the sheet opens,
+  because picking an app hides the page (which sends the visit note) before
+  `share()` returns, and taken back if the sheet is closed.
+- **Opening one:** at boot `main.js` reads `?room=`, keeps it only if it
+  looks like a room id (`roomParam`: 1–32 of `A-Z a-z 0-9 _ -`) and takes it
+  out of the address bar (`withoutParam`; visit.js takes out `src`). It is
+  only ever compared with ids from `/api/rooms`, never written into the
+  page. When the list arrives, `renderRooms` moves that room to the top
+  (`pinRoom`) and marks its row `.pinned` (lit, "You're invited", a larger
+  Join), scrolling it into view if needed. Nobody is joined without a tap.
+  If the room isn't listed, the notice says "That server has closed — pick
+  another" (once) and the list is as usual. The pin goes once you join that
+  room, or if it disappears from a later list.
+- **Phones:** below 480 px wide the rows are tighter and the player and bot
+  counts stack, so the name keeps its room beside 🔗 and Join. On a phone
+  on its side the menu's last grid row is `auto`, not `1fr`: the menu's
+  max-height capped a `1fr` row, so a long server list spilled out of its
+  rows and "more ▾" scrolled up over it.
 
 ---
 
@@ -1291,8 +1326,8 @@ at dendroslabs.com/wyrm has been removed.
 | `server/test/limits.test.mjs` (5 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot, seats held for dropped players count toward the limit |
 | `server/test/backpressure.test.mjs` (9 checks) | Fake sockets with a set queue size: over 512 KB only snapshots are skipped and `dn`/`dx`/`e` still arrive, the next snapshot carries the skipped food changes, over 4 MB the socket is closed (4009) |
 | `server/test/reconnect.test.mjs` (37 checks) | Resume tokens, ticked by hand in a `Registry`: back within 3 s carries on unseen, after that flies back in with its length and kills (`dn`), keeping its crystals, still folded if it was parked, takeover of a still-open socket (4011), used, forged, expired and other-room tokens get a fresh dragon, a kill during the 3 s drops loot once, leaving on purpose drops loot after 3 s. Play totals: a held or resumed life isn't counted, a forgotten seat, a death in the countdown and a shutdown each count it once. Then the real server: a reconnect over real sockets, tokens never logged, SIGTERM closes with 4010 |
-| `server/test/net.test.mjs` (11 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect |
-| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws |
+| `server/test/net.test.mjs` (17 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect. Invite links (`invite.js`): a link's `?room=` pins that server first in the real list and joining it lands in that room; a closed room pins nothing; hostile ids are ignored; the share text names only generated names; local and canonical link addresses |
+| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws. Then a 390×844 touch page opens an invite link against a faked room list: that server must be pinned first, nobody joined, `room` and `src` gone from the address bar, no sideways scroll (`invite.png`) |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
 **CI** (`ci.yml`):
@@ -1312,7 +1347,8 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   room, the global room cap.
 - **Configuration:** the Firestore store (rooms and totals), `WYRM_TUNE`.
 - **Multiplayer in a real browser:** there is no end-to-end test of it.
-- **Phones:** the smoke test runs only at a desktop viewport.
+- **Phones:** the smoke test plays only at a desktop viewport; at phone size
+  it checks only the invite pin in the lobby.
 
 ---
 
@@ -1341,6 +1377,10 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   - matches reserved words as whole words (Admin is taken, Systemic isn't)
 - Room names are generated from word lists, never typed, so nothing a
   player writes is shown in every lobby (§4.4).
+- Invite links (§5.6) carry only a room id (already public in
+  `/api/rooms`) and `src=invite`. `?room=` is checked against the id format
+  and only compared with listed ids; the share text uses only generated
+  names.
 - The origin allowlist, rate limits and frame limits in §4.6.
 - An exception in a room's tick resets that room only, and one in a message
   closes only its sender, never the process (§4.4).
