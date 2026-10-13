@@ -853,13 +853,35 @@ where they drop off), kept without identifying anyone
 
 ### 5.3 Input, camera, HUD
 - **Input** (`input.js`):
-  - Mouse: offset from the screen centre inside a circle 0.30 × the shorter
-    screen side, with deadzone 0.06 and expo 1.5.
+  - Mouse: offset from the screen centre inside a circle `mouseCircle` 0.36
+    × the shorter screen side, with deadzone 0.06. Past the deadzone,
+    `u` runs 0 → 1 to the rim and `mouseStick` gives u ÷ ((1/a − 2)(1 − u) + 1),
+    an expo curve that is `a` half way out and 1 at the rim, with
+    a = `mouseHalf` 0.25 × Mouse sensitivity (Settings → Player, 0.4–1.6,
+    saved with the settings): u ÷ (3 − 2u) at 1.0. Then a little smoothing
+    (`smoothMouse`, on wall time): a change eases in over
+    `mouseSmooth` 0.06 s ÷ (1 + change ÷ `mouseSmoothGap` 0.1), so a ±3 px
+    wobble at 10 Hz moves the stick a third as much, and a full swing gets
+    90% of the way in one frame. The sim's own `steerTau` smoothing comes
+    after, for every input.
+
+    | Mouse offset (share of the old 0.30 circle) | 5% | 15% | 30% | 60% | 100% | 120% |
+    |---|---|---|---|---|---|---|
+    | Before: 0.30 circle, power 1.5 | 0 | 0.030 | 0.129 | 0.435 | 1 | 1 |
+    | Sensitivity 1.0 | 0 | 0.024 | 0.078 | 0.227 | 0.607 | 1 |
+    | Sensitivity 0.4 | 0 | 0.008 | 0.027 | 0.089 | 0.340 | 1 |
+    | Sensitivity 1.6 | 0 | 0.047 | 0.144 | 0.370 | 0.756 | 1 |
+
+  - Touch keeps the finger's own circle (`steerCircle` 0.30), deadzone 0.06
+    and power curve (`steerExpo` 1.5), with no extra smoothing. `byMouse`
+    says which is steering: the last mouse move or touch decides, and it
+    starts from `(pointer: coarse)`. The HUD draws the circle in use.
   - The neutral point re-zeroes at spawn (to a finger held through a
     respawn, too) and glides home as the mouse or finger moves. Lifting the
     finger clears it, so a lifted finger always flies straight.
   - Arrow keys steer at 0.7.
-  - Pointer-lock virtual stick, as an option.
+  - Pointer-lock virtual stick, as an option, kept inside the mouse's
+    circle and read through its curve and smoothing.
   - Touch: the first finger is the cursor, a second finger boosts, plus on-screen
     buttons. Touch mode turns on from `(pointer: coarse)` or the first touch.
 - **Camera** (`camera.js`):
@@ -1465,7 +1487,7 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Group | Values |
 |---|---|
 | Flight | speedCruise 16, speedBoost 26, speedBrake 10 m/s · turnCruise 150, turnBoost 95, turnBrake 230 °/s · sizeTurnPenalty 0.3 · speedTau 0.35, carveTau 0.10, steerTau 0.06 s · rollRate 120, levelRate 120, assistRate 60 °/s · diveBoost 6 · visualBank 50° |
-| Controls | steerCircle 0.30 · steerDeadzone 0.06 · steerExpo 1.5 · lockSensitivity 1.0 · keySteer 0.7 |
+| Controls | steerCircle 0.30 · steerDeadzone 0.06 · steerExpo 1.5 (touch) · mouseCircle 0.36 · mouseHalf 0.25 · mouseSmooth 0.06 s · mouseSmoothGap 0.1 · lockSensitivity 1.0 · keySteer 0.7 |
 | Growth | spawnMass 10 · lenBase 8, lenPerMass 0.4, lenCap 400 · radiusBase 0.6, radiusGrow 1.4 · beadSpacing 0.7 (×r) |
 | Boost and food | boostCost 4/s · boostDropShare 0.5 · boostMinMass 15 · orbTarget 2000 · orbClusterShare 0.6 · foodSpread 0.2 · foodUniformShare 0.15 · pickupBase 2 · lootShare 0.8 · lootTtl 45 · botGrowthCapMass 400 |
 | Heat and thrust | ambientTemp 10 · sunHeat 70 · sunRadius 0.35 · crowdHeat 35 · crowdRadius 35 · crowdFull 5 · tempRiseTau 3 · tempFallTau 7 · tempSpeed 0.4 · thrustBase 10 · tempThrust 0.6 · thrustRegen 0.4 |

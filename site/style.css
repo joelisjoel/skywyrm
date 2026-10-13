@@ -152,6 +152,7 @@ button.cta small { font-weight: 600; font-size: 12px; opacity: 0.7; }
 .opt-range { display: grid; grid-template-columns: 130px 1fr 52px; gap: 8px; align-items: center; text-align: left; font-size: 14px; padding: 8px 4px; border-bottom: 1px solid var(--slate); }
 .opt-range input { width: 100%; accent-color: var(--sun); }
 .opt-range b { text-align: right; font-variant-numeric: tabular-nums; }
+.opt-range small { display: block; color: var(--dim); font-size: 12px; }
 .opt-range input:disabled { opacity: 0.4; cursor: default; }     /* online: the room's values, read-only */
 /* Settings and Controls: when the list is taller than the screen it
    scrolls on its own, so the tabs and the Done button stay in view. */

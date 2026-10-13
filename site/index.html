@@ -32,7 +32,7 @@
     <meta name="twitter:description" content="A 3D dragon game: eat glowing orbs, grow huge, and make other dragons crash into your tail. Free in your browser on phones and computers. No sign-up, no ads.">
     <meta name="twitter:image" content="https://skywyrm.io/og.jpg">
     <meta name="twitter:image:alt" content="A red and gold Chinese dragon coils through a golden sky toward the sun, above the word Skywyrm">
-    <link rel="stylesheet" href="style.css?v=30">
+    <link rel="stylesheet" href="style.css?v=31">
     <script type="importmap">
         {
             "imports": {
@@ -161,6 +161,7 @@
             <label class="opt"><input type="checkbox" id="opt-mirror"> <span>Rear-view mirror<small>A mirror at the top of the screen shows what's behind you</small></span></label>
             <label class="opt no-touch"><input type="checkbox" id="opt-invert"> <span>Invert pitch<small>↑ / ↓ keys: up = nose down, like a flight sim (the mouse isn't affected)</small></span></label>
             <label class="opt no-touch"><input type="checkbox" id="opt-lock"> <span>Lock mouse<small>Virtual stick; the cursor can't leave the window</small></span></label>
+            <label class="opt-range no-touch"><span>Mouse sensitivity<small>Lower: gentler turns</small></span><input type="range" id="opt-sens" min="0.4" max="1.6" step="0.1"><b id="opt-sens-v"></b></label>
             <label class="opt"><input type="checkbox" id="opt-assist"> <span>Zero-G orientation assist<small>In The Orb, slowly rolls "up" toward the centre</small></span></label>
             <label class="opt-range"><span>Graphics</span>
                 <select id="opt-gfx"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low (faster)</option></select><b></b></label>
@@ -190,7 +191,7 @@
         <h2>Controls</h2>
         <div class="keys">
             <div><b>Touch</b></div><div>put a finger on the sky: your dragon turns toward it · lift to fly straight · bolt button (or a second finger) to boost · chevrons to brake · flame for dragonfire · ❚❚ to pause · speaker to mute</div>
-            <div class="no-touch"><b>Mouse</b></div><div class="no-touch">steer — the further from centre, the harder you turn</div>
+            <div class="no-touch"><b>Mouse</b></div><div class="no-touch">steer — the further from centre, the harder you turn (Mouse sensitivity in Settings → Player)</div>
             <div class="no-touch"><b>Click / W / Space</b></div><div class="no-touch">boost (burns length)</div>
             <div class="no-touch"><b>Right-click / S</b></div><div class="no-touch">brake — tighter turns</div>
             <div class="no-touch"><b>A / D</b></div><div class="no-touch">roll</div>
@@ -244,7 +245,7 @@
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=65"></script>
+    <script type="module" src="js/main.js?v=66"></script>
 </body>
 
 </html>

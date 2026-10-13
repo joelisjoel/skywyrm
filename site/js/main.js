@@ -1,17 +1,17 @@
 // Skywyrm game loop and flow: menu (attract mode, server list) → play,
 // solo vs bots or online (net.js) → death-cam → run card → play again.
 // Runs on PCs and phones.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=27';
-import { World, Dragon, hazardDist } from './sim.js?v=27';
-import { managePopulation, targetBots } from './bots.js?v=27';
-import { Renderer } from './render.js?v=41';
-import { ChaseCam } from './camera.js?v=26';
-import { Input } from './input.js?v=30';
-import { Hud, msgTime } from './hud.js?v=31';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=29';
+import { World, Dragon, hazardDist } from './sim.js?v=29';
+import { managePopulation, targetBots } from './bots.js?v=29';
+import { Renderer } from './render.js?v=42';
+import { ChaseCam } from './camera.js?v=27';
+import { Input } from './input.js?v=31';
+import { Hud, msgTime } from './hud.js?v=32';
 import { Audio } from './audio.js?v=18';
-import { TunePanel } from './tune-panel.js?v=27';
+import { TunePanel } from './tune-panel.js?v=28';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=29';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=30';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -51,7 +51,7 @@ const audio = new Audio();
 const profile = new Profile();
 
 const SETTINGS_KEY = 'wyrm.settings.v1';
-const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, assist: true, reduceMotion: false, muted: false, music: true, voice: true, gfx: 'auto', arena: 'sky', name: '', runs: 0, v: 2 };
+const settings = { beginner: true, wideView: true, mirror: true, invertY: false, mouseLock: false, mouseSens: 1, assist: true, reduceMotion: false, muted: false, music: true, voice: true, gfx: 'auto', arena: 'sky', name: '', runs: 0, v: 2 };
 let savedSettings = {};
 try {
     savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
@@ -774,8 +774,16 @@ bindCheck('opt-invert', 'invertY', () => (input.settings.invertY = settings.inve
 bindCheck('opt-lock', 'mouseLock', () => (input.settings.mouseLock = settings.mouseLock));
 bindCheck('opt-assist', 'assist', () => world && (world.assist = settings.assist));
 bindCheck('opt-motion', 'reduceMotion', () => (cam.reduceMotion = settings.reduceMotion));
+// Mouse sensitivity: how hard the dragon turns for a mouse move, 0.4–1.6
+// (input.js mouseStick). Touch and the arrow keys don't use it.
+const sensOf = (v) => { const n = Number(v); return n > 0 ? Math.min(1.6, Math.max(0.4, Math.round(n * 10) / 10)) : 1; };
+const showSens = () => { $('opt-sens').value = settings.mouseSens; $('opt-sens-v').textContent = settings.mouseSens.toFixed(1); };
+settings.mouseSens = sensOf(settings.mouseSens);
+$('opt-sens').oninput = () => { settings.mouseSens = input.settings.mouseSens = sensOf($('opt-sens').value); showSens(); saveSettings(); };
+showSens();
 input.settings.invertY = settings.invertY;
 input.settings.mouseLock = settings.mouseLock;
+input.settings.mouseSens = settings.mouseSens;
 cam.reduceMotion = settings.reduceMotion;
 audio.muted = settings.muted;
 hud.setMuted(settings.muted);

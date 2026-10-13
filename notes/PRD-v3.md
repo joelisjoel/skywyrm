@@ -469,6 +469,7 @@ device.
 | Rear-view mirror | on |
 | Invert pitch (arrow keys only) | off |
 | Lock mouse | off |
+| Mouse sensitivity (computers only, 0.4–1.6) | 1.0 |
 | Zero-G orientation assist | on |
 | Reduce motion | off |
 | Mute | off |
@@ -480,6 +481,16 @@ device.
   40 fps (or well below a slower screen's own rate, such as 30 Hz in Low Power
   Mode), and remembers that until you change the setting.
 - The beginner switch was removed. Beginner is always on.
+- **Mouse steering** is gentle, so it's hard to oversteer. The further the
+  cursor is from the centre, the harder you turn: half way to the edge of
+  the steering circle is about a quarter of the full turn rate, and the edge
+  (36% of the screen's shorter side from the centre) is the full turn. A
+  little smoothing keeps a wobbly hand from twitching the dragon, but a
+  quick swing goes straight through. **Mouse sensitivity** scales the
+  middle of that range: at 0.4 half way out turns at about 10%, at 1.6 at
+  about 40%, and the edge is a full turn at every setting. Lock mouse uses
+  the same circle and curve. Touch and the arrow keys steer as before and
+  ignore it.
 
 ---
 
@@ -672,7 +683,7 @@ legs, fins and feathers grow with them.
   - share card
 - **Run card:** "Share", "Watch replay" and "Change dragon" buttons.
 - **Settings:**
-  - sensitivity, deadzone and FOV sliders
+  - deadzone and FOV sliders
   - colour-blind stripes
   - volume sliders
   - ping display

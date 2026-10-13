@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // messages, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=27';
-import { MOOD_ICON } from './bots.js?v=27';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=29';
+import { MOOD_ICON } from './bots.js?v=29';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
