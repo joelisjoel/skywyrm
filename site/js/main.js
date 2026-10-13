@@ -15,6 +15,7 @@ import { NetGame, fetchRooms, createRoom } from './net.js?v=29';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
+import { Visit } from './visit.js?v=1';
 
 // Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
 // with ?dev=1 or on a local page. Everyone else plays on the defaults: saved
@@ -130,6 +131,7 @@ function endLife() {
     game.time += t;
     game.rank = Math.min(game.rank, player.bestRank);
     bankLife(t);
+    visit.lifeDone();
 }
 const livesTotal = () => (world ? world.rule('lives') : T.lives);
 const livesLeft = () => (livesTotal() > 0 ? livesTotal() - game.deaths : Infinity);
@@ -180,6 +182,7 @@ function startPlay() {
     input.zero();            // start straight, wherever the cursor happens to be
     input.requestLock();
     setState('play');
+    visit.started();
     if (settings.runs <= 3) showHints();
 }
 
@@ -325,6 +328,7 @@ function onPlayerDeath(e) {
     deathInfo.final = e.left || livesLeft() <= 0;
     bankLife(online ? at - (player.bornWall || at) : world.time - player.bornAt);
     reportLife(endCause(e));
+    visit.lifeDone();
     deathInfo.respawnAt = at + world.rule('respawnDelay');
     setState('dead');
     $('respawn-jade').textContent = `+${deathInfo.jade} 玉 jade`;
@@ -357,12 +361,16 @@ function nextLife() {
     input.zero();
     input.requestLock();
     setState('play');
+    visit.started();
 }
 
 // ------------------------------------------------ multiplayer
 let online = null;              // NetGame while in a room
 let soloTune = null;            // your own tunables, kept while a room's numbers replace them
 const SERVER_BASE = serverUrl();
+// Visit totals (privacy.html): one anonymous note when this visit ends,
+// with the furthest step it reached (visit.js).
+const visit = new Visit(SERVER_BASE, () => input.isTouch);
 
 function joinRoom(id) {
     const name = takeName();
@@ -386,10 +394,12 @@ function joinRoom(id) {
             setLobbyStatus('');
             syncServer();                                   // the room's numbers, read-only
             setState('play');
+            visit.started();
+            visit.reach('online');
             hud.toast(`Joined ${room.name}`, 'hint');
         },
         onRespawn(p, resumed) {
-            if (!resumed) p.bornWall = performance.now() / 1000;
+            if (!resumed) { p.bornWall = performance.now() / 1000; visit.started(); }
             player = p; view.player = p;
             cam.snap(p);
             input.zero();
@@ -422,7 +432,7 @@ function joinRoom(id) {
             }
             lifeAtDrop = false;
             // Tell the room what we're doing now: flying, or wings folded.
-            if (state === 'dead') { setState('play'); input.requestLock(); }    // this is the next life
+            if (state === 'dead') { setState('play'); input.requestLock(); visit.started(); }    // this is the next life
             else if (state === 'pause' && online.parked) showParked();
             else if (state === 'pause') online.park();
             else online.unpark();
@@ -879,6 +889,7 @@ function tick(nowMs) {
     const now = nowMs / 1000;
     measureScreen(nowMs - last);
     let dt = Math.min(0.1, (nowMs - last) / 1000);
+    const wall = Math.min(1, (nowMs - last) / 1000);  // real time, even on a slow phone (the sim's dt is capped)
     last = nowMs;
     fpsN++; fpsT += dt;
     if (fpsT >= 0.5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
@@ -913,6 +924,7 @@ function tick(nowMs) {
         simMs = simMs * 0.9 + (performance.now() - t0) * 0.1;
     }
     lobbyTick(now);
+    if (state === 'play') visit.played(wall);         // active play only: not paused, dead or hidden
 
     // Population ramp: announce each new arrival (solo).
     if (!online && player && player.alive && state === 'play') {

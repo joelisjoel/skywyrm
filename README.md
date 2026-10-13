@@ -67,7 +67,10 @@ and no tracking. Player names are filtered, server names come from a word list, 
 progress stays in the browser. To improve the game, the server keeps anonymous daily totals
 (how long lives last, how long dragons grow, how they end, how many play
 online at once): solo games send one note per life with just those numbers,
-and online lives are counted by the server. No ids or names, IP addresses
+and online lives are counted by the server. Each visit also sends one note
+when it ends, with a few categories worked out on the device (where it came
+from, roughly how long since the device first came, how far it got) that the
+server adds straight into daily counts. No ids or names, IP addresses
 are never stored, 30 days are kept, and the totals are public at
 `<server>/api/stats`. The [privacy page](site/privacy.html) explains it for
 kids and parents.
