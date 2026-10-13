@@ -46,7 +46,7 @@ with nothing stored except your settings in localStorage.
 | Journey | How |
 |---|---|
 | See the list of servers and how many players are on each | The start page calls `GET /api/rooms` every 10 s while it's on screen and shows name, world and players (plus bots). |
-| There are always servers to join | Two permanent rooms are built into the server: **Skyhold** and **The Orb**. They can never expire. Every room uses the gentler beginner bots. |
+| There are always servers to join | Four permanent rooms are built into the server: **Skyhold** and **The Orb**, and a Fight mode twin of each (**Skyhold Fight**, **The Orb Fight**), listed just after it. They can never expire. Every room uses the gentler beginner bots. |
 | Create a server | The "Create server" form picks a name from a generated list (🎲 for another) and a world, calls `POST /api/rooms`, then you join it. Nobody types a server name. |
 | Servers live until 12 h after the last person leaves | When a room's last player leaves, it gets `expireAt = now + 12 h`, saved in Firestore. It's cleared if anyone joins. Expired rooms disappear from the list and are deleted. |
 
@@ -215,7 +215,7 @@ Service URL: **`https://wyrm-server-420365023329.us-west1.run.app`**
 1. Cloud Run → `wyrm-server` → copy the **URL** at the top
    (`https://wyrm-server-xxxxxxxx-uw.a.run.app`).
 2. Open `<URL>/api/rooms` in your browser. You should see JSON listing
-   the two permanent rooms (Skyhold and The Orb).
+   the four permanent rooms (Skyhold, Skyhold Fight, The Orb, The Orb Fight).
    - The first request after an idle period takes a few seconds while the
      server wakes up. That's normal with scale-to-zero.
 3. **Send me that URL.** I'll point the game at it, test it end to end,

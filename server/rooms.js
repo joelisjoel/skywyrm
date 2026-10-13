@@ -1,4 +1,4 @@
-// Rooms: the two permanent servers + player-created ones. Each room runs
+// Rooms: the four permanent servers + player-created ones. Each room runs
 // the shared sim (mode 'server') while anyone is in it: bots, collisions,
 // orbs, deaths, heat and thrust are decided here; browsers report only
 // their own dragon's pose, which the sim speed-checks (see sim.applyNet).
@@ -7,9 +7,13 @@ import { World, Dragon, T, lengthFor, managePopulation, safePlayerName, cleanPer
     ROOM_ADJECTIVES, ROOM_NOUNS } from '../site/js/shared.js';
 
 // Beginner is shown as a badge, never in a name. Beginner rooms list first.
+// Each world also has an always-on Fight mode server (rule fight), named so
+// the lobby's name order puts it just after its classic one.
 export const DEFAULT_ROOMS = [
     { id: 'the-orb', name: 'The Orb', arena: 'orb', beginner: true },
     { id: 'skyhold', name: 'Skyhold', arena: 'sky', beginner: true },
+    { id: 'skyhold-fight', name: 'Skyhold Fight', arena: 'sky', beginner: true, rules: { fight: 1 } },
+    { id: 'the-orb-fight', name: 'The Orb Fight', arena: 'orb', beginner: true, rules: { fight: 1 } },
 ];
 // Names no created room may read as. Created rooms get list names (see
 // names.js), and the names test checks every one passes checkName with these.
