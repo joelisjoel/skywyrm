@@ -26,6 +26,21 @@ export const LIMITS = {
 // Rule overrides for beginner rooms (see World.rule): gentler bots.
 const BEGINNER_RULES = { botAggrMax: 0.5 };
 
+// The rules a player may pick for a server they create (POST /api/rooms
+// `rules`, kept in the room's meta.rules and saved with it): only fight
+// mode, as the number 0 or 1. Anything else is ignored. Returns null when
+// there's nothing to keep.
+export function cleanRoomRules(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    return raw.fight === 0 || raw.fight === 1 ? { fight: raw.fight } : null;
+}
+
+// A page from before fight mode doesn't know its rules (harmless bodies,
+// bites anywhere, bouncing heads), so it is kept out of a
+// fight room: join refuses it with this, which such a page shows in its
+// lobby (server.js sends it as a 'full' error and closes with 4003).
+export const FIGHT_UPDATE = 'This server plays Fight mode. Reload the page to update Skywyrm, then join.';
+
 const TICK = 1 / 30;
 const SNAP_EVERY = 2;            // 15 snapshots/s
 const PARK_DELAY = 3;            // s of flight (still vulnerable) before folded wings take effect
@@ -52,20 +67,24 @@ function newToken() {
 }
 
 // Flags packed into one number per dragon in snapshots (older clients
-// ignore the bits they don't know: 512 chilled, 1024 stunned).
+// ignore the bits they don't know: 512 chilled, 1024 stunned, 2048 just
+// bitten in fight mode).
 function flags(d) {
     return (d.alive ? 1 : 0) | (d.boosting ? 2 : 0) | (d.braking ? 4 : 0) | (d.protect > 0 ? 8 : 0)
         | (d.shield > 0 ? 16 : 0) | (d.breath > 0 ? 32 : 0) | (d.human ? 64 : 0) | (d.isBot ? 128 : 0)
-        | (d.magnet > 0 ? 256 : 0) | (d.chill > 0 ? 512 : 0) | (d.stun > 0 ? 1024 : 0);
+        | (d.magnet > 0 ? 256 : 0) | (d.chill > 0 ? 512 : 0) | (d.stun > 0 ? 1024 : 0) | (d.guard > 0 ? 2048 : 0);
 }
 
 // Browsers list what they understand in hello's `caps`. One without 'el'
 // predates breath elements: it is shown ice, lightning and acid crystals
 // as fire ones (its renderer knows no others), and its dragon always
-// breathes fire (World: d.fireOnly).
+// breathes fire (World: d.fireOnly). One without 'fight' predates fight
+// mode and is kept out of fight rooms (FIGHT_UPDATE).
 const OLD_KIND = { ice: 'fire', bolt: 'fire', acid: 'fire' };
 const forOld = (e) => (e.k === 'pu' && OLD_KIND[e.kind] ? { ...e, kind: 'fire' } : e);
 const cleanCaps = (list) => (Array.isArray(list) ? list.filter((s) => typeof s === 'string' && s.length <= 16).slice(0, 8) : []);
+// A browser's own events, in words it knows.
+const eventsFor = (c, ev) => (c.el ? ev : ev.map(forOld));
 
 function pathOf(d) {
     // Oldest → newest, every other point (1 m apart), 1 cm precision.
@@ -110,10 +129,17 @@ export class Room {
     // a player who is reconnecting.
     get humans() { return this.clients.size + this.held.size; }
 
+    // Fight mode (rule fight): what the room was created with, else the
+    // server's own value (WYRM_TUNE can set it for every room).
+    get fight() {
+        const r = this.meta.rules;
+        return (r && r.fight !== undefined ? r.fight : T.fight) > 0;
+    }
+
     summary() {
         const bots = this.world ? this.world.dragons.filter((d) => d.isBot && d.alive).length : 0;
         return { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner,
-            permanent: !!this.meta.permanent, humans: this.humans, bots, max: LIMITS.humansPerRoom };
+            permanent: !!this.meta.permanent, fight: this.fight, humans: this.humans, bots, max: LIMITS.humansPerRoom };
     }
 
     ensureWorld() {
@@ -143,6 +169,8 @@ export class Room {
     // matches a seat held here (see leave), the player gets that dragon,
     // and the life it's on, back instead of a fresh one.
     join(client, rawName, extras = {}) {
+        const caps = cleanCaps(extras.caps);
+        if (this.fight && !caps.includes('fight')) return { error: FIGHT_UPDATE };
         const seat = this.seatFor(extras.resume);
         if (!seat && this.humans >= LIMITS.humansPerRoom) return { error: 'This server is full' };
         const wasEmpty = this.humans === 0;
@@ -167,7 +195,8 @@ export class Room {
         }
         // What this browser understands (every hello, a resume's too): a
         // resumed dragon keeps its element and charges.
-        client.el = cleanCaps(extras.caps).includes('el');
+        client.el = caps.includes('el');
+        client.fight = caps.includes('fight');
         d.fireOnly = !client.el;
         client.dragon = d;
         client.room = this;
@@ -184,7 +213,7 @@ export class Room {
             room: { id: this.meta.id, name: this.meta.name, arena: this.meta.arena, beginner: !!this.meta.beginner },
             tune: { ...T }, rules: w.rules, time: r2(w.time),
             dragons: w.dragons.filter((x) => x.alive || x.human).map(dragonMeta),
-            orbs, pu: this.powerups(!client.el), pl: this.pearls(),
+            orbs, pu: this.powerups(client), pl: this.pearls(),
         });
         if (!resumed || seat.back) this.broadcast({ t: 'dn', d: dragonMeta(d) }, client);
         if (client.parkAt) client.send({ t: 'e', ev: [{ k: 'parking', in: r2(client.parkAt - w.time) }] });   // still folding its wings
@@ -393,8 +422,10 @@ export class Room {
     // [type, x, y, z, spin]. A sun crystal (rule sunCrystals) adds its id,
     // how faded it is (1, falling to 0 at the edge) and the s until it can
     // be caught: older clients read the first five, so they see it too (as
-    // fire, without 'el').
-    powerups(old = false) {
+    // fire, without 'el'). `caps`: what the browser understands ({ el }),
+    // everything by default.
+    powerups(caps = { el: true, fight: true }) {
+        const old = !caps.el;
         return this.world ? this.world.powerups.map((p) => {
             const q = [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)];
             if (p.sun) q.push(p.sun, r2(p.fade), r2(p.hatch));
@@ -432,7 +463,16 @@ export class Room {
                 case 'chill': pub.push({ k: 'chill', id: e.d.id, o: e.o.id, t: r2(e.t) }); break;   // new kinds: older clients skip them
                 case 'bolt': pub.push({ k: 'bolt', id: e.d.id, o: e.hits.map((x) => x.id), p: e.pts.map(r2), s: r2(e.stun) }); break;
                 case 'acid': pub.push({ k: 'acid', id: e.d ? e.d.id : 0, o: e.o.id }); break;
-                case 'bite': pub.push({ k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
+                case 'bite': {
+                    // Fight mode adds f (a body bite), l (m bitten off), burn (the part that broke off) and
+                    // kill (it killed: the death follows). The body's new length reaches every page in snapshots.
+                    const b = { k: 'bite', id: e.d.id, o: e.o.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) };
+                    if (e.fight) Object.assign(b, { f: 1, l: Math.round(e.cut), burn: e.burn.map(r2).slice(0, 300) }, e.fatal ? { kill: 1 } : {});
+                    pub.push(b);
+                    break;
+                }
+                // Fight mode: two heads bounced off each other, each now heading a / b and stunned s seconds.
+                case 'bump': pub.push({ k: 'bump', id: e.a.id, o: e.b.id, a: e.da.toArray().map(r3), b: e.db.toArray().map(r3), s: r2(e.stun), x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'pearl': pub.push({ k: 'pearl', id: e.d.id, g: e.gain, x: r2(e.x), y: r2(e.y), z: r2(e.z) }); break;
                 case 'sunCrystal': pub.push({ k: 'sun', kind: e.kind, id: e.id, x: r2(e.pos.x), y: r2(e.pos.y), z: r2(e.pos.z) }); break;   // born at the sun (older clients skip it)
                 case 'eat': to(e.d, { k: 'eat' }); break;
@@ -446,7 +486,7 @@ export class Room {
         }
         this.holding(w, pub, gone);
         if (pub.length) this.broadcast({ t: 'e', ev: pub });
-        for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev: c.el ? ev : ev.map(forOld) }); }
+        for (const c of this.clients) { const ev = mine.get(c.dragon); if (ev) c.send({ t: 'e', ev: eventsFor(c, ev) }); }
         for (const c of landed) { c.send({ t: 'e', ev: [{ k: 'parked' }] }); this.broadcast({ t: 'dx', id: c.dragon.id }); }
         for (const id of gone) this.broadcast({ t: 'dx', id });
 
@@ -462,7 +502,12 @@ export class Room {
         const base = { t: 's', tm: r2(w.time), d: states, o, pu: this.powerups(), pl: this.pearls(), lb: board, n: w.dragons.filter((d) => d.alive).length, h: this.humans };
         // Acid clouds: [id, x, y, z, radius, s left, lifetime, spitter] (older clients ignore them).
         if (w.clouds.length) base.ac = w.clouds.map((c) => [c.id, r2(c.x), r2(c.y), r2(c.z), r2(c.r), r2(c.ttl), r2(c.life), c.owner]);
-        const puOld = this.powerups(true);
+        // Power-ups as each kind of browser understands them (the full list for an up-to-date one).
+        const puFor = new Map([['11', base.pu]]), puOf = (c) => {
+            const key = (c.el ? '1' : '0') + (c.fight ? '1' : '0');
+            if (!puFor.has(key)) puFor.set(key, this.powerups(c));
+            return puFor.get(key);
+        };
         for (const c of this.clients) {
             const d = c.dragon;
             // fire: stored charges (older clients only test it for truthiness); bl: the breath's level;
@@ -476,7 +521,7 @@ export class Room {
             // A slow client may skip a snapshot (client.js); its food
             // changes ride along with the next one that goes out.
             const o = c.unsentOrbs ? c.unsentOrbs.concat(base.o) : base.o;
-            if (c.send(c.el ? { ...base, o, me } : { ...base, o, pu: puOld, me })) c.unsentOrbs = null;
+            if (c.send({ ...base, o, pu: puOf(c), me })) c.unsentOrbs = null;
             else if (o.length) c.unsentOrbs = o.length > MAX_UNSENT_ORBS ? o.slice(-MAX_UNSENT_ORBS) : o;
         }
     }
@@ -526,6 +571,8 @@ export class Registry {
             if (!isRoomName(m.name)) { this.store.remove(m.id); continue; }          // typed before names came from the list
             const meta = { id: m.id, name: m.name, arena: m.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
                 permanent: false, createdAt: m.createdAt || now, expireAt: m.expireAt || now + LIMITS.emptyTtlMs };
+            const rules = cleanRoomRules(m.rules);
+            if (rules) meta.rules = rules;
             this.rooms.set(meta.id, new Room(meta, this));
         }
         this.log(`rooms ready: ${this.rooms.size} (${this.store.kind} store)`);
@@ -555,13 +602,15 @@ export class Registry {
         const name = isRoomName(asked) && !taken.has(asked) ? asked : freeRoomName(taken);
         const meta = { id: newId(), name, arena: body.arena === 'orb' ? 'orb' : 'sky', beginner: true,   // every room is a beginner room
             permanent: false, createdAt: now, expireAt: now + LIMITS.emptyTtlMs };
+        const rules = cleanRoomRules(body.rules);                    // fight mode, if asked for (0 or 1); nothing else
+        if (rules) meta.rules = rules;
         const room = new Room(meta, this);
         this.rooms.set(meta.id, room);
         recent.push(now);
         this.createdByIp.set(ip, recent);
         this.store.save(meta);
         this.stats.roomCreated();
-        this.log(`room created ${meta.id} "${meta.name}" (${meta.arena}${meta.beginner ? ', beginner' : ''})`);
+        this.log(`room created ${meta.id} "${meta.name}" (${meta.arena}${meta.beginner ? ', beginner' : ''}${room.fight ? ', fight' : ''})`);
         return { room: room.summary() };
     }
 

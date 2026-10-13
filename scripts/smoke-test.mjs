@@ -4,8 +4,10 @@
 // self-hosted, so the only other host the page may contact is the game
 // server (blocked here); a request anywhere else, or a Content-Security-
 // Policy violation, fails the test. In flight, messages keep their times
-// (hud.js msgTime) and leave when they fade. Then, on a phone-sized page, an invite
-// link (?room=) pins that server first in the lobby (with a faked room list).
+// (hud.js msgTime) and leave when they fade, and fight mode's body bite is
+// played out (Settings → Server switch, one forced bite). Then, on a
+// phone-sized page, an invite link (?room=) pins that server first in the
+// lobby (with a faked room list).
 // Run: npm install && npx playwright install chromium && npm run smoke
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +72,30 @@ try {
     });
     const MSG_WANT = { toast: [128, 2248, 352], hint: [256, 3496, 704], caption: [224, 3184, 616], line: [224, 3556, 616], upAfterPop: true, goneAfterFade: true };
     if (JSON.stringify(msg) !== JSON.stringify(MSG_WANT)) errors.push(`messages: expected ${JSON.stringify(MSG_WANT)}, got ${JSON.stringify(msg)}`);
+
+    // Fight mode (Settings → Server, rule fight): one bot bites another's
+    // body (forced, right after a step so the game handles it), the part
+    // behind breaks off, and nothing throws while it plays out.
+    await page.evaluate(() => {
+        const el = document.getElementById('srv-fight'); el.checked = true; el.onchange();
+        const w = window.__wyrm.world, step = w.step.bind(w);
+        w.step = (dt) => {
+            step(dt);
+            if (w.bitten) return;
+            const bots = w.dragons.filter((d) => d.isBot && d.alive && d.protect <= 0).sort((a, b) => b.mass - a.mass);
+            const [o, d] = bots;
+            if (!d || o.nBeads < 30) return;
+            o.guard = 0; o.shield = 0; d.lastBite = -9;
+            const before = o.mass;
+            w.bodyBite(d, o, Math.floor(o.nBeads * 0.6), []);
+            w.bitten = { before, after: o.mass, event: w.events.some((e) => e.type === 'bite' && e.fight) };
+        };
+    });
+    await page.waitForFunction(() => window.__wyrm.world.bitten, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    const bite = await page.evaluate(() => ({ fight: window.__wyrm.world.rule('fight'), ...window.__wyrm.world.bitten }));
+    await page.screenshot({ path: path.join(shots, 'fight.png') });
+    if (bite.fight !== 1 || !bite.event || !(bite.after < bite.before)) errors.push(`fight mode: no body bite (${JSON.stringify(bite)})`);
 
     // An invite link on a phone: the invited server is pinned first and lit,
     // nobody is joined, and room and src leave the address bar. (Joining it is

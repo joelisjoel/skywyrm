@@ -210,6 +210,39 @@ try {
     const reg = new Registry({ kind: 'test', loadAll: async () => saved, save() {}, remove(id) { removed.push(id); } });
     await reg.init();
     check(reg.get('listed')?.meta.name === wish && !reg.get('typed') && removed.join() === 'typed', 'on restart, saved rooms with typed names are dropped');
+
+    // Fight mode (rule fight): a player can create a fight server. Only
+    // rules { fight: 0 | 1 } are taken; anything else is ignored.
+    const fightRoom = await create({ name: 'x', arena: 'sky', rules: { fight: 1 } }, '10.0.0.3');
+    const mixed = await create({ arena: 'orb', rules: { fight: 1, lives: 0, botAggrMax: 1, tailBite: 0 } }, '10.0.0.3');
+    const plain = await create({ arena: 'sky', rules: { fight: 0 } }, '10.0.0.3');
+    const junk = await Promise.all([{ fight: 2 }, { fight: '1' }, { fight: true }, [1], 'fight', { lives: 0 }].map((rules, i) => create({ arena: 'sky', rules }, `10.0.1.${i}`)));
+    check(fightRoom.status === 201 && fightRoom.room.fight === true && mixed.room.fight === true && plain.room.fight === false && junk.every((x) => x.status === 201 && x.room.fight === false),
+        'a server can be created in fight mode (rules { fight: 1 }); junk rules are ignored and the server is classic');
+    r = await (await api('/api/rooms')).json();
+    const rows = (ids) => r.rooms.filter((x) => ids.includes(x.id));
+    check(rows([fightRoom.room.id, mixed.room.id]).every((x) => x.fight === true) && r.rooms.filter((x) => x.permanent).every((x) => x.fight === false)
+        && rows(junk.map((x) => x.room.id)).every((x) => x.fight === false), 'the lobby flags fight servers (fight: true); Skyhold and The Orb stay classic');
+    // A page from before fight mode (no "fight" in caps) is turned away with a message to update; one with it plays fight rules.
+    const hello = (caps) => new Promise((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${fightRoom.room.id}`, { headers: { origin: ORIGIN } });
+        const got = { msgs: [] };
+        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name: 'Kid', ...(caps ? { caps } : {}) }));
+        ws.onmessage = (e) => { const m = JSON.parse(e.data); got.msgs.push(m); if (m.t === 'welcome') { got.welcome = m; ws.close(1000); } };
+        ws.onclose = (e) => { got.code = e.code; resolve(got); };
+        setTimeout(() => { ws.close(); resolve(got); }, 8000);
+    });
+    const oldPage = await hello(['el']), noCaps = await hello(null), newPage = await hello(['el', 'fight']);
+    const full = (g) => g.msgs.find((m) => m.t === 'full');
+    check(oldPage.code === 4003 && /Fight mode/.test(full(oldPage)?.error) && /Reload/.test(full(oldPage)?.error) && noCaps.code === 4003 && !oldPage.welcome,
+        `an older page is kept out of a fight server: "${full(oldPage)?.error}" (close 4003)`);
+    check(newPage.welcome && newPage.welcome.rules.fight === 1, 'a page that knows fight mode joins, and the welcome says rules.fight = 1');
+    // Saved with the room (meta.rules) and cleaned again on restart.
+    const savedRules = [{ id: 'f1', name: wish, arena: 'sky', expireAt: later, rules: { fight: 1 } }, { id: 'f2', name: dupe.room.name, arena: 'sky', expireAt: later, rules: { fight: 5, lives: 0 } }];
+    const reg2 = new Registry({ kind: 'test', loadAll: async () => savedRules, save() {}, remove() {} });
+    await reg2.init();
+    check(reg2.get('f1').fight && JSON.stringify(reg2.get('f1').meta.rules) === '{"fight":1}' && !reg2.get('f2').fight && reg2.get('f2').meta.rules === undefined,
+        'a fight server stays one after a restart (meta.rules is saved); junk saved rules are dropped');
     console.log(`\n${ok} checks passed`);
 } catch (e) {
     console.error('FAILED:', e.message, '\n--- server log ---\n' + out);

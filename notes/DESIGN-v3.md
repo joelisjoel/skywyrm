@@ -112,9 +112,13 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `powerup` | `powerupSpawn` | `shieldPop` |
 | `thrustEmpty` | `tier` | `nearMiss` |
 | `chill` | `bolt` | `acid` |
-| `pearl` | | |
+| `pearl` | `bump` | |
 
   `fireStart` carries `lv` (charges spent) and `el` (element); `fireMiss` carries `el`.
+  In fight mode (rule `fight`, §3.3) a `bite` also carries `fight`, `cut`
+  (metres bitten off), `burn` (the broken-off part, every other bead) and
+  `fatal`; `bump` is two heads bouncing off (`a`, `b`, their new headings
+  `da`, `db`, `stun`, the contact point).
 
 ### 3.2 Dragons
 - **Body path:** a history of up to 1200 points, 0.5 m apart (600 m of path).
@@ -186,6 +190,46 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     steer, so a body it's carried into doesn't count.
 - **Head-on:** the heavier dragon wins if it is more than 5% heavier; otherwise
   both die. This is skipped if either dragon is protected or stunned.
+- **Fight mode** (rule `fight`; 0 = all of the above, 1 = this). Bodies are
+  harmless to touch and good to eat:
+  - **Bite anywhere** (`bodyBite`): a head touching another dragon's body
+    bites it at the nearest bead touched, and everything behind breaks off.
+    Mass lies along the body as its length does: with L its shown length,
+    the cut `c` = bead × spacing and L0 = 12 m (a hatchling), the victim
+    keeps `spawnMass + (mass − spawnMass)·(c − L0)/(L − L0)` (at least
+    spawn mass). Below the length cap that is what dragonfire's `sever`
+    takes; above it, it stays proportional (a bite halfway down takes half
+    of what was grown). The biter gains `biteGain` 0.3 of the lost mass at
+    once (half that for a bot over `botGrowthCapMass`, as with food); the
+    rest × `lootShare` drops as orbs along the broken-off part (`lootAlong`,
+    which `sever` now uses too). The victim's `len` is cut at once and
+    eases back to its mass's length (a dragon past the length cap regrows
+    some). A bite with `c < biteMinLen` (10 m) kills instead: the biter
+    gets the kill and the loot drops as with any death. A bite that would
+    take under 0.5 mass (a hatchling's tip) does nothing.
+  - **No chain-shredding:** a dragon bites at most once per `biteCooldown`
+    0.4 s (`d.lastBite`), and a bitten one can't be bitten again for
+    `biteGuard` 1.2 s (`d.guard`, counted down in `upkeep`; heads pass
+    through it meanwhile). The Ember Shield takes a bite (it pops, the
+    guard starts, nothing breaks off); it still doesn't stop head-ons.
+  - **Head to head** (`headContacts`, then `headOn`): settled before bites,
+    and a pair of touching heads never also bites each other's necks. A
+    dragon `headonRatio` 1.25× the other's mass wins (the smaller dies,
+    cause `head`). Closer in size, both `bounce`: each heading is reflected
+    off the line between the heads, plus a push away, the heads are pushed
+    apart by their overlap, and both get the lightning stun (`d.stun`,
+    `headonStun` 0.5 s), so they fly off straight. A browser's dragon isn't
+    turned by the server: it gets its new heading in the `bump` event and
+    turns itself, and the server's stun holds it to that heading after
+    `NET_GRACE`.
+  - **Unchanged:** walls, your own body, spawn protection (no biting, no
+    being bitten; protection is still extended while a newborn's head is
+    inside any body), a stunned head (no bites). The classic tail-tip bite
+    (`tailBite`) is skipped: a tip is just part of the body, worth
+    `biteGain` of what breaks off, not +25.
+  - Near misses only count bodies that could kill.
+  - A fatal bite's death `cause` is `bite` ("Bitten in two by …"); the play
+    totals count it as `body`.
 - **Bead hash** (`buildHash`, `queryBeads`): beads go in cells, and a query
   looks one cell round a point, so a cell must be as wide as the farthest
   reach asked about: head + tail radius, or a bot feeler's pad. Thin
@@ -347,9 +391,17 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `sunCrystals` | 1 | `sunCrystalSpeed` | 4 |
 | `sunCrystalHatch` | 1.5 | `sunCrystalEdge` | 40 |
 | `sunCrystalRespawn` | 4 | `botSunGap` | 60 |
+| `fight` | 0 | `biteGain` | 0.3 |
+| `biteMinLen` | 10 | `biteCooldown` | 0.4 |
+| `biteGuard` | 1.2 | `headonRatio` | 1.25 |
+| `headonStun` | 0.5 | | |
 
 - **Beginner rules:** solo (`main.js:453`) and every room (`rooms.js:27,100`) apply
   `BEGINNER_RULES = {botAggrMax: 0.5}`.
+- **Fight mode** is the first rule a player can set: Settings → Server for
+  solo (it edits `T.fight` for this visit, like the population sliders;
+  online it shows the room's value, read-only), and the Create server form
+  for a room (`meta.rules`, §4.4).
 - **Not in the rules layer:** `powerups`, `dragonfire` and `botAggression` are
   read straight from `T`, so a room can't override them.
 - **`T` is one shared object.**
@@ -399,6 +451,33 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Fair play: below A 0.75 (every beginner room) a bot skips a crystal if a
     human is within (1.75 − A)× its own distance.
   - Pearls count 2.5× a crystal and are noticed from 1.3× as far.
+- **Fight mode** (rule `fight`):
+  - **Dodge** (`Brain.dodge`, every mood, first): a bigger dragon's head
+    coming at ours within 22 m + r that would win head to head
+    (`headonRatio`): turn and run (boosting within 14 m). One coming at our
+    body within 10 m + r (sampled every 3 m): turn away and, if it is on our
+    front 40% and within 8 m, boost so the body slides out of reach.
+  - **Hunt** (`Brain.hunt`, instead of `stalk` and the cut-off prey chase,
+    which would only get a bot bitten): hunters and kingslayers look for a
+    body with chance 0.25 + 0.6A per decision, within
+    (30 + 50·drive)·(0.5 + A) m (kingslayers twice as far for the leader,
+    who scores ×3); other moods snap at one with chance 0.15 × their hunt
+    drive within 12 + 18·drive m. Drive is the treasure drive,
+    (length − 12)/188: bigger bots look farther, hold the goal
+    1.5 + 5·drive s, drop it less and wobble less. They skip protected and
+    just-bitten dragons and the gentle-period player.
+  - **Where** (`Brain.biteSpot`): a dragon that would win head to head only
+    in its back half, and never with its head within 25 m + 4r; one we'd
+    beat anywhere past its head (a neck bite kills); one in between from a
+    third of the way down. Worth is the mass behind the spot (×1.5 of all of
+    it for a kill), scored by 1/(dist + 10) and halved if behind. A hunting
+    bot boosts within 6–30 m with chance (0.5·hunt + 0.3·drive)·(0.5 + A).
+  - **Feelers** (`clearance`): bodies are harmless, but a bot that isn't
+    going for a bite still steers round them (`tailDanger(…, any)`), so
+    feeding bots don't blunder through everyone. Without that, 25 bots bit
+    each other by accident about 84 times a minute and lengths fell to about
+    40 m; with it about two thirds of the bites are on purpose. Bots still
+    avoid every head.
 - **Names:** 44 dragon-style names, deduplicated.
 
 ---
@@ -462,13 +541,13 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 
 | Direction | Message | Contents |
 |---|---|---|
-| C→S | `hello` | `{name, perks[], skin, caps[], resume?}`. Must be the first message, within 5 s. `caps` (optional, up to 8 short strings) says what the browser understands: `el` = breath elements. `resume`: the token from the last `welcome`, when reconnecting (§4.4) |
+| C→S | `hello` | `{name, perks[], skin, caps[], resume?}`. Must be the first message, within 5 s. `caps` (optional, up to 8 short strings) says what the browser understands: `el` = breath elements, `fight` = fight mode (a fight room turns away a page without it, below). `resume`: the token from the last `welcome`, when reconnecting (§4.4) |
 | C→S | `p` | `{x,y,z,qx,qy,qz,qw,s,bk,b,k,f}`: pose, speed, bank, boost, brake, fire |
 | C→S | `spawn`, `park`, `unpark`, `ping{c}` | |
 | S→C | `welcome` | `{you, room, tune, rules, time, dragons[meta], orbs[flat×7], pu, pl}`. Also `resume` (a new token every time), `resumed: 1` when a `hello`'s token got its dragon back, `parked: 1` when that dragon is still folded (not in `dragons`) |
 | S→C | `s` (snapshot) | `tm`. `d`: `[id,x,y,z,qx,qy,qz,qw,mass,len,flags,bank,speed]` per dragon. `o`: food changes. `pu`: power-ups, `[type,x,y,z,spin]` each; a sun crystal adds `id, fade, hatch` (optional; new): older clients read the first five and see it as a crystal (as fire without `el`), and new ones keep it by `id` and draw it on the server's clock like a pearl. `pl`: pearls, `[id,x,y,z]` each (optional; new). `lb`: top 10. `n`, `h`: counts. `me`: your own heat, thrust, fire (stored charges; older clients only test it for truthiness), `bl` (the breath's level), `el` (their element, when not fire), `ch` / `st` (s left chilled / stunned, when > 0), shield, magnet, kills and correction. `ac` (when any): acid clouds `[id,x,y,z,radius,s left,lifetime,spitter]` |
 | S→C | `dn` / `dx` | A dragon appears (meta plus a tail path at 1 cm precision, every other point, ≤600 points) / leaves |
-| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `pearl` (`{id, g, x, y, z}`; new), `sun` (a sun crystal is born: `{kind, id, x, y, z}`; new, older clients skip it), `bite`, `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
+| S→C | `e` | Events: `death`, `sever`, `fire` (`lv`: charges spent, `el`: element), `chill` (`o`, `t` s), `bolt` (`o`: ids struck, `p`: points mouth→hits, `s`: stun s), `acid` (`o`), `pearl` (`{id, g, x, y, z}`; new), `sun` (a sun crystal is born: `{kind, id, x, y, z}`; new, older clients skip it), `bite` (`{id, o, g, x, y, z}`; a fight-mode body bite adds `f: 1`, `l` the metres bitten off, `burn` the broken-off part (at most 100 points) and `kill: 1` when it killed), `bump` (fight mode: two heads bounced off, `{id, o, a, b, s, x, y, z}`, `a` and `b` their new headings, `s` the stun), `land`. Also personal events: `eat`, `tier`, `nm`, `pu` (`n`: charges now held), `shield`, `miss` (`el`), `empty`, `park*` |
 | S→C | `full` | The room is full |
 
 - **Flag bits** in `d`:
@@ -481,6 +560,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | 8 | protect | 256 | magnet |
 | 16 | shield | 512 | chilled |
 | | | 1024 | stunned |
+| | | 2048 | just bitten (fight mode's `guard`; it flashes) |
 
 - **WebSocket close codes:**
 
@@ -527,6 +607,23 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     every dragon thinner than the server's hitboxes (and sizes its own wall
     assist and camera thin): a fat tail can kill a little outside what that
     page shows. It goes away when the cache refreshes.
+  - **Fight mode** changes what touching a body means, which a page from
+    before it can't know: it would steer clear of every body, fly through
+    bounces it doesn't understand and see no bites or flashes. So a fight
+    room keeps it out: `Room.join` refuses a `hello` without `fight` in
+    `caps` with `FIGHT_UPDATE` ("This server plays Fight mode. Reload the
+    page to update Skywyrm, then join."), which server.js sends as a `full`
+    error before closing with 4003. Old pages treat 4003 as final and show
+    the text in the lobby. Classic rooms (the permanent two, and every room
+    not created with Fight mode) let everyone in as before, so the gate
+    costs nothing until someone opts in. `WYRM_TUNE` `{"fight":1}` would
+    make every room a fight room and turn every old page away until it
+    reloads: wait a release before using it. Belt and braces: a body's new
+    length after a bite reaches every page in each snapshot's `len`, and
+    old pages skip event kinds and flag bits they don't know (their event
+    switches have no default). A new page on an old server finds no `fight`
+    in `tune` and plays classic; a Fight mode create there makes a classic
+    room, and the page says so.
   - **Pearls** use only additions that old clients skip, so they need no
     cap: the `pl` field (their `welcome` and `s` handlers read named fields
     only) and the `pearl` event (their event switch has no default). Pearls
@@ -560,6 +657,10 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     anything else (a taken name, or free text from an old cached client)
     gets a random unused list name. The name never fails a create.
   - The `beginner` field is ignored, so every room is a beginner room.
+  - `rules`: only `{fight: 0 | 1}` (the number) is kept, in the room's
+    `meta.rules` (`cleanRoomRules`); any other key or value is ignored and
+    never fails the create. The lobby row says `fight: true` for a fight
+    room (`Room.fight`: `meta.rules.fight`, else the server's `T.fight`).
   - The room id is 9 random bytes in base64url: 12 characters, about 72 bits.
 - **Lifecycle:**
   - A room's world is created on its first join, with a 10 s warm-up run before
@@ -569,7 +670,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     swept.
   - On start, saved rooms whose names aren't list names (typed before names
     were generated) are dropped and deleted from the store.
-- **Join:** caps the room's humans, then runs `safePlayerName`, `cleanPerks`
+- **Join:** a fight room first turns away a page without the `fight` cap
+  (§4.3). Then join caps the room's humans, runs `safePlayerName`, `cleanPerks`
   and `skinById`. It spawns at mass 10, sends `welcome` and broadcasts `dn`.
   A `hello` whose `resume` token matches a held seat gets that dragon back
   instead (below).
@@ -603,8 +705,12 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
     with your mass and kills kept.
   - You can unpark after 2 s, and you return at a safe spawn point with
     protection.
-- **Per-room `meta.rules`:** merged in at `rooms.js:100` but never set. The
-  hook exists for future modes.
+- **Per-room `meta.rules`:** merged in over the beginner rules when the
+  world is made. Set only by a create with the Fight mode switch
+  (`{fight: 1}`, or `{fight: 0}`, which keeps a room classic even if
+  `WYRM_TUNE` turns fight on), saved with the room and cleaned again when
+  saved rooms load. The permanent rooms have none, so they follow the
+  server's `T.fight` (0).
 - **Errors:** each room's tick and sweep run in a try/catch
   (`Registry.guard`), and so does every WebSocket message and leave.
   - An exception is logged with its stack. The same error is logged at most
@@ -622,7 +728,8 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   - Otherwise an in-memory Map.
 - **What is stored:**
   - The room list, in the `rooms` collection:
-    `{id, name, arena, beginner, permanent, createdAt, expireAt}`.
+    `{id, name, arena, beginner, permanent, createdAt, expireAt, rules?}`
+    (`rules` only for a room created with the Fight mode switch).
   - The anonymous daily play and visit totals (§4.7, §4.8), in the `stats` collection: one
     document per UTC day, id `YYYY-MM-DD`. The server keeps 30 days and
     deletes older ones, so the collection stays at about 30 small documents.
@@ -1264,7 +1371,15 @@ where they drop off), kept without identifying anyone
     green ball per cloud (`acidMaterial`), with bubbles.
   - Chilled dragons go frost-white and shed snow; stunned ones flicker violet
     and crackle with sparks.
-  - Particle hues: 0 fire, 1 ice/lodestone blue, 2 acid green, 3 lightning.
+  - Particle hues: 0 fire, 1 ice/lodestone blue, 2 acid green, 3 lightning,
+    5 pale gold (a body breaking up).
+- **Fight mode** (rule `fight`): no tail tip is singled out (no gold stalk,
+  shimmer or tip feathers), since every part is edible. A bite bursts at the
+  bite point (`biteBurst`) and the broken-off part breaks into pale gold
+  motes (`crumble`, two per point of `burn`) as its food falls; a
+  just-bitten body flickers white (`d.guard`, in the per-bead colour, no
+  extra draw); a bounce throws a ring of violet and gold sparks
+  (`bumpSpark`). Particles only: no new draw calls.
 - **Sun crystals** (§3.4): the same crystals plus an ink-ring sprite each
   (normal blending, depth test off, so it reads on the sun's glare), a spark
   trail, and a pooled flare ring (up to 6) with a spark burst at each birth.
@@ -1374,17 +1489,17 @@ at dendroslabs.com/wyrm has been removed.
 
 | Check | What it covers |
 |---|---|
-| `server/test/sim.test.mjs` (110 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients), power-ups drifting in bounds (and `powerupDrift` 0), a big bot fetching a crystal a hatchling ignores, `botTreasure` 0 (also switched off mid-chase), bots yielding to a nearer human, bots fetching any breath element until their charges are full, pearls drifting in bounds, a catch giving +30 and a respawn far away, `pearls` 0, a big bot choosing a pearl over a crystal, sun crystals (one of each flavour at all times in both arenas, born at the sun with their distance only growing, the crawl to the edge and the fade 25+ m inside the walls and 40+ m above the cloud sea, eaten → reborn at the sun after the delay, the hatch, `elements` 0 → fire only, switched off mid-game, the random ones still filling to 5, `sunCrystals` 0 matching the code without them on a seeded run, bots leaving one inside `botSunGap` and fetching one past it, 25 seeded bots not crowding the sun (and crowding it without `botSunGap`), the `pu` fields and the `sun` event for new and older browsers) |
+| `server/test/sim.test.mjs` (135 checks) | Tail-tip bite vs a mid-tail death, `tailBite` off, aggression ramp and the beginner cap, 60 s of bot moods, perks, the length speed curve (×1.5 at 100 m, ×1.8 at 200 m, rising to the ×4 `speedCap`) with heat, `applyNet` allowing a ×4 dragon its speed but clamping a faster one, the wall assist at ×4, fast bots pulling out of dives, dragonfire charges (stacking and cap, one breath spends all, range/cone/time/cuts by level, `fireCharge` off, bots saving up), breath elements (shared charges and the last element, `elements` off spawns only fire, ice chills the cone, chilled speed/boost/turn locally and in `applyNet`, a stun refusing turns server-side and blocking the stick, a stunned head safe on a tail, lightning chains 1→3, acid only while inside and never the spitter, bots' element choices, older browsers shown fire and breathing fire via a `Room` with fake clients), power-ups drifting in bounds (and `powerupDrift` 0), a big bot fetching a crystal a hatchling ignores, `botTreasure` 0 (also switched off mid-chase), bots yielding to a nearer human, bots fetching any breath element until their charges are full, pearls drifting in bounds, a catch giving +30 and a respawn far away, `pearls` 0, a big bot choosing a pearl over a crystal, sun crystals (one of each flavour at all times in both arenas, born at the sun with their distance only growing, the crawl to the edge and the fade 25+ m inside the walls and 40+ m above the cloud sea, eaten → reborn at the sun after the delay, the hatch, `elements` 0 → fire only, switched off mid-game, the random ones still filling to 5, `sunCrystals` 0 matching the code without them on a seeded run, bots leaving one inside `botSunGap` and fetching one past it, 25 seeded bots not crowding the sun (and crowding it without `botSunGap`), the `pu` fields and the `sun` event for new and older browsers). Fight mode: off by default and classic unchanged, a mid-body bite (the cut, the mass kept as length, the biter's 30%, the rest as food behind the cut, the guard), a bite leaving under 10 m killing and crediting the biter, one just past it leaving a hatchling, a hatchling's tip doing nothing, the bite cooldown and the bitten dragon's guard, head to head (×1.25 wins and no neck bite; closer, both bounce away stunned, and a stunned head does nothing more), spawn protection both ways, the shield taking a bite, your own body, walls, a tail tip counted once, 25 seeded bots biting on purpose (and none in classic), and a fight `Room` turning away pages without the `fight` cap) |
 | `server/test/visit.test.mjs` (37 checks) | The browser's side as pure functions: referrer hosts → categories, `?src=` tags (allowlist only) and taking `src` out of a query, first-visit days → return buckets and `today`, the saved record through a fake storage (blocked, read-only, broken, an older profile → `old`), the note's fields and clamps. `cleanVisit` on good notes, extra fields, unknown words, object-property names and junk. Daily counts: visits, devices, the cumulative funnel, sources, tags, buckets, devices, the time histogram, lives and invites; a save and reload; old and partial days loading with zeros. Then the real server: `POST /api/visit` accepted with CORS, JSON too, refused 400/413/415/403, the 31st in an hour from one address 429 (per address, apart from run notes), and nothing about the note or its sender logged |
 | `server/test/stats.test.mjs` (16 checks) | Run notes cleaned and clamped, bad ones refused · totals by source, histogram, causes, worlds, peak players · a save and reload through the memory store · new UTC day and the 30-day window · a failing save doesn't throw · in-process room lives: a wall death counted under `room`, no double count after death, quit and disconnect on leave, a park and return kept as one life with its peak and without parked time |
 | `server/test/names.test.mjs` (17 checks) | The name filter: innocent names and every bot name (with and without a number) pass; bad words in leetspeak, spaced out or with repeated letters are blocked; letters outside A–Z are refused; reserved words match whole words only; folding, stripping, limits and the "Dragon" fallback. Room names: every list pair passes the room filter, no word contains a reserved name, `randomRoomName` and `isRoomName` |
-| `server/test/rooms.test.mjs` (38 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, sun crystals reaching an older page as fire crystals, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals |
+| `server/test/rooms.test.mjs` (43 checks) | Starts the real server with the memory store. Covers: default rooms, foreign origins refused, free-text, reserved, link and taken names all getting list names (201) while a free list name is honoured, rate limit (429), forced beginner, saved rooms with typed names dropped on restart, two players seeing each other, skins and perks, the snapshot rate, pearls in `pl`, sun crystals reaching an older page as fire crystals, the lobby, a teleport clamped and corrected, garbage and oversize frames, park and unpark; `POST /api/run` (accepted with CORS, clamped, refused 400/413/415/403/429) and room lives counted in the daily totals. Fight mode: creating a fight server, junk `rules` ignored (classic), the lobby's `fight` flag (the permanent two classic), an older page turned away with the update message (4003) and a new one welcomed with `rules.fight`, `meta.rules` kept through a restart and junk saved rules dropped |
 | `server/test/crash.test.mjs` (15 checks) | The crash guard: a `Registry` with fake clients, then the real server with bugs planted by `poison-room.mjs` (`node --import`). A throwing tick or sweep resets only its room (1011) and other rooms keep snapshotting; a throwing message closes only its sender (1011) while the rest of its room plays on; a reset counts the lives it cut off; a repeated error is logged once, an unhandled rejection is not fatal |
 | `server/test/limits.test.mjs` (5 checks) | Sockets per IP: 16 by default (the 17th gets 429), `MAX_CONN_PER_IP` overrides, a bad value falls back to 16, a closed socket frees its slot, seats held for dropped players count toward the limit |
 | `server/test/backpressure.test.mjs` (9 checks) | Fake sockets with a set queue size: over 512 KB only snapshots are skipped and `dn`/`dx`/`e` still arrive, the next snapshot carries the skipped food changes, over 4 MB the socket is closed (4009) |
 | `server/test/reconnect.test.mjs` (37 checks) | Resume tokens, ticked by hand in a `Registry`: back within 3 s carries on unseen, after that flies back in with its length and kills (`dn`), keeping its crystals, still folded if it was parked, takeover of a still-open socket (4011), used, forged, expired and other-room tokens get a fresh dragon, a kill during the 3 s drops loot once, leaving on purpose drops loot after 3 s. Play totals: a held or resumed life isn't counted, a forgotten seat, a death in the countdown and a shutdown each count it once. Then the real server: a reconnect over real sockets, tokens never logged, SIGTERM closes with 4010 |
-| `server/test/net.test.mjs` (17 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect. Invite links (`invite.js`): a link's `?room=` pins that server first in the real list and joining it lands in that room; a closed room pins nothing; hostile ids are ignored; the share text names only generated names; local and canonical link addresses |
-| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws. Checks each message kind's pop-in, fade start and fade (a caption with a 2.556 s line too), that a message stays up past its pop-in and leaves when its fade ends. Then a 390×844 touch page opens an invite link against a faked room list: that server must be pinned first, nobody joined, `room` and `src` gone from the address bar, no sideways scroll (`invite.png`) |
+| `server/test/net.test.mjs` (20 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect. A page creating and joining a fight server (its hello's `fight` cap, `rules.fight`), and a fight bite (metres, broken-off part, guard) and a bounce (the new heading, the stun) decoded. Invite links (`invite.js`): a link's `?room=` pins that server first in the real list and joining it lands in that room; a closed room pins nothing; hostile ids are ignored; the share text names only generated names; local and canonical link addresses |
+| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws. Checks each message kind's pop-in, fade start and fade (a caption with a 2.556 s line too), that a message stays up past its pop-in and leaves when its fade ends. Then turns Fight mode on (Settings → Server) and forces one bot's bite on another's body right after a step, so the game plays it out (`fight.png`); fails if no body bite happens. Then a 390×844 touch page opens an invite link against a faked room list: that server must be pinned first, nobody joined, `room` and `src` gone from the address bar, no sideways scroll (`invite.png`) |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
 **CI** (`ci.yml`):
@@ -1513,6 +1628,6 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | Collision | tailColScale 0.8 · headColScale 1.0 · spawnProtect 3 · nearMissPad 1.2 · encounterDist 4 |
 | Power-ups | powerups 1 · dragonfire 1 · powerupMax 5 · powerupEvery 20 · shieldTime 12 · magnetTime 10 · magnetRadius 18 · fireRange 24 · fireAngle 30 · fireTime 1.2 · fireChargeRange 0.25 · fireChargeAngle 0.15 · fireChargeTime 0.25 · fireChargeCuts 0.5 · elementShare 0.5 · chillTime 2.5 · chillSpeed 0.5 · chillTurn 0.6 · boltRange 1.5 · boltAngle 7 · boltChain 14 · boltChainMax 3 · stunTime 0.6 · boltShed 0.04 · acidRadius 6 · acidTime 6 · acidRate 4 · powerupDrift 1 (rule) |
 | Arena and bots | popStart 3 · popMax 30 · popRampSec 20 · assistLook 1.8 · botAggression 0.6 · skyRadius 350 · orbRadius 325 |
-| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 · girth 1 · girthExp 0.585 · sunCrystals 1 · sunCrystalSpeed 4 · sunCrystalHatch 1.5 · sunCrystalEdge 40 · sunCrystalRespawn 4 · botSunGap 60 |
+| Rules | tailBite 1 · biteBeads 5 · biteMult 5 · lives 3 · respawnDelay 3 · botMoods 1 · aggrStart 0.25 · aggrRampMin 15 · botAggrMax 1 · perks 1 · lengthSpeed 0.5 · lengthSpeedExp 0.62 · lengthSpeedLate 1.35 · lengthSpeedMax 3 · speedCap 4 · fireCharge 1 · fireChargeMax 5 · elements 1 · powerupDrift 1 · botTreasure 1 · botTreasureNear 18 · botTreasureFar 150 · pearls 3 · pearlMass 30 · pearlRespawn 8 · pearlDrift 2.5 · girth 1 · girthExp 0.585 · sunCrystals 1 · sunCrystalSpeed 4 · sunCrystalHatch 1.5 · sunCrystalEdge 40 · sunCrystalRespawn 4 · botSunGap 60 · fight 0 · biteGain 0.3 · biteMinLen 10 · biteCooldown 0.4 · biteGuard 1.2 · headonRatio 1.25 · headonStun 0.5 |
 | Camera | camDist 7 · camDistPerLen 0.02 · camDistMax 16 · camHeight 2.2 · camLookAhead 10 · camPosTau 0.12 · camRotTau 0.08 · camRollFollow 0.35 · fov 72 · fovBoost 84 · fovSpeed 4 · camLagMax 8 · camGirth 0.8 · wideCorner 122 · wideExpo 3 |
 | Look | swimAmp 1.05 · swimWave 14.3 · swimLift 0.35 · headLook 0.3 · eatMotion 2 |

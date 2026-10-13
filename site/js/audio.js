@@ -4,7 +4,7 @@
 // (music.js) with power-up stingers in its mode.
 import { Music } from './music.js?v=11';
 import { Voice } from './voice.js?v=4';
-import { T } from './tunables.js?v=29';
+import { T } from './tunables.js?v=30';
 
 // D minor pentatonic (D yu), the soundtrack's home; once the music is
 // running the chimes follow whatever mode it's in.
@@ -276,8 +276,11 @@ export class Audio {
         [0, 2, 4].forEach((n, i) => this.tone(1174.66 * 2 ** (L[s + n] / 12), 0.45, 'sine', 0.03 * k, i * 0.09));
     }
     // Chomp: a short crunch and a rising blip.
-    bite() { this.whoosh(0.12, 2500, 400, 0.35); this.tone(392, 0.12, 'square', 0.06, 0, 784); this.tone(1174.66, 0.15, 'sine', 0.06, 0.06); }
+    // k (0–1) softens it: someone else's bite nearby.
+    bite(k = 1) { this.whoosh(0.12, 2500, 400, 0.35 * k); this.tone(392, 0.12, 'square', 0.06 * k, 0, 784); this.tone(1174.66, 0.15, 'sine', 0.06 * k, 0.06); }
     bitten() { this.whoosh(0.2, 800, 150, 0.3); this.tone(293.66, 0.25, 'sawtooth', 0.05, 0, 146.83); }
+    // Fight mode: two heads bounce off each other, a hollow knock and a wobble.
+    bump(k = 1) { this.tone(180, 0.18, 'triangle', 0.12 * k, 0, 90); this.tone(520, 0.25, 'sine', 0.05 * k, 0.03, 380); this.whoosh(0.15, 1200, 300, 0.25 * k, true); }
     shieldPop() { this.whoosh(0.25, 2000, 200, 0.4); this.tone(880, 0.3, 'triangle', 0.15, 0, 293.66); }
     // A bigger breath (more charges) roars longer and deeper.
     fire(lv = 1) {

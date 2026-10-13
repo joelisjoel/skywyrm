@@ -135,6 +135,26 @@ try {
         && inviteLink('the-orb', { hostname: 'www.skywyrm.io', origin: 'https://www.skywyrm.io', pathname: '/index.html', search: '?dev=1' }) === 'https://skywyrm.io/?room=the-orb&src=invite',
     'on a test page the link keeps the page and its local server; on the site it is the canonical address');
 
+    // Fight mode: a page creates a fight server (rules { fight: 1 }) and plays by its rules.
+    const fr = (await (await fetch(BASE + '/api/rooms', { method: 'POST', headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
+        body: JSON.stringify({ arena: 'orb', rules: { fight: 1 } }) })).json()).room;
+    const fg = game(fr.id);
+    games.push(fg);
+    await until(() => fg.last('welcome'));
+    check(fr.fight === true && fg.hello.caps.includes('fight') && fg.world.rule('fight') === 1 && fg.player.alive,
+        'a page creates a fight server, joins it (its hello says it knows fight mode) and plays by its rules');
+    // A bite and a bounce, as the server sends them.
+    const other = fg.world.dragons.find((d) => d !== fg.player);
+    fg.takeEvents();
+    fg.gameEvents([{ k: 'bite', id: other.id, o: fg.you, g: 12, x: 1, y: 2, z: 3, f: 1, l: 42, burn: [1, 2, 3, 4, 5, 6] },
+        { k: 'bump', id: fg.you, o: other.id, a: [1, 0, 0], b: [-1, 0, 0], s: 0.5, x: 0, y: 0, z: 0 }]);
+    const [bitten, bounced] = fg.takeEvents();
+    check(bitten.type === 'bite' && bitten.fight && !bitten.fatal && bitten.d === other && bitten.o === fg.player && bitten.cut === 42 && bitten.burn.length === 6 && fg.player.guard === 1,
+        'a fight bite comes through with the metres bitten off ("Bitten! −42 m") and the part that broke off');
+    check(bounced.type === 'bump' && bounced.a === fg.player && fg.player.fwd.x > 0.999 && fg.player.vdir.x > 0.999 && fg.player.stun === 0.5,
+        'bouncing off a head: your own dragon turns the way the server says, stunned');
+    fg.close();
+
     // A room that's gone (a restart without Firestore forgets it): stop at once.
     const res = await fetch(BASE + '/api/rooms', { method: 'POST', headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Brief Room' }) });
     const room = (await res.json()).room;

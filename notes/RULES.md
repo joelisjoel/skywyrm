@@ -39,6 +39,13 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 | `botSunGap` | 60 | m: bots leave a sun crystal alone until it has drifted this far from the sun, so they don't camp the sun |
 | `girth` | 1 | Bigger dragons are fatter: body radius × (1 + `girth` × ((length − 12 m) ÷ 88 m)^`girthExp`), so ×2 at 100 m and ×3 at 300 m, newborns unchanged. Hitboxes grow with the body (a bite still costs what it did). 0 = the old thin dragons |
 | `girthExp` | 0.585 | Shape of the girth curve (0.585 gives ×3 at 300 m when it's ×2 at 100 m) |
+| `fight` | 0 | **Fight mode.** 1: bodies are safe to touch, and a head touching another dragon's body bites it there: everything behind breaks off. Covers `tailBite` (a tip is just part of the body). 0 = classic (every body is poisonous) |
+| `biteGain` | 0.3 | Fight: share of the bitten-off mass the biter gains at once (half for a bot over 400 mass); the rest (× `lootShare`) drops as food along the broken-off part |
+| `biteMinLen` | 10 | Fight: m; a bite that would leave less than this kills (the biter gets the kill) |
+| `biteCooldown` | 0.4 | Fight: s between one dragon's bites |
+| `biteGuard` | 1.2 | Fight: s a bitten dragon can't be bitten again (it flashes white) |
+| `headonRatio` | 1.25 | Fight: head to head, a dragon this × the other's mass wins; closer in size, both bounce off |
+| `headonStun` | 0.5 | Fight: s both are stunned after bouncing off |
 
 ## Where to change them
 
@@ -51,8 +58,18 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
   revision; roll back via *Revisions*.
 - **One room:** rooms read `meta.rules` (see `server/rooms.js`,
   `World.rule(k)` in `site/js/sim.js`). Every room is a beginner room and overrides
-  `botAggrMax: 0.5`. A future "create server" option can store `rules` in the
-  room's Firestore document.
+  `botAggrMax: 0.5`. The Create server form's **Fight mode** switch stores
+  `{"fight": 1}` (or `0`) in the room's `rules`, saved in its Firestore
+  document. `POST /api/rooms` accepts only that: any other rule is ignored.
+- **Fight mode** (`fight`):
+  - Solo: Settings → Server → Fight mode (this visit only), or the tuning panel.
+  - A server: the Create server form's switch. Its lobby row shows "⚔ Fight".
+    Skyhold and The Orb stay classic.
+  - Every room: `WYRM_TUNE` = `{"fight":1}` would do it (Skyhold and The Orb
+    too), but pages cached from before fight mode are kept out of fight
+    rooms (they're asked to reload), so that would turn them away from
+    every room. Wait a release, and ask Joel first: it's a Cloud Run
+    setting.
 
 Player-side toggles live in Settings → Player: Music (N), Dragon voice,
 Mute all sound (M), Graphics (Auto / High / Low) and more.

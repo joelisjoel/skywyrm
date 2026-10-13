@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, tierFor } from './tunables.js?v=29';
-import { World, Dragon, ELEMENTS } from './sim.js?v=29';
-import { MOODS } from './bots.js?v=29';
+import { T, DEFAULTS, tierFor } from './tunables.js?v=30';
+import { World, Dragon, ELEMENTS, quatFromForwardUp } from './sim.js?v=30';
+import { MOODS } from './bots.js?v=30';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -120,8 +120,9 @@ export class NetGame {
         this.parked = false;            // wings folded (Esc): out of the sky, length kept
         this.base = base; this.roomId = roomId;
         this.url = base.replace(/^http/, 'ws') + '/ws?room=' + encodeURIComponent(roomId);
-        // caps: what this browser understands beyond the original protocol ('el': breath elements).
-        this.hello = { t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '', caps: ['el'] };
+        // caps: what this browser understands beyond the original protocol ('el': breath elements;
+        // 'fight': fight mode, without which a fight room turns the page away).
+        this.hello = { t: 'hello', name, perks: extras.perks || [], skin: extras.skin || '', caps: ['el', 'fight'] };
         this.token = null;              // resume token from the last welcome (kept in memory only)
         this.retry = null;              // { since, n } while reconnecting
         this.dormant = false;           // dropped while dead: reconnect when you fly again (wake)
@@ -221,7 +222,7 @@ export class NetGame {
     // return (and each death holds on to a removed dragon).
     queue(e) {
         const keep = e.type === 'parking' || e.type === 'unparked' || e.type === 'parked'
-            || ((e.type === 'death' || e.type === 'bite') && e.d === this.player);
+            || ((e.type === 'death' || e.type === 'bite') && e.d === this.player) || (e.type === 'bite' && e.o === this.player);
         if (keep || !(document.hidden || this.events.length >= 200)) this.events.push(e);
     }
     dragon(id) { return (this.world && this.world.byId.get(id)) || this.gone.get(id) || null; }
@@ -246,7 +247,8 @@ export class NetGame {
         if (m.rules && typeof m.rules === 'object') for (const [k, v] of Object.entries(m.rules)) if (k in DEFAULTS && typeof v === 'number') w.rules[k] = v;
         if (!('fireCharge' in m.tune)) w.rules.fireCharge = 0;     // an older server: one dragonfire charge at a time…
         if (!('elements' in m.tune)) w.rules.elements = 0;         // …and only fire…
-        if (!('girth' in m.tune)) w.rules.girth = 0;               // …and thin dragons (its hitboxes)
+        if (!('girth' in m.tune)) w.rules.girth = 0;               // …and thin dragons (its hitboxes)…
+        if (!('fight' in m.tune)) w.rules.fight = 0;               // …and classic rules
         // After a reconnect the server may hand back the same dragon
         // (`resumed`): keep its object, so the game's references and this
         // life's stats carry on. Otherwise (a fresh dragon, or a server that
@@ -327,6 +329,7 @@ export class NetGame {
         const f = s[10];
         d.alive = !!(f & 1); d.boosting = !!(f & 2); d.braking = !!(f & 4);
         d.protect = f & 8 ? 1 : 0; d.shield = f & 16 ? Math.max(d.shield, 1) : 0;
+        d.guard = f & 2048 ? 1 : 0;                                     // fight mode: just bitten (it flashes)
         if (d !== this.player) { d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; d.chill = f & 512 ? 1 : 0; d.stun = f & 1024 ? 1 : 0; }
     }
 
@@ -408,9 +411,29 @@ export class NetGame {
                     break;
                 }
                 case 'acid': { const o = this.dragon(e.o); if (o) this.queue({ type: 'acid', d: this.dragon(e.id), o }); break; }
-                case 'bite': {
+                case 'bite': {                                                  // f: fight mode's body bite (l m bitten off, the broken-off part, kill)
                     const d = this.dragon(e.id), o = this.dragon(e.o);
-                    if (d && o) this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color });
+                    if (!d || !o) break;
+                    const fight = e.f === 1;
+                    if (fight) o.guard = 1;
+                    this.queue({ type: 'bite', d, o, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z, color: o.color, fight, fatal: e.kill === 1,
+                        cut: +e.l || 0, burn: fight && Array.isArray(e.burn) ? e.burn.map(Number) : [] });
+                    break;
+                }
+                // Fight mode: two heads bounced off each other. Your own dragon turns
+                // away at once (the server holds it to that heading) and is stunned.
+                case 'bump': {
+                    const a = this.dragon(e.id), b = this.dragon(e.o), s = +e.s || 0;
+                    if (!a || !b) break;
+                    for (const [d, v] of [[a, e.a], [b, e.b]]) {
+                        if (d !== p || !p.alive || !Array.isArray(v) || !v.every(Number.isFinite)) continue;
+                        const dir = new Vector3(v[0], v[1], v[2]);
+                        if (dir.lengthSq() < 0.5) continue;
+                        quatFromForwardUp(dir.normalize(), p.up, p.quat);
+                        p.updateFrame(); p.vdir.copy(p.fwd);
+                        p.stun = Math.max(p.stun, s);
+                    }
+                    this.queue({ type: 'bump', a, b, stun: s, x: +e.x, y: +e.y, z: +e.z });
                     break;
                 }
                 case 'pearl': { const d = this.dragon(e.id); if (d) this.queue({ type: 'pearl', d, gain: e.g | 0, x: +e.x, y: +e.y, z: +e.z }); break; }

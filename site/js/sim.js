@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=29';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=30';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -129,6 +129,7 @@ export class Dragon {
         this.element = 'fire'; this.breathEl = 'fire';  // what the stored charges breathe; the breath in progress
         this.chill = 0; this.stun = 0;                  // s left: slowed by ice, can't steer after lightning
         this.chillAt = 0; this.stunAt = 0; this.acidAcc = 0; this.lastAcid = -9;
+        this.guard = 0; this.lastBite = -9;            // fight mode: s left it can't be bitten again; when it last bit
         this.kills = 0; this.bornAt = 0; this.peakMass = this.mass; this.bestRank = 99;
         this.tier = 0;
         this.boosting = false; this.braking = false; this.boostAcc = 0;
@@ -409,6 +410,7 @@ export class World {
         d.shield = 0; d.magnet = 0; d.fire = 0; d.breath = 0; d.breathHit = false;
         d.breathLevel = 0; d.breathHits.length = 0;
         d.element = d.breathEl = 'fire'; d.chill = d.stun = 0; d.acidAcc = 0;
+        d.guard = 0; d.lastBite = -9;
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
@@ -663,11 +665,13 @@ export class World {
         if (d.protect > 0) {
             d.protect -= dt;
             // Don't let protection lapse while the head is inside a tail.
-            if (d.protect <= 0 && this.tailDanger(d.pos, d.id, d.r * T.headColScale)) d.protect = 0.1;
+            // (In fight mode too: a newborn inside a body neither bites it nor gets bitten.)
+            if (d.protect <= 0 && this.tailDanger(d.pos, d.id, d.r * T.headColScale, null, true)) d.protect = 0.1;
             if (d.protect < 0) d.protect = 0;
         }
         d.shield = Math.max(0, d.shield - dt);
         d.magnet = Math.max(0, d.magnet - dt);
+        if (d.guard > 0) d.guard = Math.max(0, d.guard - dt);
     }
 
     // ------------------------------------------------ spatial hash
@@ -718,7 +722,10 @@ export class World {
     // Used by bot feelers.
     // safeTip: { id, from } — that dragon's beads from `from` on are a tail
     // tip the caller means to bite, so they don't count as danger.
-    tailDanger(p, selfId, pad, safeTip = null) {
+    // In fight mode (rule fight) bodies are harmless (they're for biting),
+    // so none counts unless `any` (any body at all).
+    tailDanger(p, selfId, pad, safeTip = null, any = false) {
+        if (!any && this.rule('fight') > 0) return 0;
         let hit = 0;
         this.queryBeads(p, (i) => {
             const owner = this.bOwner[i];
@@ -735,9 +742,20 @@ export class World {
     }
 
     // ------------------------------------------------ collisions (spec §6.3)
+    // Classic: a head touching another dragon's body dies on it (or nibbles
+    // its tail tip, rule tailBite), and head to head the heavier one wins.
+    // Fight mode (rule fight): bodies are for biting. A head touching
+    // another dragon's body bites it there (bodyBite), and head to head a
+    // dragon headonRatio × the other's mass wins; closer in size, both
+    // bounce off (bounce). Walls, spawn protection and your own body work
+    // the same in both.
     collide() {
         const deaths = [];
         const P = this.player;
+        const fight = this.rule('fight') > 0;
+        // Fight mode: heads that touch settle it head to head (below), so
+        // that pair doesn't also bite each other's necks.
+        const heads = fight ? this.headContacts() : null;
         for (const d of this.dragons) {
             if (!d.alive) continue;
             const rh = d.r * T.headColScale;
@@ -749,7 +767,10 @@ export class World {
             if (d.protect > 0 || d.stun > 0) continue;
             // Head → other tails. The closest bead touched decides: a tail tip
             // (last biteBeads) is a bite when tailBite is on; anything else kills.
+            // In fight mode the closest body touched is bitten instead (unless
+            // it was just bitten: then the head passes through).
             let killer = null, hitD = Infinity, hitIdx = -1;
+            let prey = null, preyD = Infinity, preyIdx = -1;
             const encR = T.encounterDist;
             this.queryBeads(d.pos, (i) => {
                 const owner = this.bOwner[i];
@@ -768,10 +789,15 @@ export class World {
                     d.lastEncounter.set(owner, this.time);
                 }
                 if (o.protect > 0) return false;
+                const toxic = !fight;
                 const lethal = rh + o.r * T.tailColScale;
-                if (dd < lethal * lethal) { if (dd < hitD) { hitD = dd; killer = o; hitIdx = this.bIdx[i]; } return false; }
-                // Near miss tracking for the player.
-                if (d === P || d.human) {
+                if (dd < lethal * lethal) {
+                    if (toxic) { if (dd < hitD) { hitD = dd; killer = o; hitIdx = this.bIdx[i]; } }
+                    else if (!(o.guard > 0) && dd < preyD) { preyD = dd; prey = o; preyIdx = this.bIdx[i]; }
+                    return false;
+                }
+                // Near miss tracking for the player (a body that could have killed).
+                if (toxic && (d === P || d.human)) {
                     const nm = lethal + T.nearMissPad;
                     if (dd < nm * nm && d.speed >= T.speedCruise * 0.9) {
                         const st = d.near.get(owner);
@@ -780,7 +806,8 @@ export class World {
                 }
                 return false;
             });
-            if (killer && this.rule('tailBite') && hitIdx >= Math.max(4, killer.nBeads - this.rule('biteBeads'))) {
+            // (Fight mode covers tail tips too: any bite is a bodyBite.)
+            if (killer && !fight && this.rule('tailBite') && hitIdx >= Math.max(4, killer.nBeads - this.rule('biteBeads'))) {
                 this.bite(d, killer, hitIdx);
                 killer = null;
             }
@@ -791,11 +818,12 @@ export class World {
                 } else {
                     deaths.push({ d, killer, cause: 'tail' });
                 }
-            }
+            } else if (prey && !heads.keys.has(d.id + ':' + prey.id)) this.bodyBite(d, prey, preyIdx, deaths);
         }
-        // Head ↔ head: smaller dies; within 5% both die.
+        // Head ↔ head: smaller dies; within 5% both die. (Fight mode: headOn.)
         const ds = this.dragons;
-        for (let i = 0; i < ds.length; i++) {
+        if (fight) this.headOn(heads, deaths);
+        else for (let i = 0; i < ds.length; i++) {
             const a = ds[i];
             if (!a.alive || a.protect > 0 || a.stun > 0) continue;
             for (let j = i + 1; j < ds.length; j++) {
@@ -846,6 +874,106 @@ export class World {
         d.mass += gain;
         const i = bead * 3;
         this.emit({ type: 'bite', d, o, gain: Math.round(gain), lost: Math.round(lost), x: o.beads[i], y: o.beads[i + 1], z: o.beads[i + 2], color: o.color });
+    }
+
+    // Fight mode: d's head bites o's body at `bead`, and everything behind
+    // it breaks off. d gains biteGain of the mass bitten off at once (half
+    // that for a bot over botGrowthCapMass, as with food); the rest drops
+    // as food along the broken-off part (lootShare of it, like any loot).
+    // Mass lies along the body as its length does (a hatchling's first
+    // 12 m hold the spawn mass), so a bite halfway down a 200 m dragon
+    // takes about half of what it grew. A bite that would leave less than
+    // biteMinLen kills o instead: d gets the kill and o's loot drops as
+    // usual. d bites at most once every biteCooldown s, and o can't be
+    // bitten again for biteGuard s. The Ember Shield takes a bite (it pops).
+    // A bite that would take next to nothing (a hatchling's tip) does nothing.
+    bodyBite(d, o, bead, deaths) {
+        if (this.time - d.lastBite < this.rule('biteCooldown') || o.guard > 0) return;
+        const cut = bead * o.beadSpacing, L0 = lengthFor(T.spawnMass), L = Math.max(cut, o.shownLen || o.len);
+        const fatal = cut < this.rule('biteMinLen');
+        const keep = fatal ? 0 : L > L0 ? T.spawnMass + Math.max(0, o.mass - T.spawnMass) * Math.max(0, cut - L0) / (L - L0) : o.mass;
+        const lost = o.mass - keep;
+        if (!fatal && lost < 0.5) return;
+        d.lastBite = this.time;
+        o.guard = this.rule('biteGuard');
+        const i = bead * 3, x = o.beads[i], y = o.beads[i + 1], z = o.beads[i + 2];
+        if (o.shield > 0) {
+            o.shield = 0;
+            this.emit({ type: 'shieldPop', d: o, by: d });
+            return;
+        }
+        if (fatal) {
+            deaths.push({ d: o, killer: d, cause: 'bite' });
+            this.emit({ type: 'bite', d, o, gain: 0, lost: o.mass, cut: Math.round(L), x, y, z, color: o.color, burn: [], fight: true, fatal: true });
+            return;
+        }
+        let gain = lost * this.rule('biteGain');
+        if (d.isBot && d.mass > T.botGrowthCapMass) gain *= 0.5;     // big bots grow at half rate, as from food
+        const burn = [];
+        for (let b = bead; b < o.nBeads; b += 2) burn.push(o.beads[b * 3], o.beads[b * 3 + 1], o.beads[b * 3 + 2]);
+        this.lootAlong(o, bead, (lost - gain) * T.lootShare, o.color2);
+        o.mass = keep; o.len = Math.min(o.len, cut);
+        d.mass += gain;
+        this.emit({ type: 'bite', d, o, gain: Math.round(gain), lost, cut: L - cut, x, y, z, color: o.color, burn, fight: true });
+    }
+
+    // Fight mode: pairs of heads touching (neither protected nor stunned),
+    // with `keys` ('a:b' both ways) to look a pair up.
+    headContacts() {
+        const ds = this.dragons, pairs = [];
+        pairs.keys = new Set();
+        for (let i = 0; i < ds.length; i++) {
+            const a = ds[i];
+            if (!a.alive || a.protect > 0 || a.stun > 0) continue;
+            for (let j = i + 1; j < ds.length; j++) {
+                const b = ds[j];
+                if (!b.alive || b.protect > 0 || b.stun > 0) continue;
+                const rr = (a.r + b.r) * T.headColScale;
+                if (a.pos.distanceToSquared(b.pos) >= rr * rr) continue;
+                pairs.push([a, b]);
+                pairs.keys.add(a.id + ':' + b.id); pairs.keys.add(b.id + ':' + a.id);
+            }
+        }
+        return pairs;
+    }
+
+    // Fight mode, head to head: a dragon headonRatio × the other's mass
+    // wins (the smaller dies); closer in size than that, both bounce off.
+    headOn(pairs, deaths) {
+        const k = Math.max(1, this.rule('headonRatio'));
+        for (const [a, b] of pairs) {
+            if (a.stun > 0 || b.stun > 0) continue;              // already bounced off another this tick
+            if (a.mass >= b.mass * k) deaths.push({ d: b, killer: a, cause: 'head' });
+            else if (b.mass >= a.mass * k) deaths.push({ d: a, killer: b, cause: 'head' });
+            else this.bounce(a, b);
+        }
+    }
+
+    // Two heads too close in size to settle it bounce apart: each turns
+    // away from the other (its heading reflected off the line between
+    // them, plus a push away) and is stunned for headonStun s (the stun of
+    // lightning), so it flies off straight before it can steer back. A
+    // browser's own dragon turns when the news reaches it (event bump);
+    // the server only stuns it, and holds it to its heading once it has.
+    bounce(a, b) {
+        const n = new Vector3().subVectors(a.pos, b.pos), dist = n.length();
+        if (dist > 1e-6) n.multiplyScalar(1 / dist); else n.copy(b.fwd);
+        const stun = this.rule('headonStun'), gap = (a.r + b.r) * T.headColScale - dist;
+        const dirs = [];
+        for (const [d, s] of [[a, 1], [b, -1]]) {
+            const away = n.clone().multiplyScalar(s), dir = d.vdir.clone();
+            const into = dir.dot(away);
+            if (into < 0) dir.addScaledVector(away, -2 * into);
+            dir.addScaledVector(away, 0.6).normalize();
+            dirs.push(dir);
+            if (!d.remote) {
+                quatFromForwardUp(dir, d.up, d.quat);
+                d.updateFrame(); d.vdir.copy(dir);
+                if (gap > 0) d.pos.addScaledVector(away, gap / 2 + 0.05);
+            }
+            if (stun > 0) { if (!(d.stun > 0)) d.stunAt = this.time; d.stun = Math.max(d.stun, stun); }
+        }
+        this.emit({ type: 'bump', a, b, da: dirs[0], db: dirs[1], stun, x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2, z: (a.pos.z + b.pos.z) / 2 });
     }
 
     kill(d, killer, cause) {
@@ -1338,14 +1466,20 @@ export class World {
         // Burning segment (for the renderer) + loot along it.
         const burn = [];
         for (let b = t.bead; b < o.nBeads; b += 2) burn.push(o.beads[b * 3], o.beads[b * 3 + 1], o.beads[b * 3 + 2]);
-        const n = Math.max(1, Math.ceil(lost * T.lootShare / 6));
-        const val = lost * T.lootShare / n;
-        for (let k = 0; k < n; k++) {
-            const b = Math.min(o.nBeads - 1, t.bead + Math.floor((k + Math.random()) / n * (o.nBeads - t.bead))) * 3;
-            this.addOrb(o.beads[b], o.beads[b + 1], o.beads[b + 2], val, k % 2 ? o.color : 0xFF9A3C, T.lootTtl);
-        }
+        this.lootAlong(o, t.bead, lost * T.lootShare, 0xFF9A3C);
         o.mass = newMass; o.len = Math.min(o.len, cutLen);
         this.emit({ type: 'sever', d, o, lost, burn, color: o.color });
+    }
+
+    // `total` mass as loot (orbs of about 6) spread along o's body from
+    // bead `from` to its tip, in its colour and c2.
+    lootAlong(o, from, total, c2) {
+        const n = Math.max(1, Math.ceil(total / 6));
+        const val = total / n;
+        for (let k = 0; k < n; k++) {
+            const b = Math.min(o.nBeads - 1, from + Math.floor((k + Math.random()) / n * (o.nBeads - from))) * 3;
+            this.addOrb(o.beads[b], o.beads[b + 1], o.beads[b + 2], val, k % 2 ? o.color : c2, T.lootTtl);
+        }
     }
 
     // Body temp: the sun at the arena centre and crowds of dragons heat

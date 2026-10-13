@@ -32,7 +32,7 @@
     <meta name="twitter:description" content="A 3D dragon game: eat glowing orbs, grow huge, and make other dragons crash into your tail. Free in your browser on phones and computers. No sign-up, no ads.">
     <meta name="twitter:image" content="https://skywyrm.io/og.jpg">
     <meta name="twitter:image:alt" content="A red and gold Chinese dragon coils through a golden sky toward the sun, above the word Skywyrm">
-    <link rel="stylesheet" href="style.css?v=31">
+    <link rel="stylesheet" href="style.css?v=32">
     <script type="importmap">
         {
             "imports": {
@@ -106,6 +106,7 @@
                     <label><input type="radio" name="create-arena" value="sky" checked> <b>Skyhold</b></label>
                     <label><input type="radio" name="create-arena" value="orb"> <b>The Orb</b></label>
                 </div>
+                <label class="opt" id="create-fight-opt"><input type="checkbox" id="create-fight"> <span><b>⚔ Fight mode</b><small>Bite any part of a dragon, not just the tail tip. Bodies are safe to touch</small></span></label>
                 <div id="create-error" class="err"></div>
                 <div class="menu-row">
                     <button type="submit" class="cta small">Create &amp; join</button>
@@ -154,6 +155,7 @@
             <label class="opt-range"><span>Starting dragons</span><input type="range" id="srv-start" min="0" max="30" step="1"><b id="srv-start-v"></b></label>
             <label class="opt-range"><span>Max dragons</span><input type="range" id="srv-max" min="1" max="40" step="1"><b id="srv-max-v"></b></label>
             <label class="opt-range"><span>New dragon every</span><input type="range" id="srv-every" min="5" max="120" step="5"><b id="srv-every-v"></b></label>
+            <label class="opt"><input type="checkbox" id="srv-fight"> <span><b>⚔ Fight mode</b><small>Bite any part of a dragon, not just the tail tip. Bodies are safe to touch; head to head, the bigger one wins</small></span></label>
         </div>
         <div class="tab-body" data-body="player">
             <p class="note">Just for you, on this device.</p>
@@ -200,6 +202,7 @@
             <div><b>Body temp</b></div><div>the sun at the centre and crowds warm you up — hotter = faster, with a bigger thrust tank</div>
             <div><b>Thrust</b></div><div>boost runs on a ~10 s tank that refills when you're not boosting</div>
             <div class="no-touch"><b>E / F</b></div><div class="no-touch">breathe — grab a crystal first: red fire burns through a tail, blue ice slows everyone in the cone, violet lightning stuns a line of dragons, green acid spits a cloud that melts tails. Crystals stack (up to 5): one breath spends them all, reaching farther and wider, and the last colour you ate decides what you breathe</div>
+            <div><b>⚔ Fight mode</b></div><div>on servers marked ⚔ Fight (and in Settings → Server for solo): bite any part of another dragon to break off the rest, and bodies are safe to touch. Head to head, a dragon a quarter bigger wins; closer in size, you both bounce off</div>
             <div class="no-touch"><b>Esc / P</b></div><div class="no-touch">pause — online, folds your wings: after 3 s you leave the sky and your length is kept</div>
             <div class="no-touch"><b>N</b></div><div class="no-touch">music on / off</div>
             <div class="no-touch"><b>M</b></div><div class="no-touch">mute / unmute all sound (or the speaker button, top left)</div>
@@ -245,7 +248,7 @@
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=68"></script>
+    <script type="module" src="js/main.js?v=69"></script>
 </body>
 
 </html>
