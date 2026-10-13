@@ -2,8 +2,8 @@
 // style radar, off-screen arrows for nearby heads, names, leaderboard,
 // messages, kill feed. Names only ever go through textContent / fillText.
 import * as THREE from 'three';
-import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=30';
-import { MOOD_ICON } from './bots.js?v=30';
+import { T, TIERS, thrustCap, speedBonus } from './tunables.js?v=31';
+import { MOOD_ICON } from './bots.js?v=31';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -38,6 +38,8 @@ const ICON = {
     ice: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/>',
     bolt: '<path d="M7 15a4 4 0 1 1 1.2-7.8A5 5 0 0 1 17.7 8.5 3.3 3.3 0 0 1 17 15"/><path d="m12.5 12-2.5 4.5h4L11.5 21"/>',
     acid: '<path d="M12 3c3 4 6 7.4 6 11a6 6 0 0 1-12 0c0-3.6 3-7 6-11z"/><circle cx="10" cy="15" r="1.4"/><circle cx="13.6" cy="12.2" r="0.9"/>',
+    // Poison Skin (fight mode): a spiny puffer, don't touch.
+    poison: '<circle cx="12" cy="12" r="5"/><path d="M12 2.5v3.5M12 18v3.5M2.5 12H6M18 12h3.5M5.3 5.3l2.4 2.4M16.3 16.3l2.4 2.4M5.3 18.7l2.4-2.4M16.3 7.7l2.4-2.4"/><circle cx="10.4" cy="11" r="0.9"/><circle cx="13.6" cy="11" r="0.9"/>',
 };
 ICON.chill = ICON.ice; ICON.stun = ICON.bolt;
 const EL_COLOR = { fire: '#FF3A20', ice: '#8FE6FF', bolt: '#C9A0FF', acid: '#7CFF4F' };
@@ -100,7 +102,7 @@ export class Hud {
         };
         this.g = {};
         const box = document.getElementById('hud-gauges');
-        for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet', 'chill', 'stun']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
+        for (const k of ['temp', 'thrust', 'fire', 'shield', 'magnet', 'poison', 'chill', 'stun']) { this.g[k] = gauge(k); box.appendChild(this.g[k].el); }
         this.g.fire.el.insertAdjacentHTML('beforeend', '<kbd>E</kbd>');
         this.tFire = document.getElementById('t-fire');
         this.fireIcon = this.g.fire.el.querySelector('.icon');
@@ -310,14 +312,16 @@ export class Hud {
                 c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
             }
         };
+        // Dragons; one with Poison Skin (fight mode) as a violet ring: keep your head off it.
         for (const d of world.dragons) {
             if (!d.alive || d === p) continue;
-            draw(d.pos, hex(d.color), false);
+            if (d.poison > 0) draw(d.pos, '#B36BFF', false, true);
+            else draw(d.pos, hex(d.color), false);
         }
         // Power-ups by colour; breath crystals (fire, ice, lightning, acid) stay pinned to the rim,
         // and sun crystals (rule sunCrystals) wear a gold ring.
         for (const pu of world.powerups) {
-            draw(pu.pos, EL_COLOR[pu.type] || { shield: '#FFB060', magnet: '#4D9BFF' }[pu.type] || '#fff', false, false, !!EL_COLOR[pu.type], !!pu.sun);
+            draw(pu.pos, EL_COLOR[pu.type] || { shield: '#FFB060', magnet: '#4D9BFF', poison: '#B36BFF' }[pu.type] || '#fff', false, false, !!EL_COLOR[pu.type], !!pu.sun);
         }
         // Acid clouds: green rings, so you can fly round them.
         for (const c of world.clouds || []) draw(_v2.set(c.x, c.y, c.z), 'rgba(124,255,79,0.85)', false, true);
@@ -381,6 +385,8 @@ export class Hud {
             g.shield.set(p.shield / T.shieldTime);
             g.magnet.el.hidden = !(p.magnet > 0);
             g.magnet.set(p.magnet / T.magnetTime);
+            g.poison.el.hidden = !(p.poison > 0);                              // Poison Skin (fight mode)
+            g.poison.set(p.poison / Math.max(1, world.rule('poisonTime')));
             // Chilled (ice) or stunned (lightning): a draining gauge while it lasts.
             this.chillMax = p.chill > 0 ? Math.max(this.chillMax, p.chill) : 0;
             this.stunMax = p.stun > 0 ? Math.max(this.stunMax, p.stun) : 0;

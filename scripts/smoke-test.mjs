@@ -5,9 +5,10 @@
 // server (blocked here); a request anywhere else, or a Content-Security-
 // Policy violation, fails the test. In flight, messages keep their times
 // (hud.js msgTime) and leave when they fade, and fight mode's body bite is
-// played out (Settings → Server switch, one forced bite). Then, on a
-// phone-sized page, an invite link (?room=) pins that server first in the
-// lobby (with a faked room list).
+// played out (Settings → Server switch, one forced bite), and Poison Skin
+// (a crystal, a poisoned bot, picking one up). Then, on a phone-sized
+// page, an invite link (?room=) pins that server first in the lobby (with
+// a faked room list).
 // Run: npm install && npx playwright install chromium && npm run smoke
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -96,6 +97,19 @@ try {
     const bite = await page.evaluate(() => ({ fight: window.__wyrm.world.rule('fight'), ...window.__wyrm.world.bitten }));
     await page.screenshot({ path: path.join(shots, 'fight.png') });
     if (bite.fight !== 1 || !bite.event || !(bite.after < bite.before)) errors.push(`fight mode: no body bite (${JSON.stringify(bite)})`);
+    // Poison Skin: a crystal floating ahead, a poisoned bot, and you picking one up (gauge and message).
+    await page.evaluate(() => {
+        const w = window.__wyrm.world, p = window.__wyrm.player;
+        p.protect = 3;                                                     // nothing may end this life meanwhile
+        w.powerups.push({ pos: p.pos.clone().addScaledVector(p.fwd, 14), type: 'poison', spin: 0 });
+        w.powerups.push({ pos: p.pos.clone(), type: 'poison', spin: 0 });
+        const bot = w.dragons.find((d) => d.isBot && d.alive);
+        if (bot) bot.poison = 8;
+    });
+    await page.waitForTimeout(1200);
+    const poison = await page.evaluate(() => ({ mine: window.__wyrm.player.poison, alive: window.__wyrm.player.alive, gauge: !document.querySelector('.g-poison').hidden }));
+    await page.screenshot({ path: path.join(shots, 'poison.png') });
+    if (!(poison.mine > 0) || !poison.gauge) errors.push(`Poison Skin: not picked up or no gauge (${JSON.stringify(poison)})`);
 
     // An invite link on a phone: the invited server is pinned first and lit,
     // nobody is joined, and room and src leave the address bar. (Joining it is

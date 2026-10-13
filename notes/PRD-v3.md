@@ -255,6 +255,7 @@ action and clear of the walls, the cloud sea and the sun.
 | **Frost** (ice-blue shard) | The same cone, in frost. Every dragon it touches is chilled for 2.5 s: half speed, no boost, turns 40% slower |
 | **Lightning** (violet star) | A long, narrow bolt (36 m) strikes the first dragon in line and jumps to the nearest one within 14 m. Each is stunned for 0.6 s (it can't steer and flies straight) and sheds 4% of its mass as food |
 | **Acid** (green bubble) | Spits a cloud (6 m radius) ahead that hangs for 6 s. Any other dragon with its body in it melts 4 mass a second into food while it stays inside. Your own acid never hurts you |
+| **Poison Skin** (violet spiny puffer, fight mode only, §5.11) | For 10 s your whole body is poisonous, like every body in classic: a head that touches it is out and you get the kill, and nobody can bite you. Your body shimmers toxic green and violet with a haze, your head turns green, a gauge counts down, and the radar shows you as a violet ring. "POISON SKIN — 10 s: biters beware!" |
 
 **Stacking dragonfire** (rule `fireCharge`) ✅
 - Each red crystal adds one charge, up to 5 (`fireChargeMax`). Pressing fire
@@ -363,6 +364,10 @@ played and compared (§14, decision 9).
 - **Unchanged:** spawn protection (a newborn can't bite or be bitten), and
   the Ember Shield, which takes one bite (it pops and nothing breaks off).
   It still doesn't stop head-ons.
+- **Poison Skin** (a power-up only in fight mode, §5.8): for 10 s your body
+  is poisonous the classic way, and can't be bitten. It is in the random
+  crystal mix (1 in 5). Bots never go for a poisoned body, steer round it
+  like a wall and run from a poisoned head coming at them.
 - **Feel:** a chomp and a burst where the bite lands, the broken part
   crumbling into gold motes, the jaws snapping, "CHOMP +29" for you and
   "Bitten! −42 m" when it's you. The kill feed shows kills only, not every
@@ -800,22 +805,33 @@ Each decision has a recommended default, so work can start on that default.
    dragons eating each other anywhere, not just at the tail. It is built as
    the rule `fight` (§5.11), off by default, so both can be tested: solo
    from Settings → Server, online by creating a server with the switch.
-   - **What changes**, measured with 25 seeded bots in beginner rooms
-     (6 minutes × 3 seeds in each world; the numbers move a little between
-     runs): about half the deaths (about 4.5 a minute instead of 9), most
-     of them dragons bitten in two, but about 50 bites a minute instead of
-     a tail tip nibbled every two minutes, each taking about 50–60 mass.
-     Dragons stay shorter (about 50 m on average instead of 67, the longest
-     about 235 m instead of 300) because big bodies are big targets.
-     Hatchlings were bitten to death in their first 30 s no more often than
-     they were killed in classic (0–10% against 10–14%), but about one in
-     five was bitten at least once.
+   - **What changes**, measured with 25 seeded bots at beginner
+     aggression (6 minutes × 3 seeds in each world, Skyhold / The Orb):
+
+     | | Classic | Fight mode |
+     |---|---|---|
+     | Deaths a minute | 9.1 / 9.4 | 4.6 / 5.2 (almost all bitten in two) |
+     | Bites a minute | 0.5 / 0 (tail tips) | 54 / 52, about 56 mass each |
+     | Head-on bounces a minute | none | 0.3 / 0.1 |
+     | Average length | 67 / 71 m | 52 / 52 m |
+     | Longest dragon | 310 / 300 m | 212 / 274 m |
+     | Newborns (≤ 25 mass) killed in their first 30 s | 14% / 10% | 9% / 5% |
+     | …bitten at least once in their first 30 s | none | 25% / 27% |
+     | Poison Skin crystals caught a minute | none | 0.4 / 0.3 |
+
+     Half the deaths, but every dragon is bitten about twice a minute, and
+     dragons stay shorter because big bodies are big targets. About two
+     thirds of bot bites are on purpose; bots that aren't hunting steer
+     round bodies (without that, accidental bites ran at 84 a minute and
+     lengths fell to about 40 m).
    - **Risks:** being bitten every half minute or so may feel worse to a
      young player than an occasional death, even though it's milder;
      growing big is less of a safe reward (the pillar "getting longer must
      always feel like a reward"); a nibble on a tail tip is now worth what
-     breaks off (often +2) instead of +25; and old cached pages can't join
-     fight servers until they reload.
+     breaks off (often +2) instead of +25; big dragons are the hunters'
+     favourite targets, so the biggest stay smaller; Poison Skin makes a
+     big hunter untouchable for 10 s; and
+     old cached pages can't join fight servers until they reload.
    - **Recommendation:** keep classic as the default and the permanent
      servers classic. Let the kids play a fight server and solo fight mode
      for a week, then decide whether it becomes a third permanent server, a

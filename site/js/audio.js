@@ -4,7 +4,7 @@
 // (music.js) with power-up stingers in its mode.
 import { Music } from './music.js?v=11';
 import { Voice } from './voice.js?v=4';
-import { T } from './tunables.js?v=30';
+import { T } from './tunables.js?v=31';
 
 // D minor pentatonic (D yu), the soundtrack's home; once the music is
 // running the chimes follow whatever mode it's in.
@@ -254,6 +254,7 @@ export class Audio {
         else if (kind === 'ice') { [2349.3, 2793.8, 3520].forEach((f, i) => this.tone(f, 0.4, 'sine', 0.05, i * 0.06)); }
         else if (kind === 'bolt') { this.tone(880, 0.12, 'square', 0.05, 0, 1760); this.tone(1760, 0.15, 'square', 0.04, 0.08, 3520); }
         else if (kind === 'acid') { for (let i = 0; i < 4; i++) this.tone(350 + i * 120, 0.09, 'sine', 0.06, i * 0.05, 800 + i * 150); }
+        else if (kind === 'poison') { [622.25, 523.25, 415.3].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.06, i * 0.08, f * 0.75)); this.whoosh(0.5, 300, 1300, 0.2, true); }   // Poison Skin: a creepy slide down
         this.sting(kind);
     }
     // Flaming pearl: a bright bell run up the music's current mode and a

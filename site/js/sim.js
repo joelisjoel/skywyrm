@@ -3,7 +3,7 @@
 // unchanged as the authoritative multiplayer server (spec §16). Only
 // three.js math classes are used.
 import { Vector3, Quaternion, Matrix4 } from 'three';
-import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=30';
+import { T, lengthFor, radiusFor, tierFor, thrustCap, speedBonus, sizeSpeed } from './tunables.js?v=31';
 
 const DEG = Math.PI / 180;
 const PATH_STEP = 0.5;          // m between recorded head positions
@@ -130,6 +130,7 @@ export class Dragon {
         this.chill = 0; this.stun = 0;                  // s left: slowed by ice, can't steer after lightning
         this.chillAt = 0; this.stunAt = 0; this.acidAcc = 0; this.lastAcid = -9;
         this.guard = 0; this.lastBite = -9;            // fight mode: s left it can't be bitten again; when it last bit
+        this.poison = 0;                                // fight mode: s left of Poison Skin
         this.kills = 0; this.bornAt = 0; this.peakMass = this.mass; this.bestRank = 99;
         this.tier = 0;
         this.boosting = false; this.braking = false; this.boostAcc = 0;
@@ -410,7 +411,7 @@ export class World {
         d.shield = 0; d.magnet = 0; d.fire = 0; d.breath = 0; d.breathHit = false;
         d.breathLevel = 0; d.breathHits.length = 0;
         d.element = d.breathEl = 'fire'; d.chill = d.stun = 0; d.acidAcc = 0;
-        d.guard = 0; d.lastBite = -9;
+        d.guard = 0; d.lastBite = -9; d.poison = 0;
         d.speed = T.speedCruise; d.boostAcc = 0;
         d.steer.x = d.steer.y = 0; d.bank = 0;
         d.near.clear(); d.lastEncounter.clear();
@@ -672,6 +673,7 @@ export class World {
         d.shield = Math.max(0, d.shield - dt);
         d.magnet = Math.max(0, d.magnet - dt);
         if (d.guard > 0) d.guard = Math.max(0, d.guard - dt);
+        if (d.poison > 0) d.poison = Math.max(0, d.poison - dt);
     }
 
     // ------------------------------------------------ spatial hash
@@ -723,16 +725,17 @@ export class World {
     // safeTip: { id, from } — that dragon's beads from `from` on are a tail
     // tip the caller means to bite, so they don't count as danger.
     // In fight mode (rule fight) bodies are harmless (they're for biting),
-    // so none counts unless `any` (any body at all).
+    // so only one with Poison Skin counts, unless `any` (any body at all).
     tailDanger(p, selfId, pad, safeTip = null, any = false) {
-        if (!any && this.rule('fight') > 0) return 0;
+        const toxicOnly = !any && this.rule('fight') > 0;
+        if (toxicOnly && this.anyPoison === false) return 0;          // nobody has Poison Skin (counted each step)
         let hit = 0;
         this.queryBeads(p, (i) => {
             const owner = this.bOwner[i];
             if (owner === selfId) return false;
             if (safeTip && owner === safeTip.id && this.bIdx[i] >= safeTip.from) return false;
             const d = this.byId.get(owner);
-            if (!d || d.protect > 0) return false;
+            if (!d || d.protect > 0 || (toxicOnly && !(d.poison > 0))) return false;
             const dx = this.bx[i] - p.x, dy = this.by[i] - p.y, dz = this.bz[i] - p.z;
             const rr = d.r * T.tailColScale + pad;
             if (dx * dx + dy * dy + dz * dz < rr * rr) { hit = 1; return true; }
@@ -748,7 +751,9 @@ export class World {
     // another dragon's body bites it there (bodyBite), and head to head a
     // dragon headonRatio × the other's mass wins; closer in size, both
     // bounce off (bounce). Walls, spawn protection and your own body work
-    // the same in both.
+    // the same in both. A body with Poison Skin (fight mode's power-up) is
+    // poisonous, as every body is in classic: a head touching it is out,
+    // and it can't be bitten.
     collide() {
         const deaths = [];
         const P = this.player;
@@ -768,7 +773,8 @@ export class World {
             // Head → other tails. The closest bead touched decides: a tail tip
             // (last biteBeads) is a bite when tailBite is on; anything else kills.
             // In fight mode the closest body touched is bitten instead (unless
-            // it was just bitten: then the head passes through).
+            // it was just bitten: then the head passes through), and only a
+            // Poison Skin body kills.
             let killer = null, hitD = Infinity, hitIdx = -1;
             let prey = null, preyD = Infinity, preyIdx = -1;
             const encR = T.encounterDist;
@@ -789,7 +795,7 @@ export class World {
                     d.lastEncounter.set(owner, this.time);
                 }
                 if (o.protect > 0) return false;
-                const toxic = !fight;
+                const toxic = !fight || o.poison > 0;
                 const lethal = rh + o.r * T.tailColScale;
                 if (dd < lethal * lethal) {
                     if (toxic) { if (dd < hitD) { hitD = dd; killer = o; hitIdx = this.bIdx[i]; } }
@@ -816,7 +822,7 @@ export class World {
                     d.shield = 0; d.protect = 1.5;
                     this.emit({ type: 'shieldPop', d, by: killer });
                 } else {
-                    deaths.push({ d, killer, cause: 'tail' });
+                    deaths.push({ d, killer, cause: fight ? 'poison' : 'tail' });
                 }
             } else if (prey && !heads.keys.has(d.id + ':' + prey.id)) this.bodyBite(d, prey, preyIdx, deaths);
         }
@@ -1046,6 +1052,7 @@ export class World {
             if (this.powerups.filter((p) => !p.sun).length < T.powerupMax) {            // sun crystals come on top
                 const types = ['shield', 'magnet'];
                 if (T.dragonfire) types.push(this.breathCrystal(), this.breathCrystal());
+                if (this.rule('fight') > 0) types.push('poison');                 // Poison Skin: only in fight mode
                 const p = new Vector3();
                 this.foodPoint(PU_WALL_GAP, p);   // hotspots where the food is, but not in the sun or far out
                 const c = this.arena.center, dc = _d1.subVectors(p, c).length(), home = this.arena.radius * PU_HOME;
@@ -1068,6 +1075,7 @@ export class World {
                 if (d.pos.distanceToSquared(pu.pos) < rr * rr) {
                     if (pu.type === 'shield') d.shield = T.shieldTime;
                     else if (pu.type === 'magnet') d.magnet = T.magnetTime;
+                    else if (pu.type === 'poison') d.poison = this.rule('poisonTime');
                     else {
                         // Breath charges stack (rule fireCharge), up to fireChargeMax,
                         // and the last crystal's element (rule elements) is what they
@@ -1503,6 +1511,7 @@ export class World {
         this.time += dt;
         this.events.length = 0;
         const client = this.mode === 'client';
+        this.anyPoison = this.dragons.some((d) => d.alive && d.poison > 0);
         for (const d of this.dragons) {
             if (!d.alive) continue;
             if (client) { if (d === this.player) { this.fly(d, dt); this.status(d, dt); } continue; }   // the rest arrive in snapshots

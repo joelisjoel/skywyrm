@@ -36,7 +36,7 @@ export function cleanRoomRules(raw) {
 }
 
 // A page from before fight mode doesn't know its rules (harmless bodies,
-// bites anywhere, bouncing heads), so it is kept out of a
+// bites anywhere, bouncing heads, Poison Skin), so it is kept out of a
 // fight room: join refuses it with this, which such a page shows in its
 // lobby (server.js sends it as a 'full' error and closes with 4003).
 export const FIGHT_UPDATE = 'This server plays Fight mode. Reload the page to update Skywyrm, then join.';
@@ -68,23 +68,28 @@ function newToken() {
 
 // Flags packed into one number per dragon in snapshots (older clients
 // ignore the bits they don't know: 512 chilled, 1024 stunned, 2048 just
-// bitten in fight mode).
+// bitten and 4096 Poison Skin in fight mode).
 function flags(d) {
     return (d.alive ? 1 : 0) | (d.boosting ? 2 : 0) | (d.braking ? 4 : 0) | (d.protect > 0 ? 8 : 0)
         | (d.shield > 0 ? 16 : 0) | (d.breath > 0 ? 32 : 0) | (d.human ? 64 : 0) | (d.isBot ? 128 : 0)
-        | (d.magnet > 0 ? 256 : 0) | (d.chill > 0 ? 512 : 0) | (d.stun > 0 ? 1024 : 0) | (d.guard > 0 ? 2048 : 0);
+        | (d.magnet > 0 ? 256 : 0) | (d.chill > 0 ? 512 : 0) | (d.stun > 0 ? 1024 : 0) | (d.guard > 0 ? 2048 : 0) | (d.poison > 0 ? 4096 : 0);
 }
 
 // Browsers list what they understand in hello's `caps`. One without 'el'
 // predates breath elements: it is shown ice, lightning and acid crystals
 // as fire ones (its renderer knows no others), and its dragon always
 // breathes fire (World: d.fireOnly). One without 'fight' predates fight
-// mode and is kept out of fight rooms (FIGHT_UPDATE).
+// mode and is kept out of fight rooms (FIGHT_UPDATE); should it meet a
+// Poison Skin crystal anyway, it isn't told of it (its renderer would draw
+// a shield, and its pick-up message would say dragonfire).
 const OLD_KIND = { ice: 'fire', bolt: 'fire', acid: 'fire' };
 const forOld = (e) => (e.k === 'pu' && OLD_KIND[e.kind] ? { ...e, kind: 'fire' } : e);
 const cleanCaps = (list) => (Array.isArray(list) ? list.filter((s) => typeof s === 'string' && s.length <= 16).slice(0, 8) : []);
 // A browser's own events, in words it knows.
-const eventsFor = (c, ev) => (c.el ? ev : ev.map(forOld));
+const eventsFor = (c, ev) => {
+    if (!c.el) ev = ev.map(forOld);
+    return c.fight ? ev : ev.filter((e) => !(e.k === 'pu' && e.kind === 'poison'));
+};
 
 function pathOf(d) {
     // Oldest → newest, every other point (1 m apart), 1 cm precision.
@@ -422,11 +427,12 @@ export class Room {
     // [type, x, y, z, spin]. A sun crystal (rule sunCrystals) adds its id,
     // how faded it is (1, falling to 0 at the edge) and the s until it can
     // be caught: older clients read the first five, so they see it too (as
-    // fire, without 'el'). `caps`: what the browser understands ({ el }),
-    // everything by default.
+    // fire, without 'el'). `caps`: what the browser understands ({ el,
+    // fight }), everything by default; Poison Skin crystals are left out for
+    // a browser without 'fight'.
     powerups(caps = { el: true, fight: true }) {
         const old = !caps.el;
-        return this.world ? this.world.powerups.map((p) => {
+        return this.world ? this.world.powerups.filter((p) => caps.fight || p.type !== 'poison').map((p) => {
             const q = [old && OLD_KIND[p.type] ? 'fire' : p.type, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.spin)];
             if (p.sun) q.push(p.sun, r2(p.fade), r2(p.hatch));
             return q;
@@ -517,6 +523,7 @@ export class Room {
             if (d.element !== 'fire') me.el = d.element;
             if (d.chill > 0) me.ch = r2(d.chill);
             if (d.stun > 0) me.st = r2(d.stun);
+            if (d.poison > 0) me.po = r2(d.poison);                 // fight mode: s of Poison Skin left
             if (d.corrected) { me.c = [r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]; d.corrected = false; }
             // A slow client may skip a snapshot (client.js); its food
             // changes ride along with the next one that goes out.

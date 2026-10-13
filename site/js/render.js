@@ -2,7 +2,7 @@
 // with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
 // pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=30';
+import { T, TIERS } from './tunables.js?v=31';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
@@ -10,6 +10,7 @@ const MAX_HEADS = 80;
 const HEAD_CAP = 128;            // heads drawn (each part is one instanced mesh)
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 const _c = new THREE.Color(), _white = new THREE.Color(0xffffff), _ice = new THREE.Color(0xB8DCFF);
+const _venom = new THREE.Color(0x8CFF5A);   // Poison Skin (fight mode): a poisoned head goes toxic green
 const LODE = 0x3D8BFF;           // lodestone blue
 const MAX_BEAMS = 240;
 const MAX_ARCS = 360;            // lightning ribbon quads per frame
@@ -169,8 +170,9 @@ export class Renderer {
             ice: new THREE.MeshBasicMaterial({ color: 0x52D4FF }),
             bolt: new THREE.MeshBasicMaterial({ color: 0xB884FF }),
             acid: new THREE.MeshBasicMaterial({ color: 0x5CFF2A }),
+            poison: new THREE.MeshBasicMaterial({ color: 0x9C3BFF }),             // Poison Skin (fight mode): violet, with a toxic green glow
         };
-        this.puColors = { shield: 0xFFB060, magnet: 0x4D9BFF, fire: 0xFF3A20, ice: 0x5CD8FF, bolt: 0xB57BFF, acid: 0x7CFF4F };
+        this.puColors = { shield: 0xFFB060, magnet: 0x4D9BFF, fire: 0xFF3A20, ice: 0x5CD8FF, bolt: 0xB57BFF, acid: 0x7CFF4F, poison: 0x9CFF4A };
         this.puShellMat = new THREE.MeshBasicMaterial({ color: 0xFFD0A0, wireframe: true, transparent: true, opacity: 0.6 });
         this.puMeshes = [];
         // Like Bit in Tron: snap between shapes, flashing on every change.
@@ -180,8 +182,9 @@ export class Renderer {
         const shard = new THREE.OctahedronGeometry(1, 0).scale(0.55, 1.75, 0.55), star = stellate(new THREE.OctahedronGeometry(0.85, 0), 2.2);
         const bubble = new THREE.IcosahedronGeometry(1.05, 1);
         this.puShapes = { fire: [spiky, octa, spiky, ico], shield: [octa, ico], magnet: [ico, octa],
-            ice: [shard, octa, shard, ico], bolt: [star, spiky, star, octa], acid: [bubble, ico, bubble, octa] };
-        this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2, ice: 2.6, bolt: 4.2, acid: 2.4 };
+            ice: [shard, octa, shard, ico], bolt: [star, spiky, star, octa], acid: [bubble, ico, bubble, octa],
+            poison: [spiky, bubble, star, bubble] };                               // a spiny puffer: don't touch
+        this.puRate = { fire: 3.2, shield: 2.2, magnet: 2.2, ice: 2.6, bolt: 4.2, acid: 2.4, poison: 2.8 };
         // Sun crystals (rule sunCrystals) wear an ink ring: a rim of their
         // colour inside a dark band, drawn over everything, so one still reads
         // in the sun's glare (where a glow just adds to the glare), and leave a
@@ -573,6 +576,7 @@ export class Renderer {
             if (p.tint) {
                 _c.set(p.tint === 1 ? d.color : d.color2).multiplyScalar(dim);
                 if (p.tint === 1 && d.chill > 0) _c.lerp(_ice, 0.6);            // frost whitens a chilled head
+                if (p.tint === 1 && d.poison > 0) _c.lerp(_venom, 0.45);        // Poison Skin turns it toxic green
                 m.setColorAt(i, _c);
             }
             if (p.glow) _glow.toArray(p.glow.array, i * 3);
@@ -611,6 +615,7 @@ export class Renderer {
             const ghost = d.protect > 0 ? 0.35 + 0.25 * Math.sin(time * 20) : 1;
             const frost = d.chill > 0 ? 0.6 : 0, zap = d.stun > 0 ? 0.85 : 0;    // ice-white while chilled, flickering when stunned
             const flash = d.guard > 0 ? 0.35 + 0.35 * Math.sin(time * 32) : 0;   // fight mode: just bitten (can't be bitten again yet)
+            const venom = d.poison > 0 ? 0.85 * Math.min(1, d.poison) : 0;        // fight mode: Poison Skin (fading in its last second)
             const isOther = d !== player;
             const tube = isOther ? this.bodies : this.ownBody, D = tube.data;
             if (tube.n + 2 >= tube.cap) continue;
@@ -790,6 +795,13 @@ export class Renderer {
                 if (frost) { cr += (0.8 - cr) * frost; cg += (0.94 - cg) * frost; cb += (1 - cb) * frost; }
                 if (zap) { const z = zap * (0.5 + 0.5 * Math.sin(time * 40 - b * 0.7)); cr += (1.1 - cr) * z; cg += (0.8 - cg) * z; cb += (1.7 - cb) * z; }
                 if (flash > 0) { cr += (1.6 - cr) * flash; cg += (1.5 - cg) * flash; cb += (1.3 - cb) * flash; }
+                // Poison Skin: a sheen running down the body, toxic green into
+                // violet and back, on its scales and (the other way round) its crest.
+                if (venom) {
+                    const v = 0.5 + 0.5 * Math.sin(time * 4.5 - b * 0.45), kv = venom * (0.8 + 0.2 * Math.sin(time * 9 - b * 0.9));
+                    cr += (0.12 + 0.38 * v - cr) * kv; cg += (0.85 - 0.77 * v - cg) * kv; cb += (0.08 + 0.82 * v - cb) * kv;
+                    D[k + 15] += (0.5 - 0.38 * v - D[k + 15]) * kv; D[k + 16] += (0.08 + 0.77 * v - D[k + 16]) * kv; D[k + 17] += (0.9 - 0.82 * v - D[k + 17]) * kv;
+                }
                 D[k + 12] = cr * ghost; D[k + 13] = cg * ghost; D[k + 14] = cb * ghost;
                 tube.n++;
             }
@@ -1004,6 +1016,11 @@ export class Renderer {
             glow.scale.setScalar((breath ? 16 : 9) * pop);
             star.material.color.setHex(flash ? 0xffffff : this.puColors[kind]);
             star.scale.setScalar((breath ? 0.09 : 0.045) * pop);
+            if (kind === 'poison') {
+                // Poison Skin: a slow violet and green haze round it.
+                this.emit(pu.pos.x + (Math.random() - 0.5) * 3, pu.pos.y + (Math.random() - 0.5) * 3, pu.pos.z + (Math.random() - 0.5) * 3,
+                    (Math.random() - 0.5) * 1.5, 0.5 + Math.random(), (Math.random() - 0.5) * 1.5, 0.9 + Math.random() * 0.5, 0.9, Math.random() < 0.5 ? 4 : 2);
+            }
             if (breath) {
                 // Embers rise from fire, snow drifts down from ice, sparks fly
                 // from lightning, bubbles rise from acid.
@@ -1153,9 +1170,19 @@ export class Renderer {
         for (let i = fc; i < this.fireCones.length; i++) this.fireCones[i].visible = false;
         this.drawBolts(dt, time);
         this.drawClouds(world, time);
-        // Chilled dragons shed frost; stunned ones crackle.
+        // Chilled dragons shed frost; stunned ones crackle; Poison Skin gives
+        // off a slow violet and green haze along the body.
         for (const d of world.dragons) {
-            if (!d.alive || !(d.chill > 0 || d.stun > 0) || cp.distanceToSquared(d.pos) > 150 * 150) continue;
+            if (!d.alive || !(d.chill > 0 || d.stun > 0 || d.poison > 0) || cp.distanceToSquared(d.pos) > 150 * 150) continue;
+            if (d.poison > 0 && d.nBeads) {
+                const n = Math.min(4, 1 + Math.floor(d.nBeads / 60)) * (this.quality === 'low' ? 1 : 2);
+                for (let i = 0; i < n; i++) {
+                    const b = Math.floor(Math.random() * d.nBeads) * 3;
+                    _s.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(d.r * (1 + Math.random()));
+                    this.emit(d.beads[b] + _s.x, d.beads[b + 1] + _s.y, d.beads[b + 2] + _s.z, _s.x * 0.6, 0.6 + Math.random() * 0.8, _s.z * 0.6,
+                        0.9 + Math.random() * 0.6, 1, i % 2 ? 4 : 2);
+                }
+            }
             if (d.chill > 0 && d.nBeads) {
                 const b = Math.floor(Math.random() * d.nBeads) * 3;
                 this.emit(d.beads[b] + (Math.random() - 0.5) * d.r * 2, d.beads[b + 1] + d.r, d.beads[b + 2] + (Math.random() - 0.5) * d.r * 2,
@@ -1227,6 +1254,7 @@ export class Renderer {
             if (q.hue === 1) { pc[np * 3] = fade * (0.55 - 0.35 * k); pc[np * 3 + 1] = fade * (0.8 - 0.3 * k); pc[np * 3 + 2] = fade; }   // icy blue
             else if (q.hue === 2) { pc[np * 3] = fade * (0.4 - 0.25 * k); pc[np * 3 + 1] = fade * (1 - 0.25 * k); pc[np * 3 + 2] = fade * (0.18 - 0.1 * k); }   // acid green
             else if (q.hue === 3) { pc[np * 3] = fade * (0.85 - 0.25 * k); pc[np * 3 + 1] = fade * (0.75 - 0.4 * k); pc[np * 3 + 2] = fade; }   // lightning violet-white
+            else if (q.hue === 4) { pc[np * 3] = fade * (0.7 - 0.2 * k); pc[np * 3 + 1] = fade * (0.28 + 0.1 * k); pc[np * 3 + 2] = fade; }   // poison violet
             else if (q.hue === 5) { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.92 - 0.3 * k); pc[np * 3 + 2] = fade * (0.72 - 0.45 * k); }   // pale gold (a body breaking up)
             else { pc[np * 3] = fade; pc[np * 3 + 1] = fade * (0.85 - 0.6 * k); pc[np * 3 + 2] = fade * (0.45 - 0.45 * k); }
             np++;
@@ -1536,8 +1564,8 @@ export class Renderer {
     }
 }
 
-// Particle hue per breath element (see the particle colours in update).
-const HUE = { fire: 0, ice: 1, acid: 2, bolt: 3 };
+// Particle hue per breath element and Poison Skin (see the particle colours in update).
+const HUE = { fire: 0, ice: 1, acid: 2, bolt: 3, poison: 4 };
 
 // An acid cloud: green, brightest at the rim, with a slow swirl; fades in and out.
 function acidMaterial() {
