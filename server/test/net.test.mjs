@@ -2,12 +2,15 @@
 // real server, run in Node (which has WebSocket and fetch): a dropped socket
 // comes back to the same dragon, a server restart (4010) to a new one, a
 // room that's gone ends the session, and a drop while dead waits for wake().
+// Also invite links (site/js/invite.js): ?room= pins that server first in
+// the lobby's list and joining it lands in that room.
 // Run: cd server && npm test
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { NetGame } from '../../site/js/net.js';
+import { NetGame, fetchRooms } from '../../site/js/net.js';
+import { inviteLink, inviteText, roomParam, pinRoom } from '../../site/js/invite.js';
 
 globalThis.document ??= { hidden: false };               // net.js checks for a hidden tab
 
@@ -106,6 +109,31 @@ try {
     dead.wake();
     await until(() => dead.last('rejoin'));
     check(dead.last('rejoin') && !dead.reconnecting, 'wake() reconnects for the next life');
+
+    // An invite link: its ?room= picks out the server, pinned first in the
+    // list the lobby gets, and joining that one lands in the invited room.
+    const made = (await (await fetch(BASE + '/api/rooms', { method: 'POST', headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Jade Peak' }) })).json()).room;
+    const link = inviteLink(made.id, { hostname: 'skywyrm.io', origin: 'https://skywyrm.io', pathname: '/', search: '' });
+    const { rooms: listed, pinned } = pinRoom(await fetchRooms(BASE), roomParam(new URL(link).searchParams.get('room')));
+    check(link === `https://skywyrm.io/?room=${made.id}&src=invite` && pinned && pinned.id === made.id && listed[0] === pinned && listed.length >= 3
+        && new Set(listed.map((x) => x.id)).size === listed.length, `an invite link (${link}) pins its server first in the list, once`);
+    const friend = game(pinned.id);
+    games.push(friend);
+    await until(() => friend.last('welcome'));
+    check(friend.room && friend.room.id === made.id && friend.room.name === made.name, `joining the pinned server lands in the invited room ("${made.name}")`);
+    friend.close();
+    const none = pinRoom(await fetchRooms(BASE), roomParam('gone1234ABCD'));
+    check(!none.pinned && none.rooms.length === listed.length, 'a link to a server that has closed pins nothing, and the list is as usual');
+    check(['<img src=x onerror=alert(1)>', '../skyhold', 'a'.repeat(33), 'sky hold', 'room%20x', '', null, 7].every((v) => roomParam(v) === ''),
+        'a ?room= that isn\'t a room id is ignored');
+    check(inviteText(made.name) === `Fly with me in Skywyrm — server ${made.name}` && inviteText('Skyhold') === 'Fly with me in Skywyrm — server Skyhold'
+        && inviteText('Joel\'s Den') === 'Fly with me in Skywyrm' && inviteText('<b>Jade Peak</b>') === 'Fly with me in Skywyrm' && inviteText(undefined) === 'Fly with me in Skywyrm',
+    'the share text names the server only if the game made the name');
+    check(inviteLink('skyhold', { hostname: 'localhost', origin: 'http://localhost:8765', pathname: '/index.html', search: '?server=http://localhost:8080&dev=1' })
+        === 'http://localhost:8765/index.html?room=skyhold&src=invite&server=http%3A%2F%2Flocalhost%3A8080'
+        && inviteLink('the-orb', { hostname: 'www.skywyrm.io', origin: 'https://www.skywyrm.io', pathname: '/index.html', search: '?dev=1' }) === 'https://skywyrm.io/?room=the-orb&src=invite',
+    'on a test page the link keeps the page and its local server; on the site it is the canonical address');
 
     // A room that's gone (a restart without Firestore forgets it): stop at once.
     const res = await fetch(BASE + '/api/rooms', { method: 'POST', headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Brief Room' }) });
