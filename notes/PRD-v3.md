@@ -571,8 +571,9 @@ legs, fins and feathers grow with them.
   keyboard) turns all sound off or on at once, with a brief "Sound off / Sound
   on" label. It matches Settings → Mute all sound and is remembered on this
   device.
-- **Voice:** 24 recorded Mandarin battle shouts, with characters, pinyin and English
-  captions on screen. Only your own dragon's events trigger them:
+- **Voice:** 24 recorded Mandarin battle shouts, delivered like a ring
+  announcer (bright, quick and emphatic, so the words are easy to make out),
+  with characters, pinyin and English captions on screen. Only your own dragon's events trigger them:
 
 | Event | Example |
 |---|---|

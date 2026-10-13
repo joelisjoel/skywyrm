@@ -3,7 +3,7 @@
 // chime ladder, whooshes for near misses, and the adaptive soundtrack
 // (music.js) with power-up stingers in its mode.
 import { Music } from './music.js?v=11';
-import { Voice } from './voice.js?v=3';
+import { Voice } from './voice.js?v=4';
 import { T } from './tunables.js?v=29';
 
 // D minor pentatonic (D yu), the soundtrack's home; once the music is
