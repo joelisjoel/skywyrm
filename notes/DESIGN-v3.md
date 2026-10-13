@@ -948,6 +948,19 @@ where they drop off), kept without identifying anyone
 ### 5.4 Audio
 - **Sound effects** (`audio.js`):
   - All synthesised in WebAudio, with master gain 0.6.
+  - **Wind** (`Audio.wind`, every frame): soft noise (pink, kept to about
+    140 Hz – 1.3 kHz and looped seamlessly; made once on the first tap)
+    through one band-pass, the same three nodes the old white-noise hiss
+    used. Speed is heard against the dragon's own cruise speed (`speedX`),
+    so a long, fast dragon's air is only a little fuller, not brighter. The
+    bed is quiet at cruise (about −37 LUFS) and gusty: a new strength and
+    colour every 1.5–4.5 s, drifting there over about a second. Boost, sharp
+    turns (`turnRate` in `main.js`) and dives lift the band toward 1 kHz and
+    swell it into a whoosh that fades about half a second after. Parameters
+    change only when they move by more than 2%: a few times a second at
+    cruise, never in the menus. The near-miss and boost whooshes use the
+    same soft noise; the crisp effects (bites, frost, lightning, acid) keep
+    white noise.
   - The food chime and the pearl's bell run climb a pentatonic ladder in the
     music's current mode (D yu until the music starts).
 - **Music** (`music.js`): an original score composed live in Chinese
