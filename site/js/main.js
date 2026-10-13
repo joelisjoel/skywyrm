@@ -1,17 +1,17 @@
 // Skywyrm game loop and flow: menu (attract mode, server list) → play,
 // solo vs bots or online (net.js) → death-cam → run card → play again.
 // Runs on PCs and phones.
-import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=30';
-import { World, Dragon, hazardDist } from './sim.js?v=30';
-import { managePopulation, targetBots } from './bots.js?v=30';
-import { Renderer } from './render.js?v=43';
-import { ChaseCam } from './camera.js?v=28';
-import { Input } from './input.js?v=32';
-import { Hud, msgTime } from './hud.js?v=33';
-import { Audio } from './audio.js?v=21';
-import { TunePanel } from './tune-panel.js?v=29';
+import { T, DEFAULTS, loadTune, TIERS, lengthFor } from './tunables.js?v=31';
+import { World, Dragon, hazardDist } from './sim.js?v=31';
+import { managePopulation, targetBots } from './bots.js?v=31';
+import { Renderer } from './render.js?v=44';
+import { ChaseCam } from './camera.js?v=29';
+import { Input } from './input.js?v=33';
+import { Hud, msgTime } from './hud.js?v=34';
+import { Audio } from './audio.js?v=22';
+import { TunePanel } from './tune-panel.js?v=30';
 import { checkName, randomRoomName } from './names.js?v=11';
-import { NetGame, fetchRooms, createRoom } from './net.js?v=31';
+import { NetGame, fetchRooms, createRoom } from './net.js?v=32';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
@@ -219,7 +219,8 @@ function handleEvents() {
             case 'nearMiss': hud.toast('NEAR MISS', 'nm'); audio.nearMiss(); hype(); break;
             case 'powerup':
                 if (mine) {
-                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food' }[e.kind] || fireToast(e.kind, e.charge)); audio.powerup(e.kind); hype(); speak(e.kind);
+                    hud.toast({ shield: 'EMBER SHIELD', magnet: 'LODESTONE — reeling in food', poison: `POISON SKIN — ${Math.round(world.rule('poisonTime'))} s: biters beware!` }[e.kind] || fireToast(e.kind, e.charge));
+                    audio.powerup(e.kind); hype(); speak(e.kind);
                     if (ELEMENT_HINT[e.kind] && !hinted.has(e.kind)) { hinted.add(e.kind); setTimeout(() => hud.toast(ELEMENT_HINT[e.kind], 'hint'), 1200); }
                 }
                 break;
@@ -312,6 +313,7 @@ const ELEMENT_HINT = {
     ice: 'Frost slows every dragon in the cone: no boost, stiff turns',
     bolt: 'Lightning stuns the first dragon in line, then jumps to its neighbours',
     acid: 'Spit acid in a dragon\'s path: the cloud melts tails (never yours)',
+    poison: 'Poison Skin: nobody can bite you, and a head that touches your body is out',
 };
 const hinted = new Set();
 const FIGHT_HINT = 'bite any part of a dragon to break off the rest. Bodies are safe to touch';

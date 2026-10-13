@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, tierFor } from './tunables.js?v=30';
-import { World, Dragon, ELEMENTS, quatFromForwardUp } from './sim.js?v=30';
-import { MOODS } from './bots.js?v=30';
+import { T, DEFAULTS, tierFor } from './tunables.js?v=31';
+import { World, Dragon, ELEMENTS, quatFromForwardUp } from './sim.js?v=31';
+import { MOODS } from './bots.js?v=31';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold
@@ -330,7 +330,10 @@ export class NetGame {
         d.alive = !!(f & 1); d.boosting = !!(f & 2); d.braking = !!(f & 4);
         d.protect = f & 8 ? 1 : 0; d.shield = f & 16 ? Math.max(d.shield, 1) : 0;
         d.guard = f & 2048 ? 1 : 0;                                     // fight mode: just bitten (it flashes)
-        if (d !== this.player) { d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; d.chill = f & 512 ? 1 : 0; d.stun = f & 1024 ? 1 : 0; }
+        if (d !== this.player) {
+            d.breath = f & 32 ? 0.5 : 0; d.magnet = f & 256 ? 1 : 0; d.chill = f & 512 ? 1 : 0; d.stun = f & 1024 ? 1 : 0;
+            d.poison = f & 4096 ? 1 : 0;                                // fight mode: Poison Skin (yours comes in `me`)
+        }
     }
 
     snapshot(m) {
@@ -371,6 +374,7 @@ export class NetGame {
             p.fire = me.fire; p.breath = me.breath; p.breathLevel = me.bl || 1; p.shield = me.shield; p.magnet = me.magnet;
             p.kills = me.kills; p.protect = me.protect; p.thrustMult = me.tm || 1;
             p.element = ELEMENTS.includes(me.el) ? me.el : 'fire'; p.chill = +me.ch || 0; p.stun = +me.st || 0;
+            p.poison = +me.po || 0;
             if (me.c) p.pos.set(me.c[0], me.c[1], me.c[2]);    // server clamped us: snap back
         }
     }

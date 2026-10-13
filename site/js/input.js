@@ -5,7 +5,7 @@
 // on the sky is the cursor (the dragon turns toward it; lift it to fly
 // straight), a second finger boosts, and the on-screen buttons hold boost /
 // brake / fire. Everything funnels into the same {sx, sy, …} struct.
-import { T } from './tunables.js?v=30';
+import { T } from './tunables.js?v=31';
 
 // The mouse's response: `u` runs from 0 at the dead zone's edge to 1 at the
 // rim of the circle. An expo curve, gentle near the centre so small moves

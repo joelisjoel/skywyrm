@@ -158,6 +158,7 @@ export const DEFAULTS = {
     biteGuard: 1.2,         // fight: s a bitten dragon can't be bitten again (it flashes meanwhile)
     headonRatio: 1.25,      // fight: head to head, this × the other's mass wins; closer than that, both bounce off
     headonStun: 0.5,        // fight: s both are stunned after bouncing off
+    poisonTime: 10,         // fight: s of Poison Skin (a power-up only in fight mode): a head touching your body is out, and you can't be bitten
 
     // --- Camera (spec §8) ---
     camDist: 7,
@@ -313,6 +314,7 @@ export const PANEL = [
     ['biteGuard', 0, 5, 0.1, 'Rules'],
     ['headonRatio', 1, 3, 0.05, 'Rules'],
     ['headonStun', 0, 2, 0.05, 'Rules'],
+    ['poisonTime', 1, 30, 0.5, 'Rules'],
 ];
 
 const KEY = 'wyrm.tune.v2';   // v2: 5× arenas — old saved tunings don't carry over

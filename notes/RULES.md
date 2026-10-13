@@ -46,6 +46,7 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 | `biteGuard` | 1.2 | Fight: s a bitten dragon can't be bitten again (it flashes white) |
 | `headonRatio` | 1.25 | Fight: head to head, a dragon this × the other's mass wins; closer in size, both bounce off |
 | `headonStun` | 0.5 | Fight: s both are stunned after bouncing off |
+| `poisonTime` | 10 | Fight: s of **Poison Skin**, a power-up (a violet crystal) only in fight mode: your body is poisonous (a head that touches it is out, and you get the kill) and can't be bitten. Bots treat it as a wall |
 
 ## Where to change them
 

@@ -1078,4 +1078,148 @@ function fightWorld(rules = {}) {
     }
 }
 
+// Poison Skin (fight mode's power-up): for poisonTime your body is
+// poisonous (a head that touches it is out, and you get the kill) and it
+// can't be bitten. Spawned only in fight mode; bots treat it as a wall.
+{
+    const V = (x, y, z) => new Vector3(x, y, z);
+    {
+        // Spawned only when fight is on, in the random mix; picking one up.
+        const kinds = (rules) => {
+            const { w } = fightWorld(rules), seen = new Set();
+            for (let i = 0; i < 400; i++) { w.powerups.length = 0; w.nextPowerup = -1; w.updatePowerups(0); seen.add(w.powerups[0].type); }
+            return [...seen].sort().join();
+        };
+        check(kinds({}) === 'acid,bolt,fire,ice,magnet,poison,shield' && !kinds({ fight: 0 }).includes('poison'),
+            'Poison Skin crystals spawn in fight mode, in the random mix, and never in classic');
+        const { w, lay } = fightWorld(), b = lay('B', 100, V(0, 0, 0));
+        w.powerups.push({ pos: b.pos.clone(), type: 'poison', spin: 0 });
+        w.updatePowerups(0);
+        const e = w.events.find((x) => x.type === 'powerup');
+        check(e && e.kind === 'poison' && e.d === b && b.poison === T.poisonTime && w.powerups.length === 0, `picking one up: Poison Skin for ${T.poisonTime} s`);
+    }
+    {
+        // A head on a poisoned body dies (the poisoned dragon gets the kill); nothing is bitten.
+        const { lay, onBead, hit } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        b.poison = 5;
+        onBead(a, b, Math.floor(b.nBeads / 2));
+        const ev = hit(), death = ev.find((x) => x.type === 'death');
+        check(!a.alive && death && death.killer === b && death.cause === 'poison' && b.kills === 1 && b.mass === 200 && !ev.some((x) => x.type === 'bite'),
+            'Poison Skin: a head that touches the body is out (killed by the poisoned dragon), and it can\'t be bitten');
+        const s = fightWorld(), sb = s.lay('B', 200, V(0, 0, 0)), sa = s.lay('A', 60, V(40, 0, 0));
+        sb.poison = 5; sa.shield = 5;
+        s.onBead(sa, sb, Math.floor(sb.nBeads / 2));
+        const sev = s.hit(), pop = sev.find((x) => x.type === 'shieldPop');
+        check(sa.alive && pop && pop.d === sa && sa.shield === 0 && sa.protect === 1.5, 'Poison Skin: the Ember Shield absorbs the fatal hit, as on any poisonous body');
+        const o = fightWorld(), ob = o.lay('B', 200, V(0, 0, 0)), oa = o.lay('A', 60, V(40, 0, 0));
+        ob.poison = 5; oa.protect = 2;
+        o.onBead(oa, ob, Math.floor(ob.nBeads / 2));
+        o.hit();
+        check(oa.alive, 'Poison Skin: a newborn (spawn protection) is safe on it');
+    }
+    {
+        // It wears off: then the body can be bitten again.
+        const { w, lay, onBead, hit } = fightWorld();
+        const b = lay('B', 200, V(0, 0, 0)), a = lay('A', 60, V(40, 0, 0));
+        w.powerups.push({ pos: b.pos.clone(), type: 'poison', spin: 0 });
+        w.updatePowerups(0);
+        for (let i = 0; i < Math.ceil(T.poisonTime * 30) - 3; i++) w.upkeep(b, 1 / 30);
+        const still = b.poison > 0;
+        for (let i = 0; i < 6; i++) w.upkeep(b, 1 / 30);
+        b.rebuildBeads();
+        onBead(a, b, Math.floor(b.nBeads / 2));
+        const ev = hit();
+        check(still && b.poison === 0 && a.alive && ev.some((x) => x.type === 'bite' && x.o === b), `Poison Skin wears off after ${T.poisonTime} s; then the body can be bitten`);
+        const c = fightWorld({ fight: 0 }), cb = c.lay('B', 200, V(0, 0, 0)), ca = c.lay('A', 60, V(40, 0, 0));
+        c.onBead(ca, cb, Math.floor(cb.nBeads / 2));
+        cb.poison = 5;
+        c.hit();
+        check(!ca.alive && c.w.events.find((x) => x.type === 'death').cause === 'tail', 'classic: every body is poisonous anyway (the death is the classic one)');
+    }
+    {
+        // Bots: a poisoned body is a wall even to a bot going for a bite, which otherwise flies straight through bodies.
+        const steer = (poisoned) => {
+            const w = new World('orb', 'local');
+            Object.assign(w.rules, { fight: 1, botTreasure: 0, sunCrystals: 0, pearls: 0, botAggrMax: 0.5 });
+            w.nextPowerup = 1e9; w.ageStart = 0;
+            w.botTarget = () => 1;
+            managePopulation(w, true);
+            const bot = w.dragons[0];
+            w.spawn(bot, 600); bot.protect = 0;
+            bot.pos.set(0, 0, 0); bot.quat.set(0, 0, 0, 1); bot.updateFrame(); bot.vdir.copy(bot.fwd); bot.speed = 16;
+            bot.pathHead = -1; bot.pathCount = 0;
+            for (let k = 200; k >= 1; k--) bot.pushPath(0, 0, k * 0.5);
+            bot.rebuildBeads();
+            const put = (name, mass, head, dir) => {
+                const d = new Dragon(name, false); w.spawn(d, mass); d.protect = 0;
+                d.pos.copy(head); quatFromForwardUp(dir.clone().negate(), V(0, 1, 0), d.quat); d.updateFrame(); d.vdir.copy(d.fwd);
+                d.pathHead = -1; d.pathCount = 0;
+                for (let k = 160; k >= 1; k--) d.pushPath(head.x + dir.x * k * 0.5, head.y + dir.y * k * 0.5, head.z + dir.z * k * 0.5);
+                d.rebuildBeads();
+                return d;
+            };
+            const prey = put('Prey', 60, V(0, 0, -70), V(0, 0, -1));           // straight ahead, tail pointing away
+            const wall = put('Wall', 100, V(-30, 0, -9), V(1, 0, 0));          // its body crosses the way 9 m ahead
+            wall.poison = poisoned ? 9 : 0;
+            bot.brain.mood = 'hunter';
+            bot.brain.goal = { kind: 'bite', o: prey }; bot.brain.goalUntil = 1e9;
+            w.buildHash();
+            bot.brain.nextThink = 0;
+            bot.brain.think(w, bot, 1 / 30);
+            return { dir: bot.brain.desired.dot(bot.fwd), goal: bot.brain.goal && bot.brain.goal.o };
+        };
+        const clear = steer(false), toxic = steer(true);
+        check(clear.dir > 0.97 && toxic.dir < 0.95 && clear.goal && toxic.goal,
+            `a bot going for a bite flies straight across a harmless body (${clear.dir.toFixed(2)}) but steers round a poisoned one (${toxic.dir.toFixed(2)})`);
+    }
+    {
+        // Seeded 25 bots, four of them kept poisoned: bots bite plenty, but rarely touch a poisoned body, and never pick one to bite.
+        const seeded = (seed) => { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; };
+        const real = Math.random;
+        Math.random = seeded(777);
+        const w = new World('sky', 'local');
+        Object.assign(w.rules, { botAggrMax: 0.5, fight: 1 });
+        w.botTarget = () => 25; w.ageStart = 0; w.gentleTime = 0;
+        w.spawnAmbient(T.orbTarget);
+        managePopulation(w, true);
+        const toxic = w.dragons.slice(0, 4);
+        let bites = 0, poisoned = 0, chose = 0;
+        for (let i = 0; i < 90 * 30; i++) {
+            for (const d of toxic) if (d.alive) d.poison = 5;
+            w.step(1 / 30);
+            for (const e of w.events) {
+                if (e.type === 'bite' && e.fight) bites++;
+                if (e.type === 'death' && e.cause === 'poison') poisoned++;
+            }
+            for (const d of w.dragons) if (d.brain && d.brain.goal && d.brain.goal.kind === 'bite' && toxic.includes(d.brain.goal.o) && d.brain.goal.o.alive) chose++;
+            managePopulation(w);
+        }
+        Math.random = real;
+        check(bites >= 30 && poisoned <= bites / 10 && chose === 0,
+            `90 s of 25 bots, 4 kept poisoned: ${bites} bites, ${poisoned} bots out on a poisoned body, none chose a poisoned one to bite`);
+    }
+    {
+        // Wire: Poison Skin reaches pages that know fight mode; one that doesn't (if it ever met one) isn't told of it.
+        const reg = { occupied() {}, emptied() {}, countHumans() {}, stats: { run() {} } };
+        const room = new Room({ id: 'p', name: 'P', arena: 'orb', beginner: true }, reg);   // classic: every page can join
+        const client = () => ({ got: [], send(m) { this.got.push(m); return true; }, sendRaw(t) { this.got.push(JSON.parse(t)); } });
+        const old = client(), now = client();
+        room.join(old, 'Old', { caps: ['el'] }); room.join(now, 'New', { caps: ['el', 'fight'] });
+        const w = room.world;
+        w.nextPowerup = 1e9; w.rules.sunCrystals = 0; w.powerups.length = 0;
+        w.powerups.push({ pos: new Vector3(200, 0, 0), type: 'poison', spin: 0 }, { pos: new Vector3(-200, 0, 0), type: 'shield', spin: 0 });
+        room.tick(); room.tick();
+        const snap = (c) => c.got.filter((m) => m.t === 's').pop();
+        check(snap(now).pu.map((q) => q[0]).sort().join() === 'poison,shield' && snap(old).pu.map((q) => q[0]).join() === 'shield',
+            'a page without the "fight" cap isn\'t sent Poison Skin crystals (its renderer would draw a shield)');
+        for (const c of [old, now]) w.powerups.push({ pos: c.dragon.pos.clone(), type: 'poison', spin: 0 });
+        room.tick(); room.tick();
+        const pu = (c) => c.got.filter((m) => m.t === 'e').flatMap((m) => m.ev).filter((e) => e.k === 'pu');
+        const flag = (c, d) => snap(c).d.find((s) => s[0] === d.id)[10];
+        check(pu(now).some((e) => e.kind === 'poison') && !pu(old).some((e) => e.kind === 'poison') && snap(now).me.po > 0 && (flag(old, now.dragon) & 4096) && (flag(now, old.dragon) & 4096),
+            'its pick-up event goes only to a page that knows it; Poison Skin shows as flag 4096 and `me.po` (seconds left)');
+    }
+}
+
 console.log(`\n${ok} sim checks passed`);

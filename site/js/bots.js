@@ -3,8 +3,8 @@
 // balance testers. Think at ~10 Hz; steer toward the chosen direction
 // every step.
 import { Vector3, Quaternion } from 'three';
-import { T } from './tunables.js?v=30';
-import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=30';
+import { T } from './tunables.js?v=31';
+import { Dragon, hazardDist, ELEMENTS } from './sim.js?v=31';
 
 const _v = new Vector3(), _p = new Vector3(), _q = new Quaternion();
 const DEG = Math.PI / 180;
@@ -136,7 +136,7 @@ class Brain {
     // Fight mode (rule fight): bodies are harmless, but a bot that isn't
     // going for a bite still steers round them (so feeding bots don't
     // blunder through everyone, biting as they go); one that is ignores
-    // them.
+    // them, except a body with Poison Skin, which is a wall to every bot.
     clearance(world, d, dir, near, look) {
         const tip = this.biteTip;
         const pad = d.r + 1.0;
@@ -311,16 +311,19 @@ class Brain {
     // head, and it would win head to head (headonRatio): run. On our body,
     // where it would bite the rest off: turn away from it and boost, so the
     // body slides out of its reach sooner (more urgently near our head,
-    // where a bite costs most). Returns the way to go, or null.
+    // where a bite costs most). A head with Poison Skin behind it is run
+    // from whatever its size: if it cuts across us, its neck kills.
+    // Returns the way to go, or null.
     dodge(world, d) {
         const k = Math.max(1, world.rule('headonRatio'));
         let threat = null, best = Infinity, onHead = false, at = 0;
         for (const o of world.dragons) {
-            if (o === d || !o.alive || !(o.mass > d.mass) || o.protect > 0 || o.stun > 0) continue;
+            const toxic = o.poison > 0;
+            if (o === d || !o.alive || !(o.mass > d.mass || toxic) || o.protect > 0 || o.stun > 0) continue;
             _v.subVectors(d.pos, o.pos);
             const dist = _v.length();
             if (dist > d.len + 40) continue;                               // nowhere near any of us
-            if (o.mass >= d.mass * k && dist < 22 + o.r && _v.dot(o.vdir) > dist * 0.3) {
+            if ((toxic || o.mass >= d.mass * k) && dist < 22 + o.r && _v.dot(o.vdir) > dist * 0.3) {
                 if (dist < best) { threat = o; best = dist; onHead = true; }
                 continue;
             }
@@ -345,8 +348,8 @@ class Brain {
     }
 
     // Fight mode: go for a body we can bite safely (biteSpot): not
-    // protected, just bitten or toxic, and if its owner would beat us head
-    // to head, only its back half and not while its head is near.
+    // protected, just bitten or toxic (Poison Skin), and if its owner would
+    // beat us head to head, only its back half and not while its head is near.
     // Hunters and kingslayers seek one out (kingslayers the leader's
     // above all); other moods snap at one close by, as often as they'd
     // have gone for prey. As with power-ups (treasure), the bigger the bot,
@@ -512,10 +515,11 @@ let worldRef = null;
 const _bs = { p: new Vector3(), dist: 0, worth: 0 };   // Brain.biteSpot's answer
 
 // Fight mode: may d go for a bite of o? Not itself, a dead or protected
-// dragon, a new player in the gentle period, or (when choosing, not when
-// already chasing) one that was just bitten.
+// dragon, one with Poison Skin (a wall to the feelers, see clearance), a
+// new player in the gentle period, or (when choosing, not when already
+// chasing) one that was just bitten.
 function edible(world, d, o, chasing = false) {
-    if (o === d || !o.alive || o.protect > 0 || o.nBeads < 6) return false;
+    if (o === d || !o.alive || o.protect > 0 || o.poison > 0 || o.nBeads < 6) return false;
     if (!chasing && o.guard > 0) return false;
     return !(o === world.player && world.time - o.bornAt < world.gentleTime);
 }
