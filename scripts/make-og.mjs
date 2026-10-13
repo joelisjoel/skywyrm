@@ -147,7 +147,7 @@ h1 { margin: 0 -0.2em 0 0; font: 700 118px/1 'Cinzel', serif; letter-spacing: 0.
   <div class="c" style="left:18px;bottom:18px;border-left-width:2px;border-bottom-width:2px;border-bottom-left-radius:10px"></div>
   <div class="c" style="right:18px;bottom:18px;border-right-width:2px;border-bottom-width:2px;border-bottom-right-radius:10px"></div>
   <div class="brand"><div class="seal">龍</div><h1>SKYWYRM</h1></div>
-  <div class="tag">Fly a Chinese dragon · free in your browser</div>
+  <div class="tag">Hatch small · Grow huge · Rule the sky</div>
 </div>`);
     await page.evaluate(() => document.fonts.ready);
     const kai = await page.evaluate((list) => {
