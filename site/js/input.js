@@ -1,11 +1,20 @@
 // Controls (spec §7). Mouse-flight: the cursor's offset from screen
-// centre, inside a steering circle, is the stick. Optional pointer-lock
-// "virtual stick" mode for players who don't want the cursor to escape.
-// Touch: the first finger on the sky is the cursor (the dragon turns
-// toward it; lift it to fly straight), a second finger boosts, and the
-// on-screen buttons hold boost / brake / fire. Everything funnels into the
-// same {sx, sy, …} struct.
-import { T } from './tunables.js?v=27';
+// centre, inside a steering circle, is the stick, on a gentle curve with a
+// little smoothing (mouseStick). Optional pointer-lock "virtual stick" mode
+// for players who don't want the cursor to escape. Touch: the first finger
+// on the sky is the cursor (the dragon turns toward it; lift it to fly
+// straight), a second finger boosts, and the on-screen buttons hold boost /
+// brake / fire. Everything funnels into the same {sx, sy, …} struct.
+import { T } from './tunables.js?v=29';
+
+// The mouse's response: `u` runs from 0 at the dead zone's edge to 1 at the
+// rim of the circle. An expo curve, gentle near the centre so small moves
+// make small turns: half way out it gives mouseHalf × `sens` (a quarter of
+// the turn rate at the default 1), and the rim is always a full turn.
+export function mouseStick(u, sens = 1) {
+    const a = Math.min(0.9, Math.max(0.02, T.mouseHalf * sens));
+    return u / ((1 / a - 2) * (1 - u) + 1);
+}
 
 export class Input {
     constructor(canvas) {
@@ -19,14 +28,17 @@ export class Input {
         this.neutral = { x: 0, y: 0 };
         this.keys = new Set();
         this.lmb = false; this.rmb = false;
-        this.settings = { invertY: false, mouseLock: false };
+        this.settings = { invertY: false, mouseLock: false, mouseSens: 1 };
         this.onKey = null;                 // (code, event) for one-shot keys
         this.touch = { id: null, extra: new Set(), last: -1e9, hold: { boost: false, brake: false, fire: false } };
         this.isTouch = matchMedia('(pointer: coarse)').matches;
+        this.byMouse = !this.isTouch;       // steering with the mouse (else a finger): its own circle and curve
+        this.smooth = { x: 0, y: 0, t: 0 }; // the mouse stick, smoothed
 
         // ---- touch
         const touchSeen = () => {
             this.touch.last = performance.now();
+            this.byMouse = false;
             if (!this.isTouch) { this.isTouch = true; if (this.onTouchMode) this.onTouchMode(); }
         };
         addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touchSeen(); }, true);
@@ -66,6 +78,7 @@ export class Input {
         addEventListener('mousemove', (e) => {
             // Taps also send emulated mouse events; they mustn't steer.
             if (performance.now() - this.touch.last < 1000) return;
+            this.byMouse = true;
             if (document.pointerLockElement === canvas) {
                 const s = T.lockSensitivity;
                 this.virt.x += e.movementX * s; this.virt.y += e.movementY * s;
@@ -99,7 +112,8 @@ export class Input {
         addEventListener('blur', () => { this.keys.clear(); this.lmb = this.rmb = false; });
     }
 
-    circleRadius() { return T.steerCircle * Math.min(innerWidth, innerHeight); }
+    // The steering circle's radius in px: the mouse's is a bit bigger than a finger's.
+    circleRadius() { return (this.byMouse ? T.mouseCircle : T.steerCircle) * Math.min(innerWidth, innerHeight); }
 
     // The neutral point glides back to the true centre as the cursor (or
     // steering finger) moves `moved` px.
@@ -141,6 +155,7 @@ export class Input {
     // Make the current cursor position the neutral (no-steer) point.
     zero() {
         this.virt.x = this.virt.y = 0;
+        this.smooth.x = this.smooth.y = 0;
         const r = this.rawReticle();
         this.neutral.x = r.x; this.neutral.y = r.y;
     }
@@ -159,7 +174,8 @@ export class Input {
         return { x: this.mouse.x - innerWidth / 2, y: this.mouse.y - innerHeight / 2 };
     }
 
-    // Stick from the reticle: circle clamp → deadzone → expo curve.
+    // Stick from the reticle: circle clamp → deadzone → curve (the mouse's
+    // own, then smoothed; a finger's is a plain power curve).
     read(out) {
         const R = this.circleRadius();
         const r = this.reticle();
@@ -168,9 +184,11 @@ export class Input {
         if (m > 1) { x /= m; y /= m; m = 1; }
         if (m < T.steerDeadzone) { x = 0; y = 0; }
         else {
-            const mm = Math.pow((m - T.steerDeadzone) / (1 - T.steerDeadzone), T.steerExpo);
+            const u = (m - T.steerDeadzone) / (1 - T.steerDeadzone);
+            const mm = this.byMouse ? mouseStick(u, this.settings.mouseSens) : Math.pow(u, T.steerExpo);
             x *= mm / m; y *= mm / m;
         }
+        if (this.byMouse) ({ x, y } = this.smoothMouse(x, y));
         // Arrow keys override (trackpad fallback).
         const k = this.keys;
         const kx = (k.has('ArrowRight') ? 1 : 0) - (k.has('ArrowLeft') ? 1 : 0);
@@ -188,4 +206,18 @@ export class Input {
     }
 
     lookBack() { return this.keys.has('KeyC'); }
+
+    // A little smoothing for the mouse stick, so a wobbly hand doesn't
+    // twitch the dragon: small changes ease in over mouseSmooth s, and the
+    // bigger the change the quicker it goes through, so a deliberate swing
+    // isn't held back. Called once or more a frame (sim steps), on wall time.
+    smoothMouse(x, y) {
+        const s = this.smooth, now = performance.now();
+        const dt = Math.min(0.1, Math.max(0, now - s.t) / 1000);
+        s.t = now;
+        const tau = T.mouseSmooth / (1 + Math.hypot(x - s.x, y - s.y) / T.mouseSmoothGap);
+        const k = tau > 0 ? 1 - Math.exp(-dt / tau) : 1;
+        s.x += (x - s.x) * k; s.y += (y - s.y) * k;
+        return s;
+    }
 }

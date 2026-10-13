@@ -10,7 +10,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { Client } from '../client.js';
 import { Registry } from '../rooms.js';
-import { T } from '../../site/js/shared.js';
+import { T, lengthFor } from '../../site/js/shared.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -117,7 +117,8 @@ const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', 
     const late = conn('Ann', welcome(a3).resume);
     check(room.held.size === 0 && !welcome(late).resumed && late.dragon !== ad, 'after 30 s folded the seat is forgotten: a fresh dragon');
     const lost = runs[4];
-    check(runs.length === 5 && lost.cause === 'disconnect' && lost.len === 32 && lost.kills === 2 && lost.secs < 30,
+    // Its length is the dragon's best (32 m from its 60 mass, more if it caught an orb on the way).
+    check(runs.length === 5 && lost.cause === 'disconnect' && lost.len >= 32 && lost.len === Math.round(lengthFor(ad.peakMass)) && lost.kills === 2 && lost.secs < 30,
         `the forgotten seat ends that life: counted once as a disconnect, ${lost.len} m, ${lost.secs} s in the sky (time folded doesn't count)`);
 
     // The browser noticed the drop before the server did: the new socket takes over.

@@ -4,9 +4,9 @@
 // server. Other dragons are drawn on the server's clock, a little behind
 // it, so there's nearly always a snapshot either side to blend between.
 import { Quaternion, Vector3 } from 'three';
-import { T, DEFAULTS, tierFor } from './tunables.js?v=27';
-import { World, Dragon, ELEMENTS } from './sim.js?v=27';
-import { MOODS } from './bots.js?v=27';
+import { T, DEFAULTS, tierFor } from './tunables.js?v=29';
+import { World, Dragon, ELEMENTS } from './sim.js?v=29';
+import { MOODS } from './bots.js?v=29';
 
 const INTERP_DELAY = 0.12;     // s behind the server's now that other dragons are drawn (~2 snapshots)
 const EXTRAP_MAX = 0.12;       // s to coast past the newest snapshot (last two only), then hold

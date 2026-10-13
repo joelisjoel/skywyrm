@@ -20,10 +20,14 @@ export const DEFAULTS = {
     diveBoost: 6,           // m/s added × sin(dive angle), gravity worlds
     visualBank: 50,         // deg, cosmetic bank into turns
 
-    // --- Mouse flight (spec §7) ---
-    steerCircle: 0.30,      // radius as fraction of the shorter screen side
-    steerDeadzone: 0.06,
-    steerExpo: 1.5,         // response curve exponent
+    // --- Steering stick (spec §7): touch, then the mouse ---
+    steerCircle: 0.30,      // touch: radius as fraction of the shorter screen side
+    steerDeadzone: 0.06,    // fraction of the circle (touch and mouse)
+    steerExpo: 1.5,         // touch: response curve exponent
+    mouseCircle: 0.36,      // mouse: radius for a full turn, fraction of the shorter screen side
+    mouseHalf: 0.25,        // mouse: turn half way out (× Mouse sensitivity), on an expo curve that's full at the rim
+    mouseSmooth: 0.06,      // s, mouse: small wobbles ease in over this…
+    mouseSmoothGap: 0.1,    // …and a move this big (in stick) goes through twice as fast
     lockSensitivity: 1.0,   // pointer-lock (virtual stick) mode
     keySteer: 0.7,          // arrow keys: fraction of max turn rate
 
@@ -199,6 +203,10 @@ export const PANEL = [
     ['steerCircle', 0.1, 0.5, 0.01, 'Controls'],
     ['steerDeadzone', 0, 0.3, 0.01, 'Controls'],
     ['steerExpo', 1, 3, 0.05, 'Controls'],
+    ['mouseCircle', 0.15, 0.48, 0.01, 'Controls'],
+    ['mouseHalf', 0.05, 0.5, 0.01, 'Controls'],
+    ['mouseSmooth', 0, 0.3, 0.01, 'Controls'],
+    ['mouseSmoothGap', 0.02, 0.5, 0.01, 'Controls'],
     ['lockSensitivity', 0.2, 3, 0.05, 'Controls'],
     ['lenPerMass', 0.1, 1.5, 0.05, 'Growth & combat'],
     ['radiusGrow', 0, 4, 0.1, 'Growth & combat'],

@@ -2,7 +2,7 @@
 // with a procedural scale shader, plus heads, jaws and ornaments. Orbs,
 // pearls, fins and legs are instanced; particles and dust are point clouds.
 import * as THREE from 'three';
-import { T, TIERS } from './tunables.js?v=27';
+import { T, TIERS } from './tunables.js?v=29';
 
 const MAX_BEADS = 24000;
 const MAX_ORBS = 6000;
