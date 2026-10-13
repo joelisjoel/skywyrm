@@ -3,7 +3,8 @@
 // the simulation start, solo play begins, and nothing throws. Everything is
 // self-hosted, so the only other host the page may contact is the game
 // server (blocked here); a request anywhere else, or a Content-Security-
-// Policy violation, fails the test. Then, on a phone-sized page, an invite
+// Policy violation, fails the test. In flight, messages keep their times
+// (hud.js msgTime) and leave when they fade. Then, on a phone-sized page, an invite
 // link (?room=) pins that server first in the lobby (with a faked room list).
 // Run: npm install && npx playwright install chromium && npm run smoke
 import { mkdirSync } from 'node:fs';
@@ -45,6 +46,30 @@ try {
     const t1 = await page.evaluate(() => window.__wyrm.world.time);
     await page.screenshot({ path: path.join(shots, 'play.png') });
     if (!(t1 > t0)) errors.push(`the world did not advance (${t0} → ${t1})`);
+
+    // Messages: each kind's pop-in, when its fade starts and the fade, in ms
+    // (a voice caption holds until 1 s after its line: death-0 is 2.556 s);
+    // the end of the pop-in leaves it up, and the end of the fade takes it away.
+    const msg = await page.evaluate(async () => {
+        const hud = window.__wyrm.hud, box = document.getElementById('msgs'), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const anim = (el, name) => el.getAnimations().find((a) => a.animationName === name);
+        const times = (el) => [anim(el, 'msg-pop'), anim(el, 'msg-out')].map((a) => a && a.effect.getTiming())
+            .flatMap((t, i) => (t ? (i ? [t.delay, t.duration] : [t.duration]) : [null]));
+        const newest = () => box.querySelector(':scope > .msg');
+        const out = {};
+        hud.toast('smoke toast'); const toast = newest(); out.toast = times(toast);
+        hud.toast('smoke tip', 'hint'); out.hint = times(newest());
+        hud.caption({ zh: '龍', py: 'lóng', en: 'dragon' }); out.caption = times(newest());
+        hud.caption({ zh: '龍', py: 'lóng', en: 'dragon', secs: 2.556 }); out.line = times(newest());
+        await wait(400);
+        out.upAfterPop = toast.isConnected;
+        anim(toast, 'msg-out').finish();
+        await wait(300);
+        out.goneAfterFade = !toast.isConnected;
+        return out;
+    });
+    const MSG_WANT = { toast: [128, 2248, 352], hint: [256, 3496, 704], caption: [224, 3184, 616], line: [224, 3556, 616], upAfterPop: true, goneAfterFade: true };
+    if (JSON.stringify(msg) !== JSON.stringify(MSG_WANT)) errors.push(`messages: expected ${JSON.stringify(MSG_WANT)}, got ${JSON.stringify(msg)}`);
 
     // An invite link on a phone: the invited server is pinned first and lit,
     // nobody is joined, and room and src leave the address bar. (Joining it is

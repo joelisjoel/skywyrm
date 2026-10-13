@@ -7,8 +7,8 @@ import { managePopulation, targetBots } from './bots.js?v=27';
 import { Renderer } from './render.js?v=41';
 import { ChaseCam } from './camera.js?v=26';
 import { Input } from './input.js?v=30';
-import { Hud } from './hud.js?v=30';
-import { Audio } from './audio.js?v=17';
+import { Hud, msgTime } from './hud.js?v=31';
+import { Audio } from './audio.js?v=18';
 import { TunePanel } from './tune-panel.js?v=27';
 import { checkName, randomRoomName } from './names.js?v=11';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=29';
@@ -206,7 +206,7 @@ function showHints() {
     clearInterval(hintTimer);
     const next = () => { if (i < hints.length && state === 'play') hud.toast(hints[i++], 'hint'); else clearInterval(hintTimer); };
     next();
-    hintTimer = setInterval(next, 3200);
+    hintTimer = setInterval(next, msgTime('hint').life);        // the next tip as the last one goes
 }
 
 // ------------------------------------------------ events → feedback
@@ -1086,4 +1086,4 @@ function tick(nowMs) {
 requestAnimationFrame(frame);
 
 // Test hook for the headless smoke test.
-window.__wyrm = { get world() { return world; }, get state() { return state; }, startPlay, joinRoom, get player() { return player; }, get online() { return online; }, audio, renderer };
+window.__wyrm = { get world() { return world; }, get state() { return state; }, startPlay, joinRoom, get player() { return player; }, get online() { return online; }, audio, renderer, hud };

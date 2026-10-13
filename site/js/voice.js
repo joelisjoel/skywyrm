@@ -50,8 +50,8 @@ export class Voice {
         this.playing = null;
     }
 
-    // Speak one of the event's phrases. Returns the phrase (for a caption)
-    // or null if it didn't play.
+    // Speak one of the event's phrases. Returns the phrase (for a caption),
+    // with `secs`, the line's length, when it plays; or null if it didn't.
     say(ev) {
         const rows = PHRASES[ev];
         if (!this.on || !rows) return null;
@@ -71,6 +71,6 @@ export class Voice {
         src.start(t);
         this.playing = { src, pri, until: t + buf.duration };
         if (this.music) this.music.duck(t, 0.35, buf.duration + 0.3);
-        return rows[i];
+        return { ...rows[i], secs: buf.duration };
     }
 }

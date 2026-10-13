@@ -885,7 +885,23 @@ where they drop off), kept without identifying anyone
     there, newest on top, with the status lines in a row at its top.
     `fit` keeps it to 4 messages and to its box (`--msg-top`, `--msg-foot`
     per layout), dropping tips, then captions, then the oldest, never the
-    newest. A message leaves on `animationend` (a timer covers hidden tabs).
+    newest.
+  - Message times (`msgTime`, in ms; CSS `msg-pop` and `msg-out` read them
+    from `--msg-in`, `--msg-fade-at` and `--msg-fade`):
+
+    | Kind | Pops in | Fade starts | Fade | Gone |
+    |---|---|---|---|---|
+    | Toast (and every other kind) | 128 | 2248 | 352 | 2.6 s |
+    | Tip (`hint`) | 256 | 3496 | 704 | 4.2 s |
+    | Voice caption | 224 | 3184, or 1 s after its line ends if later | 616 | 3.8 s or more |
+
+    Each holds 1 s longer than it first did, so there's time to read it;
+    the pop-in and fade kept their lengths. The voice clips run 1.4–2.6 s,
+    and `Voice.say` returns the clip's length (`secs`) with the phrase. A
+    message leaves on the fade's `animationend` (a timer at its end + 1 s
+    covers hidden tabs). The first-flight tips come one per tip's life
+    (4.2 s), so the next arrives as the last one goes. The smoke test
+    checks these times.
   - One canvas overlay for names, the steering reticle, off-screen arrows and
     the radar.
   - `project()` matches the wide-view warp so markers line up.
@@ -1327,7 +1343,7 @@ at dendroslabs.com/wyrm has been removed.
 | `server/test/backpressure.test.mjs` (9 checks) | Fake sockets with a set queue size: over 512 KB only snapshots are skipped and `dn`/`dx`/`e` still arrive, the next snapshot carries the skipped food changes, over 4 MB the socket is closed (4009) |
 | `server/test/reconnect.test.mjs` (37 checks) | Resume tokens, ticked by hand in a `Registry`: back within 3 s carries on unseen, after that flies back in with its length and kills (`dn`), keeping its crystals, still folded if it was parked, takeover of a still-open socket (4011), used, forged, expired and other-room tokens get a fresh dragon, a kill during the 3 s drops loot once, leaving on purpose drops loot after 3 s. Play totals: a held or resumed life isn't counted, a forgotten seat, a death in the countdown and a shutdown each count it once. Then the real server: a reconnect over real sockets, tokens never logged, SIGTERM closes with 4010 |
 | `server/test/net.test.mjs` (17 checks) | The browser's `NetGame` run in Node against the real server: sun crystals arriving with their elements and kept by id, a blip and a silent socket come back to the same dragon, a restart (4010) to a new one, a drop while dead waits for `wake()`, a room that's gone stops the retries, leaving doesn't reconnect. Invite links (`invite.js`): a link's `?room=` pins that server first in the real list and joining it lands in that room; a closed room pins nothing; hostile ids are ignored; the share text names only generated names; local and canonical link addresses |
-| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws. Then a 390×844 touch page opens an invite link against a faked room list: that server must be pinned first, nobody joined, `room` and `src` gone from the address bar, no sideways scroll (`invite.png`) |
+| `scripts/smoke-test.mjs` | Headless Chromium (SwiftShader, 1280×720) on `site/`, with `run.app` blocked. Fails on any request to another host or any CSP violation. Waits for the world, takes `menu.png`, plays, takes `play.png`. Fails if time doesn't advance or the page throws. Checks each message kind's pop-in, fade start and fade (a caption with a 2.556 s line too), that a message stays up past its pop-in and leaves when its fade ends. Then a 390×844 touch page opens an invite link against a faked room list: that server must be pinned first, nobody joined, `room` and `src` gone from the address bar, no sideways scroll (`invite.png`) |
 | `scripts/check-stamps.mjs` | Every `?v=N` reference must agree, and every changed module must have a new stamp (PRs only). `--fix` (`npm run stamps:fix`) bumps them, repeating until importers that changed are stamped too |
 
 **CI** (`ci.yml`):
