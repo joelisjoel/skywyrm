@@ -65,7 +65,8 @@ Each newer mechanic is a **rule**: a number in `site/js/tunables.js`
 - **Fight mode** (`fight`):
   - Solo: Settings → Server → Fight mode (this visit only), or the tuning panel.
   - A server: the Create server form's switch. Its lobby row shows "⚔ Fight".
-    Skyhold and The Orb stay classic.
+    Skyhold and The Orb stay classic. Skyhold Fight and The Orb Fight are
+    always-on fight servers (`rules: {fight: 1}` in `DEFAULT_ROOMS`).
   - Every room: `WYRM_TUNE` = `{"fight":1}` would do it (Skyhold and The Orb
     too), but pages cached from before fight mode are kept out of fight
     rooms (they're asked to reload), so that would turn them away from

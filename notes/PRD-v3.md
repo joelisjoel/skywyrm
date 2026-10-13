@@ -379,7 +379,9 @@ played and compared (§14, decision 9).
   steer round bodies, so they don't bite everyone they pass.
 - **Where:** Settings → Server → Fight mode for solo (until you reload), and
   a Fight mode switch when you create a server. Fight servers show a
-  "⚔ Fight" chip in the lobby. Skyhold and The Orb stay classic.
+  "⚔ Fight" chip in the lobby. Skyhold and The Orb stay classic; their
+  always-on twins **Skyhold Fight** and **The Orb Fight** play fight mode,
+  one click from the lobby.
 - **How it plays** (25 bots, seeded, 6 minutes × 3 seeds per world): see
   §14, decision 9.
 
@@ -443,7 +445,8 @@ device.
 ## 8. Online play ✅
 
 - **Lobby.**
-  - Two always-on servers, Skyhold and The Orb.
+  - Four always-on servers: Skyhold and The Orb, each followed by its Fight
+    mode twin (Skyhold Fight, The Orb Fight).
   - Any rooms players have created.
   - Each row shows the number of humans and bots, and the list refreshes every 10 s
     while it's on screen.
@@ -832,10 +835,13 @@ Each decision has a recommended default, so work can start on that default.
      favourite targets, so the biggest stay smaller; Poison Skin makes a
      big hunter untouchable for 10 s; and
      old cached pages can't join fight servers until they reload.
-   - **Recommendation:** keep classic as the default and the permanent
-     servers classic. Let the kids play a fight server and solo fight mode
-     for a week, then decide whether it becomes a third permanent server, a
-     per-server choice only, or goes. If it stays, the first things to tune
+   - **Recommendation:** keep classic as the default and Skyhold and The
+     Orb classic. Let the kids play a fight server and solo fight mode
+     for a week, then decide whether it stays, stays a per-server choice
+     only, or goes.
+   - **Update (Joel, 2026-10-13):** fight servers should be one click from
+     the lobby, so Skyhold Fight and The Orb Fight are always on, each
+     listed just after its classic twin. If it stays, the first things to tune
      are `biteGain` (0.3) and `biteMinLen` (10 m), all rules, so no code
      change is needed. Don't set `WYRM_TUNE` `{"fight":1}` until old pages
      have aged out: it would turn them away from every server.

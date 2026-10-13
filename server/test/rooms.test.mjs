@@ -32,9 +32,11 @@ let ok = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); ok++; console.log('  ✓', msg); };
 
 try {
-    // Lobby: two permanent rooms (Skyhold and The Orb).
+    // Lobby: four permanent rooms: Skyhold and The Orb, each with a Fight mode twin listed just after it.
     let r = await (await api('/api/rooms')).json();
-    check(r.rooms.length === 2 && r.rooms.every((x) => x.permanent) && r.rooms.some((x) => x.id === 'skyhold') && r.rooms.some((x) => x.id === 'the-orb'), 'two permanent rooms listed: Skyhold and The Orb');
+    check(r.rooms.length === 4 && r.rooms.every((x) => x.permanent)
+        && r.rooms.map((x) => `${x.id}:${x.fight}`).join() === 'skyhold:false,skyhold-fight:true,the-orb:false,the-orb-fight:true',
+        'four permanent rooms listed in order: Skyhold, Skyhold Fight, The Orb, The Orb Fight (the Fight ones play fight mode)');
     check(r.rooms.every((x) => x.beginner) && !r.rooms.some((x) => /beginner/i.test(x.name)),
         'every server is a beginner server; "beginner" is not part of a name');
 
@@ -221,11 +223,11 @@ try {
         'a server can be created in fight mode (rules { fight: 1 }); junk rules are ignored and the server is classic');
     r = await (await api('/api/rooms')).json();
     const rows = (ids) => r.rooms.filter((x) => ids.includes(x.id));
-    check(rows([fightRoom.room.id, mixed.room.id]).every((x) => x.fight === true) && r.rooms.filter((x) => x.permanent).every((x) => x.fight === false)
+    check(rows([fightRoom.room.id, mixed.room.id, 'skyhold-fight', 'the-orb-fight']).every((x) => x.fight === true) && rows(['skyhold', 'the-orb']).every((x) => x.fight === false)
         && rows(junk.map((x) => x.room.id)).every((x) => x.fight === false), 'the lobby flags fight servers (fight: true); Skyhold and The Orb stay classic');
     // A page from before fight mode (no "fight" in caps) is turned away with a message to update; one with it plays fight rules.
-    const hello = (caps) => new Promise((resolve) => {
-        const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${fightRoom.room.id}`, { headers: { origin: ORIGIN } });
+    const hello = (caps, room = fightRoom.room.id) => new Promise((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?room=${room}`, { headers: { origin: ORIGIN } });
         const got = { msgs: [] };
         ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name: 'Kid', ...(caps ? { caps } : {}) }));
         ws.onmessage = (e) => { const m = JSON.parse(e.data); got.msgs.push(m); if (m.t === 'welcome') { got.welcome = m; ws.close(1000); } };
@@ -237,6 +239,9 @@ try {
     check(oldPage.code === 4003 && /Fight mode/.test(full(oldPage)?.error) && /Reload/.test(full(oldPage)?.error) && noCaps.code === 4003 && !oldPage.welcome,
         `an older page is kept out of a fight server: "${full(oldPage)?.error}" (close 4003)`);
     check(newPage.welcome && newPage.welcome.rules.fight === 1, 'a page that knows fight mode joins, and the welcome says rules.fight = 1');
+    const always = await hello(['el', 'fight'], 'the-orb-fight'), classic = await hello(['el', 'fight'], 'the-orb');
+    check(always.welcome && always.welcome.rules.fight === 1 && classic.welcome && !classic.welcome.rules.fight,
+        'the always-on The Orb Fight plays fight mode; The Orb stays classic');
     // Saved with the room (meta.rules) and cleaned again on restart.
     const savedRules = [{ id: 'f1', name: wish, arena: 'sky', expireAt: later, rules: { fight: 1 } }, { id: 'f2', name: dupe.room.name, arena: 'sky', expireAt: later, rules: { fight: 5, lives: 0 } }];
     const reg2 = new Registry({ kind: 'test', loadAll: async () => savedRules, save() {}, remove() {} });

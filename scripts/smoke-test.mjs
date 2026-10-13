@@ -115,18 +115,22 @@ try {
     // nobody is joined, and room and src leave the address bar. (Joining it is
     // tested against a real server in server/test/net.test.mjs.)
     const phone = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-    const rooms = [['skyhold', 'Skyhold', true], ['the-orb', 'The Orb', true], ['Ab3_x-9Kq2Zr', 'Jade Peak', false], ['Qw8-Lm_2Vb7n', 'Misty Falls', false]]
-        .map(([id, name, permanent]) => ({ id, name, arena: id === 'the-orb' ? 'orb' : 'sky', beginner: true, permanent, humans: permanent ? 0 : 1, bots: 9, max: 30 }));
+    const rooms = [['skyhold', 'Skyhold', true], ['skyhold-fight', 'Skyhold Fight', true, true], ['the-orb', 'The Orb', true], ['the-orb-fight', 'The Orb Fight', true, true],
+        ['Ab3_x-9Kq2Zr', 'Jade Peak', false], ['Qw8-Lm_2Vb7n', 'Misty Falls', false]]
+        .map(([id, name, permanent, fight = false]) => ({ id, name, arena: id.startsWith('the-orb') ? 'orb' : 'sky', beginner: true, permanent, fight, humans: permanent ? 0 : 1, bots: 9, max: 30 }));
     await phone.route(/run\.app\/api\/rooms$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ rooms }) }));
     await phone.goto(`${url}?room=Qw8-Lm_2Vb7n&src=invite`);
     await phone.waitForSelector('#room-list .room.pinned', { timeout: 60000 });
     const pin = await phone.evaluate(() => {
         const rows = [...document.querySelectorAll('#room-list .room')];
+        const fightRow = rows.find((r) => r.querySelector('.rn').textContent === 'Skyhold Fight');
         return { names: rows.map((r) => r.querySelector('.rn').textContent + (r.classList.contains('pinned') ? '*' : '')), search: location.search, state: window.__wyrm.state,
-            wide: document.documentElement.scrollWidth > innerWidth };
+            wide: document.documentElement.scrollWidth > innerWidth,
+            fightRow: fightRow && [...fightRow.querySelector('.rm').children].map((e) => (e.hidden ? '' : e.textContent)).join('|') };
     });
     await phone.screenshot({ path: path.join(shots, 'invite.png') });
-    if (pin.names.join() !== 'Misty Falls*,Skyhold,The Orb,Jade Peak') errors.push(`invite: expected Misty Falls pinned first, got ${pin.names.join(', ')}`);
+    if (pin.names.join() !== 'Misty Falls*,Skyhold,Skyhold Fight,The Orb,The Orb Fight,Jade Peak') errors.push(`invite: expected Misty Falls pinned first, then each world's Fight twin after it, got ${pin.names.join(', ')}`);
+    if (pin.fightRow !== '⚔ Fight|gravity') errors.push(`lobby: the Skyhold Fight row should read "⚔ Fight|gravity", got "${pin.fightRow}"`);
     if (pin.search !== '' || pin.state !== 'menu' || pin.wide) errors.push(`invite: address bar "${pin.search}", state ${pin.state}, wider than the screen: ${pin.wide}`);
     ok = errors.length === 0;
 } catch (e) {

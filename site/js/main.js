@@ -552,10 +552,11 @@ function renderRooms(rooms) {
         }
         el.row.classList.toggle('pinned', r.id === invitedRoom);
         setText(el.nm, r.name);
-        // The world, unless the room is already named after it ("Skyhold").
+        // The world, unless the room is already named after it ("Skyhold", "Skyhold Fight").
         const [worldName, physics] = r.arena === 'orb' ? ['The Orb', 'zero-G'] : ['Skyhold', 'gravity'];
-        const named = r.name.trim().toLowerCase() === worldName.toLowerCase();
-        setText(el.where, (named ? physics : `${worldName} · ${physics}`) + (r.permanent ? ' · always on' : ''));
+        const named = r.name.trim().toLowerCase().startsWith(worldName.toLowerCase());
+        // "always on" for a permanent server, unless its Fight chip is there too (one line on a phone).
+        setText(el.where, (named ? physics : `${worldName} · ${physics}`) + (r.permanent && !r.fight ? ' · always on' : ''));
         el.chip.hidden = !r.fight;                                  // fight mode (rule fight)
         setText(el.humans, `👤 ${r.humans}`);
         setText(el.bots, `🐉 ${r.bots}`);

@@ -730,8 +730,9 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
   world is made. Set only by a create with the Fight mode switch
   (`{fight: 1}`, or `{fight: 0}`, which keeps a room classic even if
   `WYRM_TUNE` turns fight on), saved with the room and cleaned again when
-  saved rooms load. The permanent rooms have none, so they follow the
-  server's `T.fight` (0).
+  saved rooms load. Skyhold and The Orb have none, so they follow the
+  server's `T.fight` (0); Skyhold Fight and The Orb Fight are built in
+  with `{fight: 1}` (`DEFAULT_ROOMS`).
 - **Errors:** each room's tick and sweep run in a try/catch
   (`Registry.guard`), and so does every WebSocket message and leave.
   - An exception is logged with its stack. The same error is logged at most
