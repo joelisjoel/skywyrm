@@ -59,7 +59,10 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats { opa
 #msg-status { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 .msg { max-width: min(560px, 86vw); padding: 2px 13px; border-radius: 999px; background: rgba(10, 8, 6, 0.28); text-align: center; text-wrap: balance;
     font-weight: 700; font-size: 17px; line-height: 1.3; letter-spacing: 0.01em; color: #F5EEE1;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 12px rgba(0, 0, 0, 0.45); animation: msg 1.6s ease-out forwards; }
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 12px rgba(0, 0, 0, 0.45); }
+/* A message pops in, holds, then fades out and leaves (on the fade's
+   animationend); hud.js msgTime sets the three times per message. */
+#msgs > .msg { animation: msg-pop var(--msg-in) ease-out, msg-out var(--msg-fade) ease-out var(--msg-fade-at) forwards; }
 .msg.big { font-size: 22px; font-weight: 800; color: #FFD60A; }
 .msg.nm { color: #64D2FF; }
 .msg.bad, #hud-warn { color: #FF453A; }
@@ -73,7 +76,8 @@ body:not([data-state=play]) #radar, body:not([data-state=play]) #hud-stats { opa
 #net-note { display: none; font-size: 14px; }
 #msg-status #net-note { animation: gPulse 0.9s ease-in-out infinite alternate; }
 body[data-net=reconnecting]:not([data-state=pause]) #net-note { display: block; }   /* paused, the pause panel says it */
-@keyframes msg { 0% { opacity: 0; transform: translateY(-6px) scale(0.96); } 8% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes msg-pop { from { opacity: 0; transform: translateY(-6px) scale(0.96); } }
+@keyframes msg-out { to { opacity: 0; } }
 @keyframes msg-in { from { opacity: 0; } }
 
 

@@ -2,7 +2,7 @@
 // with speed, an orb chime ladder, whooshes for near misses, and the
 // adaptive soundtrack (music.js) with power-up stingers in its mode.
 import { Music } from './music.js?v=11';
-import { Voice } from './voice.js?v=2';
+import { Voice } from './voice.js?v=3';
 
 // D minor pentatonic (D yu), the soundtrack's home; once the music is
 // running the chimes follow whatever mode it's in.

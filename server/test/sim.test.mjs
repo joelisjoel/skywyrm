@@ -794,8 +794,11 @@ const X = { x: 1, y: 0, z: 0 };
         // event, which older browsers skip.
         const room = new Room({ id: 's', name: 'S', arena: 'orb', beginner: true }, { occupied() {}, emptied() {}, countHumans() {}, stats: { run() {} } });
         const join = (caps) => { const c = { got: [], send(m) { this.got.push(m); }, sendRaw(t) { this.got.push(JSON.parse(t)); } }; room.join(c, 'P', { caps }); return c; };
+        room.ensureWorld(); const w = room.world;
+        // The room's 10 s warm-up now and then feeds a crystal to a bot, and
+        // it isn't reborn until after the warm-up: hatch any that's missing.
+        for (const t of ['fire', 'ice', 'bolt', 'acid']) if (!w.powerups.some((p) => p.sun && p.type === t)) { w.sunDue.delete(t); w.sunBirth(t); }
         const oldC = join(undefined), newC = join(['el']);
-        const w = room.world;
         room.tick(); room.tick();
         const sunPu = (pu) => pu.filter((q) => q.length === 8 && q[5] > 0);
         const snap = (c) => c.got.filter((m) => m.t === 's').pop();

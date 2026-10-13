@@ -7,9 +7,24 @@ import { MOOD_ICON } from './bots.js?v=27';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-// Messages: ms on screen by kind (every other kind 1.6 s), and how many at once.
-const MSG_LIFE = { hint: 3200, caption: 2800 };
+// Messages, in ms: each kind pops in over `in`, holds until `fadeAt`, then
+// fades out over `fade` and leaves (every other kind times like a toast):
+// 2.6 s for a toast, 4.2 s for a tip, 3.8 s for a voice caption. The pop-in
+// and fade are 8% and 22% of the old 1.6, 3.2 and 2.8 s; the holds grew a
+// second so there's time to read. And how many at once.
+const MSG_TIME = {
+    toast: { in: 128, fadeAt: 2248, fade: 352 },
+    hint: { in: 256, fadeAt: 3496, fade: 704 },
+    caption: { in: 224, fadeAt: 3184, fade: 616 },
+};
 const MSG_MAX = 4;
+// A message's times by kind (above). A voice caption also holds until 1 s
+// past the end of its line (`lineSecs` long, started as it shows).
+export function msgTime(cls, lineSecs = 0) {
+    const t = MSG_TIME[cls] || MSG_TIME.toast;
+    const fadeAt = cls === 'caption' ? Math.max(t.fadeAt, Math.round(lineSecs * 1000) + 1000) : t.fadeAt;
+    return { in: t.in, fadeAt, fade: t.fade, life: fadeAt + t.fade };
+}
 
 // Minimal status: ring gauges with line icons, no captions. Static SVG
 // only (no user text goes through innerHTML).
@@ -113,12 +128,16 @@ export class Hud {
     // stack's box ends above the radar (style.css, per layout), so what
     // doesn't fit, and anything past MSG_MAX, is dropped (fit). The status
     // lines (wall warning, steering you clear, reconnecting) sit in a row at its top.
-    message(el, cls) {
-        const life = MSG_LIFE[cls] || 1600, gone = () => el.remove();
+    // A message's pop-in, hold and fade (style.css) take their times from msgTime.
+    message(el, cls, lineSecs) {
+        const t = msgTime(cls, lineSecs), gone = () => el.remove();
         el.className = 'msg ' + cls;
-        el.style.animationDuration = life + 'ms';
-        el.addEventListener('animationend', gone);     // gone as it fades out, even when a slow frame delays timers
-        setTimeout(gone, life + 1000);                 // a hidden tab doesn't run the animation
+        el.style.setProperty('--msg-in', t.in + 'ms');
+        el.style.setProperty('--msg-fade-at', t.fadeAt + 'ms');
+        el.style.setProperty('--msg-fade', t.fade + 'ms');
+        // Gone as it fades out, even when a slow frame delays timers.
+        el.addEventListener('animationend', (e) => { if (e.animationName === 'msg-out') gone(); });
+        setTimeout(gone, t.life + 1000);               // a hidden tab doesn't run the animation
         this.el.msgs.querySelector('#msg-status').after(el);
         this.fit();
     }
@@ -129,14 +148,15 @@ export class Hud {
         this.message(t, cls);
     }
 
-    // The dragon's voice line: the characters, then pinyin and English. One at a time.
+    // The dragon's voice line: the characters, then pinyin and English. One
+    // at a time, held until 1 s after the line ends (ph.secs, when it plays).
     caption(ph) {
         for (const c of this.el.msgs.querySelectorAll('.caption')) c.remove();
         const t = document.createElement('div'), zh = document.createElement('div'), say = document.createElement('div');
         zh.className = 'zh'; zh.textContent = ph.zh;
         say.className = 'say'; say.textContent = `${ph.py} · ${ph.en}`;
         t.append(zh, say);
-        this.message(t, 'caption');
+        this.message(t, 'caption', ph.secs);
     }
 
     // Too many, or more than fit: tips go first, then voice captions, then

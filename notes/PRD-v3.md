@@ -534,6 +534,10 @@ legs, fins and feathers grow with them.
   buttons). When it's full, tips give way first, then voice captions; the
   newest message always shows. The respawn countdown ends at the centre, so
   the death line shows below it.
+- **Long enough to read:** a toast stays fully up for about 2.2 s and is
+  gone at 2.6 s, a tip 3.5 s (gone at 4.2 s), and a voice caption 3.2 s or
+  until 1 s after the dragon finishes speaking, whichever is later. The
+  first-flight tips come one at a time, each as the last one fades.
 - **Over the world:**
   - names over dragons within 50 m
   - arrows to dragons off screen within 30 m
