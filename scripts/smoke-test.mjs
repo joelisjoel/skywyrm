@@ -134,6 +134,9 @@ try {
     if (pin.fightRow !== '⚔ Fight|gravity') errors.push(`lobby: the Skyhold Fight row should read "⚔ Fight|gravity", got "${pin.fightRow}"`);
     if (pin.search !== '' || pin.state !== 'menu' || pin.wide) errors.push(`invite: address bar "${pin.search}", state ${pin.state}, wider than the screen: ${pin.wide}`);
     // The totals page on a phone: it draws the server's day totals and sends no visit note.
+    // The two game pages (WebGL, software-rendered in CI) are done: close them first, or
+    // CI's headless shell can't produce a frame to screenshot.
+    await phone.close(); await page.close();
     const stats = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const sent = [];
     stats.on('request', (r) => { if (/\/api\/(visit|run)/.test(r.url())) sent.push(r.url()); });
@@ -147,7 +150,9 @@ try {
     const drawn = await stats.evaluate(() => ({ tiles: [...document.querySelectorAll('#tiles .tile .value')].map((e) => e.textContent),
         funnel: document.querySelectorAll('#funnel .hbar').length, cols: document.querySelectorAll('#trend .col').length, rows: document.querySelectorAll('#table tr').length,
         note: document.getElementById('note').textContent, wide: document.documentElement.scrollWidth > innerWidth }));
-    await stats.screenshot({ path: path.join(shots, 'stats.png') });     // the viewport: CI's headless shell can't capture the whole tall page
+    await stats.bringToFront();
+    await stats.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));   // painted
+    await stats.screenshot({ path: path.join(shots, 'stats.png') });
     if (drawn.tiles.join() !== '10,8,70%,7,3' || drawn.funnel !== 5 || drawn.cols !== 14 || drawn.rows !== 8 || !/Totals start/.test(drawn.note) || drawn.wide || sent.length)
         errors.push(`stats page: ${JSON.stringify({ ...drawn, sent })}`);
     ok = errors.length === 0;
