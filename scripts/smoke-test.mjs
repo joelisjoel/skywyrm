@@ -8,7 +8,8 @@
 // played out (Settings → Server switch, one forced bite), and Poison Skin
 // (a crystal, a poisoned bot, picking one up). Then, on a phone-sized
 // page, an invite link (?room=) pins that server first in the lobby (with
-// a faked room list).
+// a faked room list), and the totals page (stats.html) draws faked totals
+// without sending anything back.
 // Run: npm install && npx playwright install chromium && npm run smoke
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +133,23 @@ try {
     if (pin.names.join() !== 'Misty Falls*,Skyhold,Skyhold Fight,The Orb,The Orb Fight,Jade Peak') errors.push(`invite: expected Misty Falls pinned first, then each world's Fight twin after it, got ${pin.names.join(', ')}`);
     if (pin.fightRow !== '⚔ Fight|gravity') errors.push(`lobby: the Skyhold Fight row should read "⚔ Fight|gravity", got "${pin.fightRow}"`);
     if (pin.search !== '' || pin.state !== 'menu' || pin.wide) errors.push(`invite: address bar "${pin.search}", state ${pin.state}, wider than the screen: ${pin.wide}`);
+    // The totals page on a phone: it draws the server's day totals and sends no visit note.
+    const stats = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const sent = [];
+    stats.on('request', (r) => { if (/\/api\/(visit|run)/.test(r.url())) sent.push(r.url()); });
+    const day = new Date().toISOString().slice(0, 10);
+    const totals = { days: [{ day, peakHumans: 3, roomsCreated: 1, solo: { runs: 5, secs: 600, cause: { wall: 2, body: 3 } }, room: { runs: 2, secs: 300, cause: { body: 2 } },
+        visit: { visits: 10, devices: 8, src: { direct: 6, social: 4 }, tag: { invite: 1 }, ret: { new: 6, d1: 2 }, dev: { touch: 7, mouse: 3 },
+            reached: { menu: 10, play: 7, life: 6, again: 3, online: 2 }, secs: { '<1m': 3, '1-5m': 5, '5-15m': 2 }, lives: 7, invited: 1 } }] };
+    await stats.route(/run\.app\/api\/stats$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(totals) }));
+    await stats.goto(url.replace('index.html', 'stats.html'));
+    await stats.waitForSelector('#tiles .tile', { timeout: 30000 });
+    const drawn = await stats.evaluate(() => ({ tiles: [...document.querySelectorAll('#tiles .tile .value')].map((e) => e.textContent),
+        funnel: document.querySelectorAll('#funnel .hbar').length, cols: document.querySelectorAll('#trend .col').length, rows: document.querySelectorAll('#table tr').length,
+        note: document.getElementById('note').textContent, wide: document.documentElement.scrollWidth > innerWidth }));
+    await stats.screenshot({ path: path.join(shots, 'stats.png'), fullPage: true });
+    if (drawn.tiles.join() !== '10,8,70%,7,3' || drawn.funnel !== 5 || drawn.cols !== 14 || drawn.rows !== 8 || !/Totals start/.test(drawn.note) || drawn.wide || sent.length)
+        errors.push(`stats page: ${JSON.stringify({ ...drawn, sent })}`);
     ok = errors.length === 0;
 } catch (e) {
     errors.push(e.message);

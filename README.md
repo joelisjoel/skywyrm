@@ -72,5 +72,5 @@ when it ends, with a few categories worked out on the device (where it came
 from, roughly how long since the device first came, how far it got) that the
 server adds straight into daily counts. No ids or names, IP addresses
 are never stored, 30 days are kept, and the totals are public at
-`<server>/api/stats`. The [privacy page](site/privacy.html) explains it for
+`<server>/api/stats` (drawn at the unlisted `skywyrm.io/stats.html`). The [privacy page](site/privacy.html) explains it for
 kids and parents.
