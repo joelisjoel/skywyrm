@@ -660,7 +660,10 @@ legs, fins and feathers grow with them.
   - The server adds these into totals per UTC day, with solo and online kept
     apart, plus the peak number of players online and rooms created. It keeps
     30 days.
-  - The totals are public at `<server>/api/stats`.
+  - The totals are public at `<server>/api/stats`, and drawn at the unlisted
+    page `skywyrm.io/stats.html`: headline numbers, visits by day, the play
+    funnel, sources, phone vs computer, time on the page, returns and lives,
+    for today or the last 7 or 30 days. The page sends nothing back.
   - The server uses IP addresses only in memory, to rate-limit, and doesn't
     store or log them.
 - **Anonymous visit totals** ✅ (approved by Joel, to see whether the game

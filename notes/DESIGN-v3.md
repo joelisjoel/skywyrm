@@ -1566,6 +1566,12 @@ Actions are pinned to commit SHAs (with the tag in a comment).
   a category and its first-visit date to a bucket on the device. IPs are used only in the
   in-memory rate limits and are never stored or logged by the app. The
   privacy page (`site/privacy.html`) says exactly this.
+- **The totals page** (`site/stats.html`, `js/stats-page.js`) is unlisted
+  (`noindex`, nothing links to it). It only reads `GET /api/stats` (its CSP
+  allows that one host) and never loads `visit.js`, so looking at it isn't
+  counted. Everything is drawn with plain HTML, every value is in the by-day
+  table, and labels go in with `textContent`. The smoke test draws it with
+  faked totals at phone width.
 - Production Firestore rules deny all browsers.
 - Names are filtered on both the client and the server, and shown only with
   `textContent` or `fillText`. The filter (`names.js`):
