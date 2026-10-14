@@ -147,7 +147,7 @@ try {
     const drawn = await stats.evaluate(() => ({ tiles: [...document.querySelectorAll('#tiles .tile .value')].map((e) => e.textContent),
         funnel: document.querySelectorAll('#funnel .hbar').length, cols: document.querySelectorAll('#trend .col').length, rows: document.querySelectorAll('#table tr').length,
         note: document.getElementById('note').textContent, wide: document.documentElement.scrollWidth > innerWidth }));
-    await stats.screenshot({ path: path.join(shots, 'stats.png'), fullPage: true });
+    await stats.screenshot({ path: path.join(shots, 'stats.png') });     // the viewport: CI's headless shell can't capture the whole tall page
     if (drawn.tiles.join() !== '10,8,70%,7,3' || drawn.funnel !== 5 || drawn.cols !== 14 || drawn.rows !== 8 || !/Totals start/.test(drawn.note) || drawn.wide || sent.length)
         errors.push(`stats page: ${JSON.stringify({ ...drawn, sent })}`);
     ok = errors.length === 0;
