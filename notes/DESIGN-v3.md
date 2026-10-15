@@ -1557,7 +1557,9 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 ## 9. Security and abuse
 
 **In place:**
-- No accounts, chat, ads, cookies or third-party analytics. Nothing secret in
+- No accounts, chat, ads or cookies. The one third party in the browser is
+  cookieless Google Analytics (`js/analytics.js`, CSP-allowed hosts only,
+  skywyrm.io only, consent storage denied). Nothing secret in
   the repo, since Cloud Run uses its service account.
 - **Play and visit totals (§4.7, §4.8)** are anonymous by construction: a
   note carries no id, name or cookie, the server adds it straight into daily

@@ -16,7 +16,9 @@ are in `notes/MULTIPLAYER.md`.
 - Joel's kids play this. Don't add accounts, chat, tracking, analytics or
   ads, and keep names going through the shared filter in `site/js/names.js`.
   The approved exceptions are the anonymous daily play and visit totals (no
-  ids, no cookies, no stored IPs) that `site/privacy.html` describes; ask
+  ids, no cookies, no stored IPs) and cookieless Google Analytics on the game
+  page (`site/js/analytics.js`: storage denied, no Google signals, four fixed
+  funnel events, never a name), both described in `site/privacy.html`; ask
   before measuring anything else.
 - It's played on PCs and phones, so check that new UI works at phone width.
 
@@ -31,7 +33,8 @@ are in `notes/MULTIPLAYER.md`.
   procedural scale shader, heads, jaws and ornaments.
 - three.js is pinned to 0.163.0 and self-hosted: `site/vendor/three-0.163.0.module.min.js`
   is a copy of the devDependency's build (`npm run assets` checks it). Nothing
-  loads from other sites; the page's Content-Security-Policy enforces that.
+  loads from other sites except Google's gtag.js for analytics (skywyrm.io
+  only); the page's Content-Security-Policy enforces that.
 - Adding Chinese text? Add the characters to the font subset (`site/fonts/README.md`).
 
 ## Before pushing

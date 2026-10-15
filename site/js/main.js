@@ -15,7 +15,8 @@ import { NetGame, fetchRooms, createRoom } from './net.js?v=32';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
-import { Visit, withoutParam } from './visit.js?v=1';
+import { Visit, withoutParam } from './visit.js?v=2';
+import { startAnalytics, trackStage } from './analytics.js?v=1';
 import { roomParam, inviteLink, inviteText, pinRoom } from './invite.js?v=1';
 
 // Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
@@ -387,6 +388,9 @@ const SERVER_BASE = serverUrl();
 // Visit totals (privacy.html): one anonymous note when this visit ends,
 // with the furthest step it reached (visit.js).
 const visit = new Visit(SERVER_BASE, () => input.isTouch);
+// Google Analytics, cookieless (analytics.js): skywyrm.io only, not with ?dev=1.
+startAnalytics(!DEV);
+visit.onReach = trackStage;
 // An invite link (?room=<id>, invite.js) pins that server at the top of the
 // list until you join it; nobody is joined without a tap. The parameter is
 // read once and taken out of the address bar.
