@@ -6,4 +6,4 @@ export * from './sim.js?v=31';
 export * from './bots.js?v=31';
 export * from './perks.js?v=1';
 export * from './names.js?v=11';
-export * from './visit.js?v=1';
+export * from './visit.js?v=2';

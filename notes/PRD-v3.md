@@ -58,7 +58,7 @@ on phones and computers with no install, no account and no tracking.
 **Non-goals.**
 - Accounts or passwords.
 - Chat of any kind.
-- Analytics or tracking of players. Only anonymous daily play and visit totals are counted (§11).
+- Tracking of players. Only anonymous daily play and visit totals are counted, plus cookieless Google Analytics on the game page (§11).
 - Ads, or purchases of any kind.
 - Native apps.
 - A realistic flight sim.
@@ -649,8 +649,18 @@ legs, fins and feathers grow with them.
 
 - **Nothing personal is collected:**
   - no accounts, chat, ads or cookies
-  - no analytics companies or tracking code, and no player or device ids
+  - no player or device ids, and no tracking code beyond cookieless Google
+    Analytics (below)
 - Progress lives in the browser's local storage.
+- **Google Analytics, cookieless** ✅ (Joel, 2026-10-15, property
+  G-DNN6E9ZXCT): `site/js/analytics.js` loads gtag.js on skywyrm.io only (not
+  with `?dev=1`), with every consent storage denied, so GA sets no cookies and
+  can't tell visits apart. Google signals and ad personalisation are off; the
+  page address goes without its query string. Four events, each at most once
+  a visit: `game_start`, `life_end`, `play_again`, `join_online`. Never a name
+  or typed text. The privacy page says what Google receives. Switching to
+  cookies would be a one-line change, but cookies are persistent identifiers
+  under COPPA, so ask a lawyer first.
 - **Anonymous play totals** ✅ (approved by Joel, so the game can be improved
   with real numbers):
   - Online, the server counts each human life as it ends in a room (death,

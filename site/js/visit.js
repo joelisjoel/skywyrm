@@ -117,7 +117,11 @@ export class Visit {
         addEventListener('pagehide', () => this.send());
     }
 
-    reach(stage) { this.stage = Math.max(this.stage, VISIT_STAGES.indexOf(stage)); }
+    // onReach(stage): called once per step, the first time this visit gets there.
+    reach(stage) {
+        const i = VISIT_STAGES.indexOf(stage);
+        if (i > this.stage) { this.stage = i; if (this.onReach) this.onReach(stage); }
+    }
     // A life began: the first is 'play', any after it 'again'.
     started() { this.reach(++this.starts > 1 ? 'again' : 'play'); }
     lifeDone() { this.lives++; this.reach('life'); }

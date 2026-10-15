@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skywyrm · Privacy</title>
-    <meta name="description" content="What Skywyrm knows about you: no accounts, no ads, no cookies, no tracking. Only anonymous game and visit totals.">
+    <meta name="description" content="What Skywyrm knows about you: no accounts, no ads, no cookies. Only anonymous game and visit totals, and Google Analytics without cookies.">
     <link rel="icon" href="data:,">
     <!-- Self-contained on purpose: no fonts, scripts or images from anywhere else. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
@@ -87,7 +87,7 @@
             <ul class="short">
                 <li>No accounts, no passwords, no chat.</li>
                 <li>No ads and nothing to buy.</li>
-                <li>No cookies and no tracking or analytics companies.</li>
+                <li>No cookies. We use Google Analytics in a mode that stores nothing on your device and can't tell visitors apart.</li>
                 <li>We count a few game and visit numbers that can't tell players apart, so we can make the game better.</li>
             </ul>
 
@@ -115,20 +115,31 @@
             <p>None of these notes has a name, an ID or a cookie, so nobody can tell who sent one, or that two notes came from the same person. The server doesn't keep the notes: it adds each answer to its own count for the day (one more visit from a search engine, one more visit on a touch screen, and so on), so the answers from one visit can't be put back together. It keeps the daily totals for 30 days and then deletes them. Anyone can look at the totals: <a href="https://wyrm-server-420365023329.us-west1.run.app/api/stats">here they are</a> (they look like computer code, which is normal).</p>
             <p>We use them to make the game more fun, for example to see whether new dragons crash too soon, a world is too hard, or new players give up before they start.</p>
 
-            <h2>What stays on your device</h2>
+            <h2>Google Analytics</h2>
+<p>The game page also uses <b>Google Analytics</b>, set up so that it stores nothing on your device (no cookies) and can't tell that two visits came from the same person. When the game opens, your browser tells Google:</p>
+<ul>
+<li>the page's address, without anything after a "?" in it</li>
+<li>the page you came from</li>
+<li>what kind of browser and device you have, and your screen size</li>
+<li>your rough location, like the city, which Google works out from your internet address</li>
+</ul>
+<p>While you play, it can also send one of four words, each at most once a visit: game started, life ended, played again, joined online. It never sends your dragon's name or anything you type. We've told Google not to use it for ads or to link it to Google accounts ("Google signals" and ad personalisation are off). It isn't used on this privacy page.</p>
+
+<h2>What stays on your device</h2>
             <p>Your dragon's name, rank, jade, perks, colours and settings, and the dates of your first and last visit, are saved in this browser on your device and are never sent to us. Clearing this site's data in your browser wipes them.</p>
             <p>The one exception is playing online: the other players in that room see your dragon's name, after it passes our name filter (no rude words, links or email addresses). The server forgets it when you leave. If you create a server, its name shows in the server list until 12 hours after the last player leaves.</p>
             <p>If you <b>invite a friend</b> to a server, the link holds only that server's code and the word "invite", never your dragon's name. Your friend sees that server at the top of their list and decides whether to join.</p>
 
             <h2>Internet addresses</h2>
             <p>Every website your device visits can see its internet address (its IP address). That's simply how the internet works. Our game server uses it for a moment to stop spam, for example to limit how many servers one home or school can create in an hour. It keeps it only in memory, for an hour at most, and never saves it or adds it to the totals.</p>
-            <p>The companies that host Skywyrm keep their own standard security logs, which include IP addresses: Google Cloud keeps its request logs for 30 days, and GitHub logs visits to the website too.</p>
+            <p>The companies that host Skywyrm keep their own standard security logs, which include IP addresses: Google Cloud keeps its request logs for 30 days, and GitHub logs visits to the website too. Google Analytics also receives your IP address to work out your rough location; Google says Google Analytics 4 doesn't store it.</p>
 
             <h2>Who runs what</h2>
             <ul>
                 <li>The game itself, this website, is hosted by <b>GitHub Pages</b>.</li>
                 <li>The online servers run on <b>Google Cloud</b>.</li>
-                <li>Everything the game needs (its code, fonts and sounds) comes from this website, so playing doesn't send anything to any other company.</li>
+                <li>Visits to the game page are counted by <b>Google Analytics</b>, as described above.</li>
+<li>Everything the game needs (its code, fonts and sounds) comes from this website. Apart from Google Analytics, playing doesn't send anything to any other company.</li>
             </ul>
 
             <h2>For grown-ups</h2>
@@ -137,7 +148,7 @@
                 That page is public, so please don't include personal details.</p>
 
             <footer>
-                <span>Updated October 13, 2026</span>
+                <span>Updated October 15, 2026</span>
                 <a href="./">← Back to the game</a>
             </footer>
         </div>

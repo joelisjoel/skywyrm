@@ -3,10 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <!-- Content-Security-Policy: everything is served from this site; the only other host is the game
-         server (net-config.js) plus localhost for local testing. The importmap below is allowed by its
+    <!-- Content-Security-Policy: everything is served from this site; the only other hosts are the game
+         server (net-config.js), Google Analytics (analytics.js: gtag.js and its cookieless pings) and
+         localhost for local testing. The importmap below is allowed by its
          hash: scripts/check-assets.mjs checks it, so if you edit the importmap run `npm run assets:fix`. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-PshKy/GFzf0N39/jpTnj9u0U28oI0s7vxX65HsQ+deM='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://wyrm-server-420365023329.us-west1.run.app wss://wyrm-server-420365023329.us-west1.run.app http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-PshKy/GFzf0N39/jpTnj9u0U28oI0s7vxX65HsQ+deM=' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; media-src 'self' blob:; connect-src 'self' https://wyrm-server-420365023329.us-west1.run.app wss://wyrm-server-420365023329.us-west1.run.app https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Skywyrm — Hatch small. Grow huge. Rule the sky.</title>
     <meta name="description" content="A 3D dragon game: eat glowing orbs, grow huge, and make other dragons crash into your tail. Free in your browser on phones and computers. No sign-up, no ads.">
@@ -248,7 +249,7 @@
     <button id="tune-btn" class="dev-only" title="Tuning panel (`)">⚙</button>
     <div id="tune"></div>
 
-    <script type="module" src="js/main.js?v=71"></script>
+    <script type="module" src="js/main.js?v=72"></script>
 </body>
 
 </html>
