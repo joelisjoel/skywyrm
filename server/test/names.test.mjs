@@ -19,13 +19,20 @@ const BOT_NAMES = BOTS.flatMap((n) => [n, ...Array.from({ length: 90 }, (_, k) =
 
 const PASS = ['SkyStorm', 'Sky Serpent', 'Skyscale', 'Sky Spirit', 'Sky Snake', 'Grape', 'Drapes', 'Spicy Dragon',
     'Peacock', 'Cockatoo', 'Dickens', 'Cumulus', 'Torpedo', 'Bass Drop', 'Titan', 'Glass Wing', 'Jade Emperor', 'Ember',
-    'Ember Drake', 'Atlas Storm', 'Kung Fu Kid', 'Cookie Monster', 'Assassin', 'Classic', 'Thorny', 'Awww', 'Pyra55'];
+    'Ember Drake', 'Atlas Storm', 'Kung Fu Kid', 'Cookie Monster', 'Assassin', 'Classic', 'Thorny', 'Awww', 'Pyra55',
+    // near the 2026-10 additions: words that hold one, two words that run into one with an ending, symbols between words
+    'Cook', 'Raccoon', 'Cocoon', 'Tycoon', 'Pakistan', 'Saltwater', 'Wristwatch', 'Spicy', 'Cumin', 'Annals', 'Ana Lin',
+    'An Ally', 'Shy Ting', 'Wolf-Kid', 'Speed-Up', 'Trish#7', "O'Neil", 'Mary-Jo', 'Sun.Moon', 'Mr. Dragon', 'Team 88'];
 const BLOCK = ['kys', 'kys now', 'KysNow', 'kys2', 'fuk', 'fck', 'phuck', 'fvck', 'f u c k', 'fuuuck', 'ni99er', 'n1663r',
     'sh1t', 'ass', 'asshole', 'sex', 'sexy', 'boobs', 'tits', 'pedo', 'killyourself', 'kill urself', 'porn', 'dildo',
     'cum', 'jizz', 'milf', 'horny', 'nsfw', 'xxx', 'suicide', '\uFF26\uFF55\uFF43\uFF4B', 'b00bs', 'Big Ass',
     // the list before this filter
     'fuck', 'shit', 'cunt', 'bitch', 'nigger', 'nigga', 'faggot', 'fag', 'retard', 'whore', 'slut', 'rape', 'nazi',
-    'hitler', 'kike', 'spic', 'chink', 'tranny', 'dick', 'cock', 'pussy', 'penis', 'vagina', 'kkk', 'isis'];
+    'hitler', 'kike', 'spic', 'chink', 'tranny', 'dick', 'cock', 'pussy', 'penis', 'vagina', 'kkk', 'isis',
+    // 2026-10 security review: split words, a symbol for a vowel, numbers read whole, spellings, missing words
+    'Fu ck', 'Sh it', 'Bi tch', 'Di ck', 'Fu cks', 'N_gger', 'Sh#t', 'C_nt', "Sh't", 'Big_N_gger', 'Sh#tty', 'A55', 'PEN15',
+    '80085', 'Nygger', 'Niqqer', 'Nibba', 'Coon', 'Coons', 'Gook', 'Beaner', 'Wetback', 'Dyke', 'Paki', 'Twat',
+    'Kill Jews', 'Gas the Jews', 'Sieg Heil', '1488', 'Team 14 88'];
 const NOT_ASCII = ['fu\u0441k' /* Cyrillic с */, '\u3164\u3164' /* Hangul filler */, '\uFFA0', 'Dragon\u0131', 'Δράκος', '龙'];
 const RESERVED = ['Admin', 'admin123', 'The Official', 'Server Bot', 'Sky wyrm', 'Mod', 'ServerBot', 'Wyrm Team'];
 const NOT_RESERVED = ['Systemic', 'Serverus', 'Staffy', 'Officially Cool'];
