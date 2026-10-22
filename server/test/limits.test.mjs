@@ -1,5 +1,5 @@
 // Server limits: sockets per IP (MAX_CONN_PER_IP), held seats included,
-// and request addresses that aren't URLs.
+// IPv6 addresses counted by their /64, and request addresses that aren't URLs.
 // Boots the real server with different settings and opens raw WebSocket
 // upgrades to read the HTTP status of a refusal.
 // Run: cd server && npm test
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
+import { ipKey } from '../ip.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ORIGIN = 'http://localhost:5173';
@@ -32,8 +33,8 @@ async function boot(env = {}) {
 }
 
 // One WebSocket upgrade: 101 (kept open) or the refusal's HTTP status.
-const upgrade = (s) => new Promise((resolve) => {
-    const req = request({ host: '127.0.0.1', port: s.port, path: '/ws?room=skyhold', headers: {
+const upgrade = (s, xff) => new Promise((resolve) => {
+    const req = request({ host: '127.0.0.1', port: s.port, path: '/ws?room=skyhold', headers: { ...(xff && { 'x-forwarded-for': xff }),
         origin: ORIGIN, connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64') } });
     req.on('upgrade', (res, socket) => { s.sockets.push(socket); socket.on('error', () => {}); resolve(101); });
     req.on('response', (res) => { res.resume(); resolve(res.statusCode); });
@@ -64,7 +65,12 @@ const joinAndDrop = (s) => new Promise((resolve, reject) => {
 });
 
 try {
-    const [def, three, junk, held] = await Promise.all([boot(), boot({ MAX_CONN_PER_IP: '3' }), boot({ MAX_CONN_PER_IP: '-2' }), boot({ MAX_CONN_PER_IP: '3' })]);
+    check(ipKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd') === '2001:db8:1:2::/64' && ipKey('2001:DB8:1:2::9') === '2001:db8:1:2::/64'
+        && ipKey('2001:db8::1') === '2001:db8:0:0::/64' && ipKey('[2001:0db8:0001:0002::1]') === '2001:db8:1:2::/64',
+        'an IPv6 address counts by its /64, however it is written');
+    check(ipKey('203.0.113.7') === '203.0.113.7' && ipKey('::ffff:203.0.113.7') === '203.0.113.7' && ipKey('') === 'unknown' && ipKey('not:an:address') === 'not:an:address',
+        'IPv4 (also written as IPv6) counts as itself; anything else as given');
+    const [def, three, junk, held, v6] = await Promise.all([boot(), boot({ MAX_CONN_PER_IP: '3' }), boot({ MAX_CONN_PER_IP: '-2' }), boot({ MAX_CONN_PER_IP: '3' }), boot({ MAX_CONN_PER_IP: '3' })]);
     let codes = await open(def, 17);
     check(codes.slice(0, 16).every((c) => c === 101) && codes[16] === 429, 'default: 16 sockets per IP, the 17th refused (429)');
     codes = await open(three, 4);
@@ -77,6 +83,9 @@ try {
     for (let i = 0; i < 3; i++) await joinAndDrop(held);
     await sleep(200);
     check(await upgrade(held) === 429, 'seats held for dropped players count toward the limit: 3 drops fill MAX_CONN_PER_IP=3');
+    codes = [];
+    for (const a of ['2001:db8:1:2::a', '2001:db8:1:2::b', '2001:db8:1:2:ffff::1', '2001:db8:1:2:dead:beef:0:1', '2001:db8:1:3::1']) codes.push(await upgrade(v6, a));
+    check(codes.join() === '101,101,101,429,101', 'IPv6: three addresses in one /64 fill MAX_CONN_PER_IP=3, a fourth is refused, another /64 is fine');
     const up = 'Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ' + randomBytes(16).toString('base64');
     check(await raw(def, 'GET //x:99999 HTTP/1.1\r\nHost: a\r\n' + up) === 400 && await alive(def), 'an upgrade to an address that isn\'t a URL gets 400, and the server stays up');
     check(await raw(def, 'GET //x:99999 HTTP/1.1\r\nHost: a\r\nConnection: close') === 400 && await alive(def), 'a plain request to one gets 400 too, not a hung socket');

@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Registry } from './rooms.js';
 import { Client } from './client.js';
+import { ipKey } from './ip.js';
 import { makeStore } from './store.js';
 import { Stats, cleanRun, cleanVisit } from './stats.js';
 import { T, DEFAULTS } from '../site/js/shared.js';
@@ -30,10 +31,11 @@ function originOk(origin) {
     return allowLocal && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 
-// Client IP: Cloud Run appends the real client address last in X-Forwarded-For.
+// Client IP: Cloud Run appends the real client address last in
+// X-Forwarded-For. Limits count an IPv6 address by its /64 (ip.js).
 function ipOf(req) {
     const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    return (xff.length ? xff[xff.length - 1] : req.socket.remoteAddress) || 'unknown';
+    return ipKey((xff.length ? xff[xff.length - 1] : req.socket.remoteAddress) || 'unknown');
 }
 
 // Sockets per client IP. A home or school network shares one address, so
@@ -51,10 +53,14 @@ function positiveInt(s, fallback) {
 // 30. The address is held only here, in memory, until its hour is up;
 // never stored or logged.
 const NOTES_PER_IP_PER_HOUR = { run: 20, visit: 30 };
+// Addresses held per kind: past this, a new address's note is turned away
+// until the sweep frees room, so a flood of addresses can't grow memory.
+const NOTE_IPS_MAX = 50000;
 const noteCounts = { run: new Map(), visit: new Map() };   // kind → ip → { n, since }
 function noteAllowed(kind, ip) {
     const now = Date.now(), seen = noteCounts[kind];
     let e = seen.get(ip);
+    if (!e && seen.size >= NOTE_IPS_MAX) return false;
     if (!e || now - e.since >= 3600 * 1000) seen.set(ip, (e = { n: 0, since: now }));
     return ++e.n <= NOTES_PER_IP_PER_HOUR[kind];
 }
