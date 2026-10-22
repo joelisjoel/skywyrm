@@ -1,9 +1,11 @@
-// Server limits: sockets per IP (MAX_CONN_PER_IP), held seats included.
+// Server limits: sockets per IP (MAX_CONN_PER_IP), held seats included,
+// and request addresses that aren't URLs.
 // Boots the real server with different settings and opens raw WebSocket
 // upgrades to read the HTTP status of a refusal.
 // Run: cd server && npm test
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
+import { connect } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -38,6 +40,18 @@ const upgrade = (s) => new Promise((resolve) => {
     req.on('error', () => resolve(0));
     req.end();
 });
+// A raw request line, for addresses node:http won't send: the reply's status, or 0.
+const raw = (s, head) => new Promise((resolve) => {
+    const sock = connect(s.port, '127.0.0.1', () => sock.write(head + '\r\n\r\n'));
+    let got = '';
+    sock.on('data', (d) => (got += d)); sock.on('error', () => {});
+    sock.on('close', () => resolve(+(/^HTTP\/1\.1 (\d+)/.exec(got) || [])[1] || 0));
+    sock.setTimeout(3000, () => sock.destroy());
+});
+const alive = (s) => new Promise((resolve) => {
+    request({ host: '127.0.0.1', port: s.port, path: '/healthz' }, (res) => { res.resume(); resolve(res.statusCode === 200); }).on('error', () => resolve(false)).end();
+});
+
 const open = async (s, n) => { const codes = []; for (let i = 0; i < n; i++) codes.push(await upgrade(s)); return codes; };
 
 // Joins as a player, then drops the connection without a close frame (as a
@@ -63,6 +77,9 @@ try {
     for (let i = 0; i < 3; i++) await joinAndDrop(held);
     await sleep(200);
     check(await upgrade(held) === 429, 'seats held for dropped players count toward the limit: 3 drops fill MAX_CONN_PER_IP=3');
+    const up = 'Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ' + randomBytes(16).toString('base64');
+    check(await raw(def, 'GET //x:99999 HTTP/1.1\r\nHost: a\r\n' + up) === 400 && await alive(def), 'an upgrade to an address that isn\'t a URL gets 400, and the server stays up');
+    check(await raw(def, 'GET //x:99999 HTTP/1.1\r\nHost: a\r\nConnection: close') === 400 && await alive(def), 'a plain request to one gets 400 too, not a hung socket');
     console.log(`\n${ok} checks passed`);
 } catch (e) {
     console.error('FAILED:', e.message, '\n--- server logs ---\n' + servers.map((s) => s.out).join('\n'));

@@ -774,6 +774,7 @@ Oct 11, 2026 · v3 · describes commit `87d6f4c` · companion to [PRD-v3.md](PRD
 | `GET /api/stats` | The public daily totals, newest day first. `Cache-Control: public, max-age=60` |
 | `OPTIONS` | 204 for an allowed origin, else 403 |
 | `WS /ws?room=<id>` | Checks path, origin, room and the per-IP cap |
+| Any other | 404. A request address that isn't a URL (e.g. `//x:99999`) gets 400, on HTTP and WebSocket alike (`urlOf`); an uncaught throw in the upgrade handler would end the process and every room |
 
 - **Origin allowlist:**
   - `ALLOWED_ORIGINS` defaults to `https://skywyrm.io,https://www.skywyrm.io`.

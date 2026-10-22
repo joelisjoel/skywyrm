@@ -104,9 +104,17 @@ function readBody(req, limit = 1024) {
     });
 }
 
+// The request's address, or null when it isn't one (e.g. "//x:99999"):
+// new URL throws on those, and an uncaught throw in the upgrade handler
+// would end the process, every room with it.
+function urlOf(req) {
+    try { return new URL(req.url, 'http://x'); } catch { return null; }
+}
+
 const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
-    const url = new URL(req.url, 'http://x');
+    const url = urlOf(req);
+    if (!url) return send(res, 400, { error: 'Bad request' }, origin);
     try {
         if (req.method === 'OPTIONS') return send(res, originOk(origin) ? 204 : 403, null, origin);
         if (req.method === 'GET' && url.pathname === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
@@ -149,10 +157,11 @@ const server = createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
 
 server.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url, 'http://x');
+    const reject = (code, msg) => { socket.write(`HTTP/1.1 ${code} ${msg}\r\n\r\n`); socket.destroy(); };
+    const url = urlOf(req);
+    if (!url) return reject(400, 'Bad Request');
     const ip = ipOf(req);
     const room = registry.get(url.searchParams.get('room'));
-    const reject = (code, msg) => { socket.write(`HTTP/1.1 ${code} ${msg}\r\n\r\n`); socket.destroy(); };
     if (url.pathname !== '/ws') return reject(404, 'Not Found');
     if (!originOk(req.headers.origin)) return reject(403, 'Forbidden');
     if (!room) return reject(404, 'Not Found');
