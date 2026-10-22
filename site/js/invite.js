@@ -3,7 +3,7 @@
 // joined without a tap). The link holds only the room's id and the visit
 // tag src=invite (visit.js), never a player's name. Pure functions, so the
 // tests run them in Node.
-import { isRoomName } from './names.js?v=11';
+import { isRoomName } from './names.js?v=12';
 
 const HOME = 'https://skywyrm.io/';
 const BUILT_IN = ['Skyhold', 'The Orb'];     // the always-on rooms (server/rooms.js)

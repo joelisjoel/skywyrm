@@ -12,7 +12,8 @@ const LEET = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '6': 'g', '7': 
 // Matched inside each word of a name, in the squashed form below, with any
 // letter allowed to repeat ("fuuuck"). Words are checked one at a time, so
 // "Atlas Storm" doesn't read as "ass".
-const BLOCKED = ['fuck', 'fcuk', 'fuq', 'shit', 'cunt', 'bitch', 'biatch', 'btch', 'nigger', 'nigga', 'niqqa', 'nigguh',
+const BLOCKED = ['fuck', 'fcuk', 'fuq', 'shit', 'shyt', 'cunt', 'twat', 'bitch', 'bytch', 'biatch', 'btch', 'nigger', 'nigga',
+    'niqqa', 'niqqer', 'nigguh', 'nygger', 'nygga', 'nibba', 'nibber', 'beaner', 'wetback',
     'faggot', 'fag', 'retard', 'whore', 'slut', 'sloot', 'rape', 'rapist', 'molest', 'nazi', 'hitler', 'kike', 'spic',
     'chink', 'tranny', 'dick', 'cock', 'pussy', 'porn', 'penis', 'vagina', 'kkk', 'isis', 'ass', 'dumbass', 'dumass',
     'sex', 'seggs', 'cum', 'tits', 'titz', 'titty', 'titties', 'boobs', 'boobies', 'anal', 'pedo', 'paedo', 'dildo',
@@ -21,11 +22,13 @@ const BLOCKED = ['fuck', 'fcuk', 'fuq', 'shit', 'cunt', 'bitch', 'biatch', 'btch
 // Also matched with the gaps between words closed up ("kill urself"):
 // long enough that two innocent words never run together into them.
 const SPACED = ['nigger', 'nigga', 'faggot', 'cunt', 'hitler', 'tranny', 'pussy', 'porn', 'vagina', 'dildo',
-    'suicide', 'kilyourself', 'kilurself', 'kilyoself', 'hangyourself', 'hangurself'];
+    'suicide', 'kilyourself', 'kilurself', 'kilyoself', 'hangyourself', 'hangurself',
+    'siegheil', 'killjews', 'killthejews', 'gasjews', 'gasthejews', 'whitepower'];
 
-// Only as a whole word (also after splitting "KysNow" or "kys2" apart):
-// too short to look for inside other words.
-const WHOLE = ['kys', 'fck', 'fcking', 'fcker', 'fkn', 'stfu', 'gtfo', 'wtf', 'pron'];
+// Only as a whole word, or with an s (also after splitting "KysNow" or
+// "kys2" apart): too short, or too much a part of innocent words ("Raccoon",
+// "Pakistan"), to look for inside other words.
+const WHOLE = ['kys', 'fck', 'fcking', 'fcker', 'fkn', 'stfu', 'gtfo', 'wtf', 'pron', 'coon', 'gook', 'dyke', 'paki'];
 
 // Innocent words that short blocked words hide in. A match that lies
 // wholly inside one of these doesn't count ("Grape", "Peacock"). Kept
@@ -47,6 +50,7 @@ const INNOCENT = [
     'spicy', 'spice', 'spica', 'auspic', 'conspic', 'despic', 'hospic',
     'canal', 'banal', 'annal', 'analog', 'analy',
     'sarcophag', 'esophag', 'crisis', 'thorny', 'milford', 'shiitake', 'retardant',
+    'twater', 'twatch',
 ];
 
 // Words that impersonate staff or the built-in rooms. Whole words only:
@@ -72,20 +76,37 @@ export function clean(raw, max) {
 
 // The form names are matched in: lower case, leetspeak read as letters
 // ("sh1t"), sound-alikes merged (ph→f, ck→k, v→u), letters only. A number
-// at the end ("Pyra55") is a number, not leetspeak.
-function squash(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+$/, '').replace(/\d{2,}$/, '')
-        .replace(/[0-9@$!]/g, (c) => LEET[c] || '').replace(/[^a-z]/g, '')
+// at the end ("Pyra55") is a number, not leetspeak, unless `digits` (for
+// "A55", read whole). With `gaps`, a symbol between two letters is kept
+// as "*" ("Sh#t", "B_tch").
+function squash(s, { digits = false, gaps = false } = {}) {
+    s = s.toLowerCase().replace(/[^a-z0-9]+$/, '');
+    if (!digits) s = s.replace(/\d{2,}$/, '');
+    if (gaps) s = s.replace(/([a-z])[^a-z0-9 !]+(?=[a-z])/g, '$1*');      // no lookbehind: Safari before 16.4 can't parse one
+    return s.replace(/[0-9@$!]/g, (c) => LEET[c] || '').replace(/[^a-z*]/g, '')
         .replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/v/g, 'u');
 }
 
 // A blocked word as a pattern: each letter may repeat, but never drops
-// below its own count ("ass" needs two s's).
-const pattern = (w) => squash(w).replace(/(.)\1*/g, (run, c) => (run.length > 1 ? `${c}{${run.length},}?` : `${c}+?`));
+// below its own count ("ass" needs two s's). With `gaps`, a "*" may stand
+// in for a vowel.
+const pattern = (w, gaps = false) => squash(w).replace(/(.)\1*/g, (run, c) => {
+    const x = gaps && 'aeiouy'.includes(c) ? `[${c}*]` : c;
+    return run.length > 1 ? `${x}{${run.length},}?` : `${x}+?`;
+});
 const BLOCKED_RE = BLOCKED.map((w) => new RegExp(pattern(w), 'y'));
 const SPACED_RE = SPACED.map((w) => new RegExp(pattern(w), 'y'));
-const WHOLE_RE = WHOLE.map((w) => new RegExp(`^${pattern(w)}$`));
-const INNOCENT_SQ = INNOCENT.map(squash);
+const WHOLE_RE = WHOLE.map((w) => new RegExp(`^${pattern(w)}s?$`));
+// A blocked word with a symbol for a vowel, filling whole pieces of a word
+// between symbols ("Sh#t", "Big_Sh#t"), so a symbol between two words
+// doesn't count ("Wolf-Kid" isn't "f*k").
+const GAPS_RE = BLOCKED.map((w) => new RegExp(`^${pattern(w, true)}(?:s|y|ed|er|ers|in|ing)?(?=\\*|$)`));
+// Blocked words spelled exactly, for strings that are one only when read
+// whole: two words run together ("Fu ck") or a word with its number ("A55").
+// Exact, or "Ana Lin" would read as "anal" plus an ending.
+const BLOCKED_SQ = new Set(BLOCKED.map((w) => squash(w)));
+const exact = (s) => BLOCKED_SQ.has(s) || (s.endsWith('s') && BLOCKED_SQ.has(s.slice(0, -1)));
+const INNOCENT_SQ = INNOCENT.map((w) => squash(w));
 
 // The words of a name as typed: split at spaces, with runs of single
 // characters joined back up ("f u c k").
@@ -126,11 +147,27 @@ function hits(s, res) {
     return false;
 }
 
+// Does a blocked word, with a symbol for one of its vowels, fill whole
+// pieces of gapped string `s`?
+function gapHit(s) {
+    for (let i = 0; i < s.length; i++) {
+        if (i > 0 && s[i - 1] !== '*') continue;
+        const rest = s.slice(i);
+        if (GAPS_RE.some((re) => (re.exec(rest)?.[0] || '').includes('*'))) return true;
+    }
+    return false;
+}
+
 function blocked(value) {
-    const ws = words(value).map(squash);
-    const forms = [...ws, ...pieces(value).map(squash)];
+    const typed = words(value), ws = typed.map((w) => squash(w));
+    const forms = [...ws, ...pieces(value).map((w) => squash(w))];
+    const whole = [...typed.map((w) => squash(w, { digits: true })).filter((w, i) => w !== ws[i]),   // "A55", "PEN15", "80085"
+        ...typed.slice(1).map((w, i) => squash(typed[i] + w))];                                       // "Fu ck", "Sh it", "Bi tch"
     return ws.some((w) => hits(w, BLOCKED_RE)) || hits(ws.join(''), SPACED_RE)
-        || forms.some((w) => WHOLE_RE.some((re) => re.test(w)));
+        || whole.some(exact)
+        || typed.some((w) => gapHit(squash(w, { gaps: true })))
+        || forms.some((w) => WHOLE_RE.some((re) => re.test(w)))
+        || /(^|\D)14\D?88(\D|$)/.test(value);                              // a neo-Nazi number
 }
 
 // Reserved words match whole words (or a run of words, for "wyrm team"),
