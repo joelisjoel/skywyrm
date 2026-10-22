@@ -34,6 +34,11 @@ const BLOCK = ['kys', 'kys now', 'KysNow', 'kys2', 'fuk', 'fck', 'phuck', 'fvck'
     '80085', 'Nygger', 'Niqqer', 'Nibba', 'Coon', 'Coons', 'Gook', 'Beaner', 'Wetback', 'Dyke', 'Paki', 'Twat',
     'Kill Jews', 'Gas the Jews', 'Sieg Heil', '1488', 'Team 14 88'];
 const NOT_ASCII = ['fu\u0441k' /* Cyrillic с */, '\u3164\u3164' /* Hangul filler */, '\uFFA0', 'Dragon\u0131', 'Δράκος', '龙'];
+// Ways to pass on contact details: links, e-mail, phone numbers, handles.
+const CONTACT = ['join www.spam.gg', 'jo@gmail', 'jo at gmail com', 'x.co', 'bit.ly', 'twitch.tv', 'evil . com', 'Sky dot net',
+    '555 123 4567', '5551234567', 'jdoe#1234', 'insta jdoe', 'discord jdoe', 'Snap Me', 'Add me', 'DM me jo', 'TikTok Jo', 'hmu'];
+const NOT_CONTACT = ['Tick Tock', 'Ticktock', 'Its.Me', 'Zelda.Link', 'Join.Us', 'Dragon 2025', 'Player #7', 'Jo#12', 'Team 123456',
+    'Sun.Moon', 'Mr. Dragon', 'Dr. Cool', 'Snapdragon', 'Call Of Sky', 'Snap Dragon'];
 const RESERVED = ['Admin', 'admin123', 'The Official', 'Server Bot', 'Sky wyrm', 'Mod', 'ServerBot', 'Wyrm Team'];
 const NOT_RESERVED = ['Systemic', 'Serverus', 'Staffy', 'Officially Cool'];
 
@@ -54,7 +59,8 @@ check(checkName('José', 'player').value === 'Jose' && checkName('\uFF33\uFF4B\u
 check(checkName('B\u200Bob\u202E', 'player').value === 'Bob' && checkName('Z\u0337\u0322a\u0335l\u0336g\u0338o', 'player').value === 'Zalgo', 'zero-width, bidi and zalgo marks stripped');
 check(checkName('Alice <script>', 'player').value === 'Alice script' && checkName('A'.repeat(30), 'player').value.length === 16
     && checkName('B'.repeat(40), 'room').value.length === 24, 'other symbols stripped; 16 / 24 character limits');
-check(checkName('join www.spam.gg', 'room').reason === 'No links or e-mail addresses', 'links refused');
+bad = [...CONTACT.filter((n) => checkName(n, 'room').reason !== 'No links, e-mails or phone numbers'), ...NOT_CONTACT.filter((n) => !checkName(n, 'player').ok)];
+check(!bad.length, `${CONTACT.length} links, e-mails, phone numbers and handles refused; ${NOT_CONTACT.length} names near them pass` + (bad.length ? `: wrong for ${bad.join(', ')}` : ''));
 check(checkName('', 'player').reason === 'Pick a name' && checkName('!!!', 'player').reason === 'Use letters A–Z and numbers', 'empty or punctuation-only names refused');
 check(checkName('Nest', 'room', ['Nest', 'The Orb']).reason === 'That name is reserved' && checkName('Nesting Orbit', 'room', ['Nest', 'The Orb']).ok,
     'extra reserved names (built-in rooms) match whole words');
