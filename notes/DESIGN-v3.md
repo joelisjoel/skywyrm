@@ -1493,7 +1493,7 @@ where they drop off), kept without identifying anyone
   IP, default 16): optional.
 
 **The image:**
-- `node:22-slim`.
+- `node:22.23.4-slim` (pinned: bump it for each Node 22.x security release, which also redeploys).
 - `npm ci --omit=dev` from `server/package-lock.json`.
 - Copies `site/js` and `server`.
 - Runs as `USER node`.
@@ -1607,7 +1607,7 @@ Actions are pinned to commit SHAs (with the tag in a comment).
 | 6 | Capacity | One thread runs every room, with no tick-overrun metric. A room waking runs a synchronous 300-tick warm-up that stalls the other rooms |
 | 7 | Hourly disconnect | The 3600 s timeout still ends every socket, but the browser reconnects and the server holds the dragon for it (§4.4). Dragons live in memory only, so a server restart (a deploy) still costs everyone their current life. A dropped player who never comes back holds a seat for up to 33 s |
 | 8 | Third-party code | Fixed: three.js and the fonts are self-hosted and a CSP (meta tag) allows only this site and the game server. GitHub Pages can't send headers, so `frame-ancestors` isn't set |
-| 9 | Unpinned builds | Lockfiles are committed and the image installs with `npm ci`; GitHub Actions are pinned by SHA. The Docker base image (`node:22-slim`) is still a tag, so it picks up Node security patches |
+| 9 | Unpinned builds | Lockfiles are committed and the image installs with `npm ci`; GitHub Actions are pinned by SHA. The Docker base image is pinned to a Node release (`node:22.23.4-slim`). A floating `node:22-slim` only picked up patches when something else redeployed the server, which left it a security release behind in October 2026, so Node updates are now an explicit bump (the tag still brings Debian fixes on each rebuild) |
 | 10 | Fake run and visit notes | Anyone can post plausible solo notes (20 an hour per IP) or visit notes (30 an hour per IP), more from many IPs, and skew those totals. Room totals are counted by the server and can't be faked this way. Read solo and visit numbers as a trend, not exact counts. The other way round, a big class on one address can send more than 30 visit notes in an hour, and the rest go uncounted |
 | 11 | Host logs | Google Cloud's standard request logs (30 days) and GitHub Pages' logs record IP addresses, outside the app's control. The privacy page says so |
 | 12 | Small counts | The totals are public. On a quiet day a count of 1 (a link tag, a return bucket) stands for a single visit. It says nothing about who, and counts can't be joined to each other, but don't add tags or buckets narrow enough to point at one family |
