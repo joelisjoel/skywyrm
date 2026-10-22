@@ -181,7 +181,26 @@ function reserved(value, list) {
     });
 }
 
+// Contact details, so a name can't pass on a way to reach someone: links
+// and e-mail addresses (an @ is checked before clean() drops it), short
+// links ("bit.ly"), 7 or more digits (a phone number), an old-style
+// Discord tag ("jo#1234"), the name of a messaging app or e-mail service
+// as a whole word, and "add me"-style asks.
 const URLISH = /(https?|\bwww\b|\.com|\.net|\.org|\.io|\.gg|\.xyz|\.ru|dot ?com|@)/i;
+// Not .me, .us, .live or .link: "Its.Me" and "Zelda.Link" are names.
+const DOMAIN = /\.\s*(com|net|org|io|gg|xyz|ru|co|ly|tv|uk|app|dev|info|biz|cc|gl)\b|\bdot ?(net|org|io|co|tv)\b/i;
+const CONTACT = new Set(['gmail', 'hotmail', 'icloud', 'aol', 'protonmail', 'discord', 'insta', 'instagram', 'snapchat',
+    'tiktok', 'whatsapp', 'telegram', 'hmu']);
+const ASKS = new Set(['addme', 'dmme', 'textme', 'callme', 'snapme', 'msgme', 'messageme']);
+const letters = (w) => w.toLowerCase().replace(/[^a-z]/g, '');   // not squash(), which reads "Ticktock" as "tiktok"
+
+function contact(raw, value) {
+    if (URLISH.test(value) || fold(raw).includes('@') || DOMAIN.test(value)) return true;
+    if ((value.match(/\d/g) || []).length >= 7 || /[a-z]#\d{4}\b/i.test(value)) return true;
+    const typed = words(value);
+    return [...typed, ...pieces(value)].some((w) => CONTACT.has(letters(w)))
+        || typed.slice(1).some((w, i) => ASKS.has(letters(typed[i] + w)));
+}
 
 // Returns { ok, value, reason }. `kind` is 'player' or 'room'.
 export function checkName(raw, kind = 'player', extraReserved = []) {
@@ -191,7 +210,7 @@ export function checkName(raw, kind = 'player', extraReserved = []) {
     if (FOREIGN.test(fold(raw))) return no('Use letters A–Z and numbers');
     if (kind === 'room' && value.length < 3) return no('Use at least 3 letters or numbers');
     if (!/[A-Za-z0-9]/.test(value)) return no(value || fold(raw).trim() ? 'Use letters A–Z and numbers' : 'Pick a name');
-    if (URLISH.test(value)) return no('No links or e-mail addresses');
+    if (contact(raw, value)) return no('No links, e-mails or phone numbers');
     if (blocked(value)) return no('Please choose a different name');
     if (reserved(value, [...RESERVED, ...extraReserved])) return no('That name is reserved');
     return { ok: true, value, reason: '' };

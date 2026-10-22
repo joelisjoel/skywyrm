@@ -10,14 +10,14 @@ import { Input } from './input.js?v=33';
 import { Hud, msgTime } from './hud.js?v=34';
 import { Audio } from './audio.js?v=22';
 import { TunePanel } from './tune-panel.js?v=30';
-import { checkName, randomRoomName } from './names.js?v=12';
+import { checkName, randomRoomName } from './names.js?v=13';
 import { NetGame, fetchRooms, createRoom } from './net.js?v=32';
 import { serverUrl } from './net-config.js?v=9';
 import { Profile } from './profile.js?v=2';
 import { PERKS, SKINS, perkSlots } from './perks.js?v=1';
 import { Visit, withoutParam } from './visit.js?v=2';
 import { startAnalytics, trackStage } from './analytics.js?v=1';
-import { roomParam, inviteLink, inviteText, pinRoom } from './invite.js?v=2';
+import { roomParam, inviteLink, inviteText, pinRoom } from './invite.js?v=3';
 
 // Developer tools (the ` tuning panel, its ⚙ button, the FPS readout) only
 // with ?dev=1 or on a local page. Everyone else plays on the defaults: saved
